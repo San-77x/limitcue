@@ -14,6 +14,42 @@ use providers::{
 };
 use types::{fmt_countdown, now_unix, Fidelity, Reading, Snapshot};
 
+const ICON_FONT: &[u8] = include_bytes!("../assets/fonts/limitcue-icons.ttf");
+const ICON_GRIP: &str = "\u{f01d9}";
+const ICON_MIN: &str = "\u{f05b0}";
+const ICON_CLOSE: &str = "\u{f0156}";
+const ICON_REFRESH: &str = "\u{f0450}";
+const ICON_FAMILY: &str = "MDIIcons";
+
+fn install_icons(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "mdi-icons".into(),
+        egui::FontData::from_static(ICON_FONT).into(),
+    );
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        if let Some(list) = fonts.families.get_mut(&family) {
+            list.push(ICON_FAMILY.into());
+        }
+    }
+    ctx.set_fonts(fonts);
+}
+
+fn icon(s: &str) -> RichText {
+    RichText::new(s)
+        .family(egui::FontFamily::Name(ICON_FAMILY.into()))
+        .size(16.0)
+        .color(Color32::from_gray(200))
+}
+
+fn icon_button(ui: &mut egui::Ui, glyph: &str, tip: &str) -> egui::Response {
+    let btn = egui::Button::new(icon(glyph).color(ui.visuals().text_color()))
+        .fill(egui::Color32::TRANSPARENT)
+        .rounding(6.0)
+        .min_size(Vec2::splat(24.0));
+    ui.add(btn).on_hover_text(tip)
+}
+
 fn state_path() -> std::path::PathBuf {
     dirs::data_dir().unwrap_or_default().join("limitcue").join("state.json")
 }
@@ -182,7 +218,7 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 // drag grip (left side)
                 let grip_label = ui
-                    .add(egui::Label::new(RichText::new("≡").color(Color32::from_gray(110)).size(16.0)).selectable(false))
+                    .add(egui::Label::new(icon(ICON_GRIP).color(Color32::from_gray(120))).selectable(false))
                     .on_hover_text("drag to move");
                 let grip = ui.interact(grip_label.rect.expand(4.0), ui.id().with("grip"), Sense::drag());
                 if grip.drag_started() {
@@ -191,11 +227,14 @@ impl eframe::App for App {
 
                 if self.expanded {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("—").on_hover_text("minimize (or press Esc)").clicked() {
+                        if icon_button(ui, ICON_MIN, "minimize (or press Esc)").clicked() {
                             self.expanded = false;
                         }
+                        if icon_button(ui, ICON_REFRESH, "refresh now").clicked() {
+                            let _ = self.tx_tick.send(());
+                        }
                         
-                        if ui.button("×").on_hover_text("quit").clicked() {
+                        if icon_button(ui, ICON_CLOSE, "quit").clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     });
@@ -375,5 +414,8 @@ fn main() -> eframe::Result<()> {
             .with_position(egui::pos2(60.0, 40.0)),
         ..Default::default()
     };
-    eframe::run_native("limitcue", options, Box::new(move |_cc| Ok(Box::new(app))))
+    eframe::run_native("limitcue", options, Box::new(move |cc| {
+        install_icons(&cc.egui_ctx);
+        Ok(Box::new(app))
+    }))
 }
