@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LimitCue
+Comment=Always-on-top quota pill for AI coding plans
+Exec=limitcue
+Icon=limitcue
+Terminal=false
+Categories=Utility;Development;
