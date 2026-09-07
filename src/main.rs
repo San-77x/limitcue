@@ -291,9 +291,7 @@ impl eframe::App for App {
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             // ============ header row ============
             let header_h = HEADER_H;
-            let (hrect, _hr) = ui.allocate_exact_size(Vec2::new(ui.available_width(), header_h), Sense::hover());
             ui.horizontal(|ui| {
-                ui.set_clip_rect(hrect);
                 // grip
                 let (grect, _gr) = ui.allocate_exact_size(Vec2::new(18.0, HEADER_H), Sense::hover());
                 ui.painter().image(
