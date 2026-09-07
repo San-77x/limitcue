@@ -109,6 +109,18 @@ Adding a first-party adapter = one file in `src/providers/` implementing the
 `Provider` trait + one registry line. Tests pinned to recorded fixtures are
 welcome and encouraged.
 
+## Privacy
+
+- **Keys never leave your machine except to their own owner.** Each adapter is
+  pinned to its provider's domain; your token is sent only in the request to
+  that provider — the exact request the provider's own CLI makes.
+- **No telemetry, no analytics, no update pings.** The only network traffic in
+  the entire app is the usage fetch itself.
+- **Local cache is numbers-only.** `state.json` stores percentages, counts and
+  reset timestamps — never credentials or identity.
+- **Provider config is mode `0600`** (user-only readable) since it may contain
+  inline keys.
+
 ## License
 
 MIT

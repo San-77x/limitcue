@@ -107,6 +107,12 @@ key_env = "MINIMAX_API_KEY"
 #   { label = "weekly", remaining_path = "usage.week_remaining", resets_at_path = "usage.week_reset_at" },
 # ]
 "#;
-        let _ = std::fs::write(p, example);
+        let _ = std::fs::write(&p, example);
+        // Keep provider config user-only (0600) in case users add inline API keys.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600));
+        }
     }
 }
