@@ -26,6 +26,9 @@ pub struct ProviderConfig {
     /// Use legacy OpenAI billing endpoints (New-API style gateways).
     #[serde(default)]
     pub billing: bool,
+    /// Display order (lower = earlier). Absent = file order.
+    #[serde(default)]
+    pub priority: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +82,25 @@ impl Config {
                 Config::default()
             }),
             Err(_) => Config::default(),
+        }
+    }
+
+    /// Persist the current config back to config.toml (settings screen Apply).
+    pub fn save(&self) {
+        let p = Self::path();
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        match toml::to_string_pretty(self) {
+            Ok(s) => {
+                let _ = std::fs::write(&p, s);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600));
+                }
+            }
+            Err(e) => eprintln!("limitcue: could not save config: {e}"),
         }
     }
 

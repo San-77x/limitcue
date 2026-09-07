@@ -29,6 +29,9 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
   On KDE Plasma (Wayland or X11), drag it near a screen edge and it **docks
   flush** — zero gap, square corners on the attached edge — and the detail
   card grows *away* from the edge. The docked position survives restarts.
+  Left/right docks flip the pill into a **vertical rail**: ring gauges with
+  the percentage underneath, plus a settings gear — the style swaps
+  automatically to fit the edge.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
   `theme` config key. Expanded cards show each reading's *fidelity* badge
   (official / derived / manual) so trust is always visible.
@@ -144,6 +147,23 @@ The app itself works everywhere (GNOME, X11, other compositors) — without
 KWin you just don't get snap-to-edge and position persistence, and
 always-on-top falls back to whatever the compositor allows. `--once` mode
 never touches D-Bus or files.
+
+## Settings
+
+The gear icon on the pill (or on the rail) opens an in-app settings panel:
+
+- **Providers** — enable/disable, reorder (display priority), remove, and add
+  new ones. API keys are never typed here; click *Edit config.toml* to set
+  `api_key` / `key_env` for the new provider (the panel only creates the id).
+  Built-in adapters (Claude, Codex) can be toggled off.
+- **Poll interval** — seconds between usage polls when healthy (30–900;
+  failures back off automatically).
+- **Display** — providers visible on the collapsed pill before the `+N`
+  overflow chip, hide-unconfigured, and the theme.
+
+*Apply* saves `config.toml` and hot-reloads the poll loop — no restart
+needed. Providers can also carry a `priority = <n>` key in config.toml
+(lower = earlier in the pill; file order otherwise).
 
 ## Development
 

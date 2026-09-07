@@ -20,11 +20,12 @@ use providers::{
 use types::{now_unix, Reading, Snapshot};
 use ui::theme::{self, Palette};
 
-const ICON_PNGS: [(&str, &[u8]); 4] = [
+const ICON_PNGS: [(&str, &[u8]); 5] = [
     ("grip", include_bytes!("../assets/icons/grip-vertical.png")),
     ("min", include_bytes!("../assets/icons/minus.png")),
     ("refresh", include_bytes!("../assets/icons/refresh-cw.png")),
     ("close", include_bytes!("../assets/icons/x.png")),
+    ("gear", include_bytes!("../assets/icons/settings.png")),
 ];
 
 #[derive(Clone)]
@@ -33,6 +34,7 @@ struct Icons {
     min: egui::TextureHandle,
     refresh: egui::TextureHandle,
     close: egui::TextureHandle,
+    gear: egui::TextureHandle,
 }
 
 fn decode_png(bytes: &[u8]) -> egui::ColorImage {
@@ -49,7 +51,13 @@ fn load_icons(ctx: &egui::Context) -> Icons {
         let bytes = ICON_PNGS.iter().find(|(n, _)| *n == name).map(|(_, b)| *b).unwrap();
         ctx.load_texture(name, decode_png(bytes), egui::TextureOptions::LINEAR)
     };
-    Icons { grip: get("grip"), min: get("min"), refresh: get("refresh"), close: get("close") }
+    Icons {
+        grip: get("grip"),
+        min: get("min"),
+        refresh: get("refresh"),
+        close: get("close"),
+        gear: get("gear"),
+    }
 }
 
 fn state_path() -> std::path::PathBuf {
@@ -76,6 +84,9 @@ fn load_state() -> HashMap<String, Snapshot> {
 fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
     let mut v: Vec<Box<dyn Provider>> = vec![Box::new(Claude), Box::new(Codex)];
     for p in &cfg.provider {
+        if p.enabled == Some(false) {
+            continue;
+        }
         if p.billing {
             v.push(Box::new(Billing::new(p.clone())));
         } else if p.id == "minimax" {
@@ -86,17 +97,33 @@ fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
             v.push(Box::new(Custom::new(p.clone())));
         }
     }
-    if !cfg.provider.iter().any(|p| p.id == "kimi") {
+    if !cfg.provider.iter().any(|p| p.id == "kimi" && p.enabled != Some(false)) {
         v.push(Box::new(Kimi::new(None)));
     }
     v.retain(|p| !cfg.disabled.contains(&p.id()));
-    v
+    // `priority` (lower = earlier) wins over file order; None sorts last.
+    let rank = |id: &str| {
+        cfg.provider
+            .iter()
+            .find(|p| p.id == id)
+            .and_then(|p| p.priority)
+            .unwrap_or(u32::MAX)
+    };
+    let mut keyed: Vec<(u32, usize, Box<dyn Provider>)> = v
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| (rank(&p.id().to_string()), i, p))
+        .collect();
+    keyed.sort_by_key(|(rank, i, _)| (*rank, *i));
+    keyed.into_iter().map(|(_, _, p)| p).collect()
 }
 
 const COLLAPSED_H: f32 = 36.0;
 const HEADER_H: f32 = 26.0;
 const EXPANDED_W: f32 = 380.0;
 const MAX_EXPANDED_H: f32 = 400.0;
+const SETTINGS_W: f32 = 380.0;
+const SETTINGS_H: f32 = 420.0;
 const TWEEN_SECS: f32 = 0.45;
 const SPIN_SECS: f32 = 0.55;
 
@@ -123,7 +150,7 @@ struct App {
     snapshots: HashMap<String, Snapshot>,
     tweens: HashMap<String, Tween>,
     rx: mpsc::Receiver<Vec<Snapshot>>,
-    tx_tick: mpsc::Sender<()>,
+    tx_tick: mpsc::Sender<Ctl>,
     cfg: Config,
     pal: Palette,
     expanded: bool,
@@ -133,40 +160,22 @@ struct App {
     icons: Icons,
     dock: dock::SharedDock,
     restore_sent: u32,
+    last_edge: Edge,
+    cfg_next: Config,
+    settings_open: bool,
+    new_provider_id: String,
 }
 
 impl App {
     fn new(cfg: Config, pal: Palette, icons: Icons, dock: dock::SharedDock) -> Self {
         let (tx_snap, rx_snap) = mpsc::channel::<Vec<Snapshot>>();
-        let (tx_tick, rx_tick) = mpsc::channel::<()>();
-        let providers = build_providers(&cfg);
-        let poll_secs = cfg.poll_interval_secs;
+        let (tx_tick, rx_tick) = mpsc::channel::<Ctl>();
         let snapshots = load_state();
-        thread::spawn(move || {
-            let mut backoff = poll_secs;
-            let mut failed = false;
-            loop {
-                let mut out = Vec::new();
-                for p in &providers {
-                    if !p.is_present() {
-                        continue;
-                    }
-                    let s = p.snapshot();
-                    if matches!(s.reading, Reading::Error(_) | Reading::NeedsAuth(_)) {
-                        failed = true;
-                    }
-                    out.push(s);
-                }
-                if tx_snap.send(out).is_err() {
-                    break;
-                }
-                backoff = if failed { (backoff * 2).min(900) } else { poll_secs };
-                failed = false;
-                let _ = rx_tick.recv_timeout(std::time::Duration::from_secs(backoff));
-            }
-        });
-        // Debug hook: start expanded (used by tests/screenshot automation).
+        spawn_poller(cfg.clone(), tx_snap, rx_tick);
+        // Debug hooks: start expanded / with settings open (tests, screenshots).
         let expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
+        let settings_open = std::env::var("LIMITCUE_UI_SETTINGS").map(|v| v != "0").unwrap_or(false);
+        let cfg_next = cfg.clone();
         Self {
             snapshots,
             tweens: HashMap::new(),
@@ -181,6 +190,10 @@ impl App {
             icons,
             dock,
             restore_sent: 0,
+            last_edge: Edge::Free,
+            cfg_next,
+            settings_open,
+            new_provider_id: String::new(),
         }
     }
 
@@ -218,6 +231,174 @@ impl App {
         }
     }
 
+    /// Draw the settings screen. Saves `self.cfg_next` back to config.toml on
+    /// apply and pushes it to the poll thread (provider list, order, interval).
+    fn settings_ui(&mut self, ui: &mut egui::Ui, pal: &Palette) {
+        use egui::{Align, Layout};
+        let mut dirty = false;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Settings").size(15.0));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let w = ui::widgets::icon_button(ui, &self.icons.close, "close settings", 1.0, pal, None);
+                if w.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.settings_open = false;
+                }
+            });
+        });
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.add_space(2.0);
+
+                // ---- general ----
+                ui.heading(RichText::new("General").size(12.0));
+                let mut poll = self.cfg_next.poll_interval_secs;
+                ui.add(egui::Slider::new(&mut poll, 30..=900).text("poll interval (s)"));
+                if poll != self.cfg_next.poll_interval_secs {
+                    self.cfg_next.poll_interval_secs = poll;
+                }
+                let mut theme_buf = self.cfg_next.theme.clone();
+                egui::ComboBox::from_id_salt("theme")
+                    .selected_text(if theme_buf.is_empty() { "midnight (default)" } else { &theme_buf })
+                    .show_ui(ui, |ui| {
+                        for t in theme::THEMES {
+                            ui.selectable_value(&mut theme_buf, t.to_string(), *t);
+                        }
+                    });
+                if theme_buf != self.cfg_next.theme {
+                    self.cfg_next.theme = theme_buf;
+                }
+                ui.add_space(6.0);
+
+                // ---- providers ----
+                ui.heading(RichText::new("Providers").size(12.0));
+                let n = self.cfg_next.provider.len();
+                for i in 0..n {
+                    let (enabled, id, name, can_up, can_down, can_del) = {
+                        let p = &self.cfg_next.provider[i];
+                        let en = p.enabled.unwrap_or(true);
+                        let id = p.id.clone();
+                        let name = if p.name.is_empty() { id.clone() } else { p.name.clone() };
+                        (en, id, name, i > 0, i + 1 < n, true)
+                    };
+                    ui.horizontal(|ui| {
+                        let mut en = enabled;
+                        if ui.checkbox(&mut en, "").changed() {
+                            self.cfg_next.provider[i].enabled = Some(en);
+                            dirty = true;
+                        }
+                        let label = if name != id { format!("{name}  ({id})") } else { name };
+                        ui.label(RichText::new(label).size(12.0));
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if can_del && ui.small_button("🗑").clicked() {
+                                self.cfg_next.provider.remove(i);
+                                dirty = true;
+                            }
+                            if can_down && ui.small_button("▾").clicked() {
+                                self.cfg_next.provider.swap(i, i + 1);
+                                dirty = true;
+                            }
+                            if can_up && ui.small_button("▴").clicked() {
+                                self.cfg_next.provider.swap(i - 1, i);
+                                dirty = true;
+                            }
+                        });
+                    });
+                }
+                // built-ins: toggle only (code can't be reordered/removed)
+                for b in ["claude", "codex"] {
+                    let mut dis = self.cfg_next.disabled.contains(&b.to_string());
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut dis, "").changed() {
+                            if dis {
+                                self.cfg_next.disabled.push(b.to_string());
+                            } else {
+                                self.cfg_next.disabled.retain(|d| d != b);
+                            }
+                            dirty = true;
+                        }
+                        let label = match b {
+                            "claude" => "Claude (built-in)",
+                            _ => "Codex (built-in)",
+                        };
+                        ui.label(RichText::new(label).size(12.0));
+                    });
+                }
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("New provider id:").size(11.5));
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(&mut self.new_provider_id)
+                            .desired_width(120.0)
+                            .hint_text("e.g. openrouter"),
+                    );
+                    let dup = self.cfg_next.provider.iter().any(|p| p.id == self.new_provider_id)
+                        || matches!(self.new_provider_id.as_str(), "claude" | "codex")
+                        || self.new_provider_id.is_empty();
+                    let add = ui.add_enabled(!dup, egui::Button::new("Add")).clicked();
+                    if add {
+                        self.cfg_next.provider.push(config::ProviderConfig {
+                            id: self.new_provider_id.trim().to_string(),
+                            name: String::new(),
+                            url: None,
+                            auth_header: None,
+                            key_env: None,
+                            api_key: None,
+                            base_url: None,
+                            windows: vec![],
+                            enabled: Some(true),
+                            billing: false,
+                            priority: None,
+                        });
+                        self.new_provider_id.clear();
+                        dirty = true;
+                    }
+                    if dup && !self.new_provider_id.is_empty() {
+                        resp.on_hover_text("id already exists or is built-in");
+                    }
+                });
+                ui.colored_label(
+                    pal.faint,
+                    "Keys live in config.toml (never stored by this window) — click Edit to open it.",
+                )
+                .on_hover_text("New/edited providers need their api_key or key_env set in config.toml.");
+                if ui.small_button("Edit config.toml").clicked() {
+                    let _ = std::process::Command::new("xdg-open").arg(config::Config::path()).spawn();
+                }
+                ui.add_space(6.0);
+
+                // ---- display ----
+                ui.heading(RichText::new("Display").size(12.0));
+                let mut mv = self.cfg_next.max_visible_collapsed as i32;
+                ui.add(egui::Slider::new(&mut mv, 1..=8).text("visible when collapsed"));
+                self.cfg_next.max_visible_collapsed = mv.max(1) as usize;
+                let mut hu = self.cfg_next.hide_unconfigured;
+                if ui.checkbox(&mut hu, "hide unconfigured providers").changed() {
+                    self.cfg_next.hide_unconfigured = hu;
+                }
+                ui.add_space(10.0);
+            });
+
+        if dirty {
+            ui.ctx().request_repaint();
+        }
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui.button("Apply").clicked() {
+                self.cfg = self.cfg_next.clone();
+                config::Config::save(&self.cfg);
+                self.pal = theme::palette(&self.cfg.theme);
+                self.restart_poller();
+                self.settings_open = false;
+            }
+            if ui.button("Cancel").clicked() {
+                self.cfg_next = self.cfg.clone();
+                self.settings_open = false;
+            }
+        });
+    }
+
     /// Headline percent to draw: mid-tween value if animating, else the snapshot's.
     fn render_pct(&self, s: &Snapshot) -> Option<f64> {
         self.tweens.get(&s.provider_id).and_then(|t| t.value()).or_else(|| s.min_remaining())
@@ -247,7 +428,7 @@ impl App {
         let max_vis = snaps.len().min(self.cfg.max_visible_collapsed);
         let mut w = 11.0 * 2.0 // frame margins
             + 18.0 + 2.0 // grip + gap
-            + 26.0 * 3.0 + 8.0 * 2.0; // three icon buttons + spacing
+            + 26.0 * 4.0 + 8.0 * 3.0; // four icon buttons + spacing
         for s in snaps.iter().take(max_vis) {
             w += 10.0 + ui::chip_width(ui::chip_text_w(ctx, s, self.render_pct(s), &self.pal, 1.0));
         }
@@ -260,8 +441,18 @@ impl App {
         w
     }
 
+    /// Restart the poll thread after a config change (provider set, order,
+    /// interval). The old thread exits on its own when its channel closes.
+    fn restart_poller(&mut self) {
+        let (tx_snap, rx_snap) = mpsc::channel::<Vec<Snapshot>>();
+        let (tx_tick, rx_tick) = mpsc::channel::<Ctl>();
+        self.rx = rx_snap;
+        self.tx_tick = tx_tick;
+        spawn_poller(self.cfg.clone(), tx_snap, rx_tick);
+    }
+
     fn refresh(&mut self, ctx: &egui::Context) {
-        let _ = self.tx_tick.send(());
+        let _ = self.tx_tick.send(Ctl::Refresh);
         self.refresh_at = Some(Instant::now());
         ctx.request_repaint();
     }
@@ -271,6 +462,11 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain(ctx);
         self.tweens.retain(|_, t| t.value().is_some());
+        let edge = self.dock.lock().unwrap().edge;
+        if edge != self.last_edge {
+            self.last_edge = edge;
+            ctx.request_repaint();
+        }
 
         // Ask KWin to apply the persisted dock position once, after the
         // window exists. Retries during the first seconds: KWin only sees
@@ -287,6 +483,8 @@ impl eframe::App for App {
         let pal = self.pal;
         let now = now_unix();
         let snaps = self.visible();
+        // Left/right dock: the pill becomes a vertical rail (rings + %).
+        let rail = matches!(edge, Edge::Left | Edge::Right);
 
         // Expanded height grows with content, capped by MAX_EXPANDED_H (then scrolls).
         let ideal_h = HEADER_H + 16.0
@@ -308,6 +506,8 @@ impl eframe::App for App {
 
         let target = if self.expanded {
             expanded_size
+        } else if rail {
+            Vec2::new(44.0, rail_height(snaps.len().min(self.cfg.max_visible_collapsed)))
         } else {
             Vec2::new(self.collapsed_width(ctx, &snaps), COLLAPSED_H)
         };
@@ -353,7 +553,6 @@ impl eframe::App for App {
         // Edge docking: square the two corners on the attached edge; when
         // docked at the bottom, the layout flips so the detail card grows
         // *up* (header/pill stays nearest the screen edge).
-        let edge = self.dock.lock().unwrap().edge;
         let rounding = match edge {
             Edge::Top => egui::Rounding { nw: 0.0, ne: 0.0, sw: 17.0, se: 17.0 },
             Edge::Bottom => egui::Rounding { nw: 17.0, ne: 17.0, sw: 0.0, se: 0.0 },
@@ -367,12 +566,34 @@ impl eframe::App for App {
             .fill(pal.bg)
             .stroke(egui::Stroke::new(1.0_f32, pal.border))
             .rounding(rounding)
-            .inner_margin(egui::Margin::symmetric(11.0, if self.expanded { 8.0 } else { 5.0 }));
+            .inner_margin(egui::Margin::symmetric(
+                if rail { 6.0 } else { 11.0 },
+                if self.expanded { 8.0 } else if rail { 6.0 } else { 5.0 },
+            ));
+
+        // Settings replaces the whole layout (pill grows to a panel).
+        if self.settings_open {
+            self.cur_size = Vec2::new(SETTINGS_W, SETTINGS_H);
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
+            let frame = egui::Frame::none()
+                .fill(pal.bg)
+                .stroke(egui::Stroke::new(1.0_f32, pal.border))
+                .rounding(egui::Rounding::same(17.0))
+                .inner_margin(egui::Margin::same(14.0));
+            egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+                self.settings_ui(ui, &pal);
+            });
+            return;
+        }
 
         // Render header + detail; for bottom dock, reverse order so the pill
         // row ends up at the bottom (detail grows upward, away from the edge).
         let header = |ui: &mut egui::Ui, this: &mut App| {
-            this.render_header(ui, ctx, &snaps, f, now);
+            if rail {
+                this.render_rail(ui, ctx, &snaps);
+            } else {
+                this.render_header(ui, ctx, &snaps, f, now);
+            }
         };
         let detail = |ui: &mut egui::Ui, this: &mut App| {
             if f > 0.02 {
@@ -444,6 +665,9 @@ impl App {
                     if ui::widgets::icon_button(ui, &self.icons.min, "minimize (or press Esc)", f, &pal, None).clicked() {
                         self.expanded = false;
                     }
+                    if ui::widgets::icon_button(ui, &self.icons.gear, "settings", f, &pal, None).clicked() {
+                        self.settings_open = true;
+                    }
                     if ui::widgets::icon_button(ui, &self.icons.refresh, "refresh now", f, &pal, spin).clicked() {
                         self.refresh(ctx);
                     }
@@ -468,6 +692,68 @@ impl App {
         }
     }
 
+    /// Vertical rail shown when docked left/right: ring gauge + % per
+    /// provider (like the reference "dynamic island" style), then a settings
+    /// gear at the bottom. Click a ring (or the rail) to expand the card.
+    fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot]) {
+        let pal = self.pal;
+        let max_vis = snaps.len().min(self.cfg.max_visible_collapsed);
+        let now = now_unix();
+        ui.spacing_mut().item_spacing = Vec2::new(0.0, 6.0);
+        for s in snaps.iter().take(max_vis) {
+            let pct = self.render_pct(s);
+            let stale = self.is_stale(s, now);
+            let ok = matches!(s.reading, Reading::Ok { .. });
+            let frac = (pct.unwrap_or(0.0) / 100.0) as f32;
+            let ring_col = if stale {
+                ui::theme::mix(ui::widgets::pct_color(pct, ok, &pal), pal.stale, 0.6)
+            } else {
+                ui::widgets::pct_color(pct, ok, &pal)
+            };
+            let (rect, resp) = ui.allocate_exact_size(Vec2::new(30.0, 40.0), Sense::click());
+            ui::widgets::monogram_ring(
+                ui,
+                rect.center(),
+                13.0,
+                &ui::theme::monogram(&s.provider_id),
+                ui::theme::brand(&s.provider_id, &pal),
+                frac,
+                ring_col,
+                &pal,
+                1.0,
+            );
+            // % label under the ring
+            let label = match (&s.reading, pct) {
+                (Reading::Ok { .. }, Some(p)) => format!("{p:.0}%"),
+                (Reading::Ok { .. }, None) => "…".into(),
+                (Reading::NeedsAuth(_), _) => "auth".into(),
+                (Reading::Error(_), _) => "err".into(),
+                _ => "?".into(),
+            };
+            ui.painter().text(
+                egui::pos2(rect.center().x, rect.bottom() - 9.0),
+                egui::Align2::CENTER_TOP,
+                label,
+                egui::FontId::monospace(8.5),
+                ui::widgets::pct_color(pct, ok, &pal),
+            );
+            if resp.clicked() {
+                self.expanded = true;
+            }
+            resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
+        }
+        ui.add_space(2.0);
+        if ui::widgets::icon_button(ui, &self.icons.gear, "settings", 1.0, &pal, None).clicked() {
+            self.settings_open = true;
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::R)) {
+            self.refresh(ctx);
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.expanded {
+            self.expanded = false;
+        }
+    }
+
     /// ============ detail area (scrolls when many providers) ============
     fn render_detail(&mut self, ui: &mut egui::Ui, snaps: &[Snapshot], f: f32, now: u64) {
         let pal = self.pal;
@@ -487,6 +773,54 @@ impl App {
                 }
             });
     }
+}
+
+/// Height of the vertical rail: rings + % labels + gear + margins.
+fn rail_height(n: usize) -> f32 {
+    let cells = n as f32 * (40.0 + 6.0);
+    (cells + 26.0 + 12.0).max(120.0) // gear + margins
+}
+
+/// Messages the UI can send to the poll thread.
+#[derive(Clone, Copy)]
+enum Ctl {
+    Refresh,
+}
+
+/// Background poll loop. Exits when the UI drops `rx_tick` (config change).
+fn spawn_poller(
+    cfg: Config,
+    tx_snap: mpsc::Sender<Vec<Snapshot>>,
+    rx_tick: mpsc::Receiver<Ctl>,
+) {
+    let providers = build_providers(&cfg);
+    let poll_secs = cfg.poll_interval_secs;
+    thread::spawn(move || {
+        let mut backoff = poll_secs;
+        let mut failed = false;
+        loop {
+            let mut out = Vec::new();
+            for p in &providers {
+                if !p.is_present() {
+                    continue;
+                }
+                let s = p.snapshot();
+                if matches!(s.reading, Reading::Error(_) | Reading::NeedsAuth(_)) {
+                    failed = true;
+                }
+                out.push(s);
+            }
+            if tx_snap.send(out).is_err() {
+                break;
+            }
+            backoff = if failed { (backoff * 2).min(900) } else { poll_secs };
+            failed = false;
+            match rx_tick.recv_timeout(std::time::Duration::from_secs(backoff)) {
+                Ok(Ctl::Refresh) => continue,
+                Err(_) => break, // channel replaced (config change) or app quit
+            }
+        }
+    });
 }
 
 fn run_once(cfg: &Config) {
