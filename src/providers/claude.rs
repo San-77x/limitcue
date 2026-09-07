@@ -15,7 +15,7 @@ fn window(label: &str, block: &Value) -> Option<Window> {
     let resets_at = block
         .get("resets_at")
         .and_then(|d| d.as_str())
-        .and_then(|s| chrono_like_parse(s));
+        .and_then(chrono_like_parse);
     Some(Window {
         label: label.into(),
         remaining_percent: Some(((1.0 - util) * 100.0).clamp(0.0, 100.0)),
@@ -39,7 +39,7 @@ fn chrono_like_parse(s: &str) -> Option<u64> {
     let yoe = y - era * 400;
     let mp = if mo > 2 { mo - 3 } else { mo + 9 };
     let doy = (153 * mp + 2) / 5 + d - 1 + yoe * 365 + yoe / 4 - yoe / 100;
-    let days = era * 146097 + doy as u64 - 719468;
+    let days = era * 146097 + doy - 719468;
     Some(days * 86400 + h * 3600 + mi * 60 + sec)
 }
 
@@ -59,9 +59,9 @@ impl Provider for Claude {
         let Some(token) = credentials() else { return make(Reading::NotConfigured) };
         let headers = [
             ("Authorization", format!("Bearer {token}")),
-            ("anthropic-version".into(), "2023-06-01".into()),
-            ("anthropic-beta".into(), "oauth-2025-04-20".into()),
-            ("User-Agent".into(), "claude-cli/1.0 (external, cli)".into()),
+            ("anthropic-version", "2023-06-01".into()),
+            ("anthropic-beta", "oauth-2025-04-20".into()),
+            ("User-Agent", "claude-cli/1.0 (external, cli)".into()),
         ];
         match http_get_json("https://api.anthropic.com/api/oauth/usage", &headers) {
             Ok(v) => {

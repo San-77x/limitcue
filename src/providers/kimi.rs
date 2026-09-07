@@ -49,9 +49,7 @@ fn row_to_window(detail: &Value, fallback_label: &str, window: &Value) -> Option
         (Some(r), Some(l)) => Some((r / l * 100.0).clamp(0.0, 100.0)),
         _ => None,
     };
-    if pct.is_none() {
-        return None;
-    }
+    pct?;
     let label = detail
         .get("name")
         .and_then(|n| n.as_str())

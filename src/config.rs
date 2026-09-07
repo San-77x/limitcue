@@ -39,10 +39,17 @@ pub struct Config {
     /// Extra user-declared providers.
     #[serde(default)]
     pub provider: Vec<ProviderConfig>,
+    /// UI theme: midnight | tokyo-night | catppuccin | gruvbox.
+    #[serde(default)]
+    pub theme: String,
+    /// Providers shown on the collapsed pill before the rest folds into "+N".
+    #[serde(default = "default_max_visible")]
+    pub max_visible_collapsed: usize,
 }
 
 fn default_poll() -> u64 { 120 }
 fn default_true() -> bool { true }
+fn default_max_visible() -> usize { 4 }
 
 impl Default for Config {
     fn default() -> Self {
@@ -51,6 +58,8 @@ impl Default for Config {
             hide_unconfigured: true,
             disabled: vec![],
             provider: vec![],
+            theme: String::new(),
+            max_visible_collapsed: default_max_visible(),
         }
     }
 }
@@ -82,6 +91,8 @@ impl Config {
 poll_interval_secs = 120
 hide_unconfigured = true
 # disabled = ["codex"]
+# theme = "midnight"             # midnight | tokyo-night | catppuccin | gruvbox
+# max_visible_collapsed = 4      # providers on the pill before folding into "+N"
 
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json

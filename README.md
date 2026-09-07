@@ -16,15 +16,19 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
 
 ## What it does
 
-- **One pill, many plans.** A colour-coded ring gauge per provider drawn
-  around its remaining quota (green > 50%, amber > 15%, red, grey =
-  stale/error). More than four providers collapsed? The overflow folds into
-  a `+N` chip; expanding lists everything in a scrollable detail area with
-  a max height so it never eats your screen.
+- **One pill, many plans.** A colour-coded ring gauge per provider — drawn
+  around a brand-tinted monogram — with the remaining quota in tabular digits
+  (green > 50%, amber > 15%, red, grey = stale/error). More providers than
+  `max_visible_collapsed` (default 4)? The overflow folds into a `+N` chip;
+  expanding lists everything in a scrollable detail area with a max height so
+  it never eats your screen. Stale readings fade toward grey instead of
+  pretending to be fresh.
 - **Drag it anywhere** by the Lucide grip handle (compositor-native grab;
-  Wayland + X11). Borderless, always-on-top, eased expand/collapse
-  animation. Hover any ring for per-window detail; `R` refreshes,
-  `Esc` minimizes.
+  Wayland + X11). Borderless, always-on-top, eased expand/collapse animation.
+  Hover any ring for per-window detail; `R` refreshes, `Esc` minimizes.
+- **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
+  `theme` config key. Expanded cards show each reading's *fidelity* badge
+  (official / derived / manual) so trust is always visible.
 - **Borrows existing credentials.** It never signs you in anywhere and never
   sends your keys anywhere but the owning provider's API:
 
@@ -61,12 +65,16 @@ limitcue --once
 
 ## Configuration
 
-Written on first launch to `~/.config/limitcue/config.toml`:
+Written on first launch to `~/.config/limitcue/config.toml` (top-level keys
+must appear **before** any `[[provider]]` section — in TOML, keys after a
+table header belong to that table):
 
 ```toml
 poll_interval_secs = 120
 hide_unconfigured = true
 disabled = []            # e.g. ["codex"]
+theme = "midnight"       # midnight | tokyo-night | catppuccin | gruvbox
+max_visible_collapsed = 4  # providers on the pill before folding into "+N"
 
 [[provider]]
 id = "minimax"
