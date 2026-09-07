@@ -85,6 +85,38 @@ pub fn monogram_ring(
     ring(ui, center, r, 2.5, frac, color, pal, alpha);
 }
 
+/// Like [`monogram_ring`], but the disc carries the provider's real logo
+/// (white PNG) instead of a letter. `logo` None falls back to the monogram.
+#[allow(clippy::too_many_arguments)]
+pub fn logo_ring(
+    ui: &egui::Ui,
+    center: Pos2,
+    r: f32,
+    logo: Option<&egui::TextureHandle>,
+    letter: &str,
+    brand: Color32,
+    frac: f32,
+    color: Color32,
+    pal: &Palette,
+    alpha: f32,
+) {
+    let Some(tex) = logo else {
+        return monogram_ring(ui, center, r, letter, brand, frac, color, pal, alpha);
+    };
+    let p = ui.painter();
+    // Dark disc (like the mockups) so the white mark pops on any theme.
+    let disc_r = r - 3.0;
+    p.circle_filled(center, disc_r, pal.card_hover.linear_multiply(0.95 * alpha));
+    let side = disc_r * 1.15; // logo square inside the disc
+    p.image(
+        tex.id(),
+        Rect::from_center_size(center, Vec2::splat(side)),
+        Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        Color32::WHITE.linear_multiply(alpha),
+    );
+    ring(ui, center, r, 2.5, frac, color, pal, alpha);
+}
+
 /// Slim rounded progress bar with a track.
 pub fn bar(ui: &egui::Ui, rect: Rect, frac: f32, color: Color32, pal: &Palette, alpha: f32) {
     let p = ui.painter();

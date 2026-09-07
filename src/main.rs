@@ -28,6 +28,17 @@ const ICON_PNGS: [(&str, &[u8]); 5] = [
     ("gear", include_bytes!("../assets/icons/settings.png")),
 ];
 
+/// White brand logos (64px RGBA PNGs, see assets/logos/README.md). Unknown
+/// providers simply aren't in the map and fall back to the monogram letter.
+const LOGO_PNGS: [(&str, &[u8]); 6] = [
+    ("claude", include_bytes!("../assets/logos/claude.png")),
+    ("codex", include_bytes!("../assets/logos/codex.png")),
+    ("gemini", include_bytes!("../assets/logos/gemini.png")),
+    ("kimi", include_bytes!("../assets/logos/kimi.png")),
+    ("minimax", include_bytes!("../assets/logos/minimax.png")),
+    ("agentrouter", include_bytes!("../assets/logos/agentrouter.png")),
+];
+
 #[derive(Clone)]
 struct Icons {
     grip: egui::TextureHandle,
@@ -58,6 +69,18 @@ fn load_icons(ctx: &egui::Context) -> Icons {
         close: get("close"),
         gear: get("gear"),
     }
+}
+
+fn load_logos(ctx: &egui::Context) -> HashMap<String, egui::TextureHandle> {
+    LOGO_PNGS
+        .iter()
+        .map(|(name, bytes)| {
+            (
+                name.to_string(),
+                ctx.load_texture(format!("logo-{name}"), decode_png(bytes), egui::TextureOptions::LINEAR),
+            )
+        })
+        .collect()
 }
 
 fn state_path() -> std::path::PathBuf {
@@ -135,6 +158,16 @@ const SETTINGS_H: f32 = 420.0;
 const TWEEN_SECS: f32 = 0.45;
 const SPIN_SECS: f32 = 0.55;
 
+// Side-dock rail (left/right): a narrow strip of logo-pill rows pinned to
+// the screen edge; expanding slides a usage card out beside it.
+const RAIL_STRIP_W: f32 = 76.0; // collapsed rail width
+const RAIL_CARD_W: f32 = 240.0; // usage card width when expanded
+const RAIL_ROW_H: f32 = 46.0; // one logo-pill row
+const RAIL_ROW_GAP: f32 = 6.0;
+const RAIL_COL_GAP: f32 = 6.0; // strip ↔ card gap when expanded
+const RAIL_MARGIN: f32 = 6.0; // frame inner margin on the rail
+const RAIL_GEAR_ZONE: f32 = 30.0; // gear button + spacing under the rows
+
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
     from: f64,
@@ -166,23 +199,28 @@ struct App {
     last_expanded_h: f32,
     refresh_at: Option<Instant>,
     icons: Icons,
+    logos: HashMap<String, egui::TextureHandle>,
     dock: dock::SharedDock,
     restore_sent: u32,
     last_edge: Edge,
     cfg_next: Config,
     settings_open: bool,
     new_provider_id: String,
+    /// Provider whose inline usage card is open on the rail (left/right dock).
+    rail_open: Option<String>,
 }
 
 impl App {
-    fn new(cfg: Config, pal: Palette, icons: Icons, dock: dock::SharedDock) -> Self {
+    fn new(cfg: Config, pal: Palette, icons: Icons, logos: HashMap<String, egui::TextureHandle>, dock: dock::SharedDock) -> Self {
         let (tx_snap, rx_snap) = mpsc::channel::<Vec<Snapshot>>();
         let (tx_tick, rx_tick) = mpsc::channel::<Ctl>();
         let snapshots = load_state();
         spawn_poller(cfg.clone(), tx_snap, rx_tick);
-        // Debug hooks: start expanded / with settings open (tests, screenshots).
+        // Debug hooks: start expanded / with settings open / with a rail card
+        // open (tests, screenshots).
         let expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
         let settings_open = std::env::var("LIMITCUE_UI_SETTINGS").map(|v| v != "0").unwrap_or(false);
+        let rail_open = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
         let cfg_next = cfg.clone();
         Self {
             snapshots,
@@ -196,12 +234,14 @@ impl App {
             last_expanded_h: 200.0,
             refresh_at: None,
             icons,
+            logos,
             dock,
             restore_sent: 0,
             last_edge: Edge::Free,
             cfg_next,
             settings_open,
             new_provider_id: String::new(),
+            rail_open,
         }
     }
 
@@ -541,23 +581,43 @@ impl eframe::App for App {
             self.last_expanded_h = expanded_size.y;
         }
 
-        let target = if self.expanded {
+        // Rail: strip only when collapsed; strip + inline usage card when a
+        // provider is opened. Height always fits the strip's rows.
+        let rail_vis = snaps.len().min(self.cfg.max_visible_collapsed);
+        let rail_h = RAIL_MARGIN * 2.0 + rail_vis.max(1) as f32 * RAIL_ROW_H
+            + (rail_vis.max(1) as f32 - 1.0) * RAIL_ROW_GAP
+            + RAIL_GEAR_ZONE;
+        let rail_size = if let Some(id) = &self.rail_open {
+            let card_h = rail_card_height(snaps.iter().find(|s| s.provider_id == *id), now);
+            Vec2::new(
+                RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
+                rail_h.max(card_h),
+            )
+        } else {
+            Vec2::new(RAIL_STRIP_W, rail_h)
+        };
+
+        let target = if rail {
+            rail_size
+        } else if self.expanded {
             expanded_size
-        } else if rail {
-            Vec2::new(44.0, rail_height(snaps.len().min(self.cfg.max_visible_collapsed)))
         } else {
             Vec2::new(self.collapsed_width(ctx, &snaps), COLLAPSED_H)
         };
         // Debug hook: jump to the final size instead of animating (screenshot automation).
-        if std::env::var("LIMITCUE_UI_SNAP").map(|v| v != "0").unwrap_or(false) {
+        // Sends the size unconditionally — snapping makes cur==target, which would
+        // otherwise never trip the `animating` branch below.
+        let snap = std::env::var("LIMITCUE_UI_SNAP").map(|v| v != "0").unwrap_or(false);
+        if snap {
             self.cur_size = target;
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
         }
 
         let dt = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
         let t = 1.0 - (-18.0 * dt).exp();
         let prev = self.cur_size;
         self.cur_size = Vec2::new(prev.x + (target.x - prev.x) * t, prev.y + (target.y - prev.y) * t);
-        let mut animating = (self.cur_size - prev).length() > 0.08;
+        let mut animating = (self.cur_size - prev).length() > 0.08 && !snap;
         if animating {
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
         }
@@ -604,8 +664,8 @@ impl eframe::App for App {
             .stroke(egui::Stroke::new(1.0_f32, pal.border))
             .rounding(rounding)
             .inner_margin(egui::Margin::symmetric(
-                if rail { 6.0 } else { 11.0 },
-                if self.expanded { 8.0 } else if rail { 6.0 } else { 5.0 },
+                if rail { RAIL_MARGIN } else { 11.0 },
+                if self.expanded { 8.0 } else if rail { RAIL_MARGIN } else { 5.0 },
             ));
 
         // Settings replaces the whole layout (pill grows to a panel).
@@ -700,7 +760,7 @@ impl App {
                     let text_w = ui::chip_text_w(ctx, s, pct, &pal, 1.0);
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui::chip_width(text_w), HEADER_H), Sense::hover());
                     let resp = ui.interact(rect, ui.id().with(("chip", &s.provider_id)), Sense::hover());
-                    ui::draw_chip(ui, rect, s, pct, &pal, 1.0, stale, resp.hovered());
+                    ui::draw_chip(ui, rect, s, pct, &pal, 1.0, stale, resp.hovered(), &self.logos);
                     resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
                 }
                 if snaps.len() > max_vis
@@ -748,65 +808,130 @@ impl App {
         }
     }
 
-    /// Vertical rail shown when docked left/right: ring gauge + % per
-    /// provider (like the reference "dynamic island" style), then a settings
-    /// gear at the bottom. Click a ring (or the rail) to expand the card.
+    /// Vertical rail shown when docked left/right (matches the reference
+    /// mockups): one logo-pill row per provider — dark rounded card, logo
+    /// ring, percent under it — then a settings gear at the bottom. Click a
+    /// row to slide the inline usage card out beside the strip.
     fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot]) {
         let pal = self.pal;
+        let edge = self.last_edge;
         let max_vis = snaps.len().min(self.cfg.max_visible_collapsed);
         let now = now_unix();
-        ui.spacing_mut().item_spacing = Vec2::new(0.0, 6.0);
-        for s in snaps.iter().take(max_vis) {
-            let pct = self.render_pct(s);
-            let stale = self.is_stale(s, now);
-            let ok = matches!(s.reading, Reading::Ok { .. });
-            let frac = (pct.unwrap_or(0.0) / 100.0) as f32;
-            let ring_col = if stale {
-                ui::theme::mix(ui::widgets::pct_color(pct, ok, &pal), pal.stale, 0.6)
-            } else {
-                ui::widgets::pct_color(pct, ok, &pal)
-            };
-            let (rect, resp) = ui.allocate_exact_size(Vec2::new(30.0, 40.0), Sense::click());
-            ui::widgets::monogram_ring(
-                ui,
-                rect.center(),
-                13.0,
-                &ui::theme::monogram(&s.provider_id),
-                ui::theme::brand(&s.provider_id, &pal),
-                frac,
-                ring_col,
-                &pal,
-                1.0,
-            );
-            // % label under the ring
-            let label = match (&s.reading, pct) {
-                (Reading::Ok { .. }, Some(p)) => format!("{p:.0}%"),
-                (Reading::Ok { .. }, None) => "…".into(),
-                (Reading::NeedsAuth(_), _) => "auth".into(),
-                (Reading::Error(_), _) => "err".into(),
-                _ => "?".into(),
-            };
-            ui.painter().text(
-                egui::pos2(rect.center().x, rect.bottom() - 9.0),
-                egui::Align2::CENTER_TOP,
-                label,
-                egui::FontId::monospace(8.5),
-                ui::widgets::pct_color(pct, ok, &pal),
-            );
-            if resp.clicked() {
-                self.expanded = true;
+        ui.spacing_mut().item_spacing = Vec2::new(0.0, RAIL_ROW_GAP);
+        // While the edge is unknown the window may still be the tiny init
+        // pill — don't render rows into a rect they can't fit in.
+        if edge == Edge::Free {
+            return;
+        }
+
+        // Strip (left cell when the card is open): the logo-pill rows.
+        let strip = |ui: &mut egui::Ui, this: &mut App| {
+            ui.spacing_mut().item_spacing = Vec2::new(0.0, RAIL_ROW_GAP);
+            for s in snaps.iter().take(max_vis) {
+                let pct = this.render_pct(s);
+                let stale = this.is_stale(s, now);
+                let ok = matches!(s.reading, Reading::Ok { .. });
+                let frac = (pct.unwrap_or(0.0) / 100.0) as f32;
+                let ring_col = if stale {
+                    ui::theme::mix(ui::widgets::pct_color(pct, ok, &pal), pal.stale, 0.6)
+                } else {
+                    ui::widgets::pct_color(pct, ok, &pal)
+                };
+                let open = this.rail_open.as_deref() == Some(s.provider_id.as_str());
+                let (rect, resp) = ui.allocate_exact_size(
+                    Vec2::new(RAIL_STRIP_W - RAIL_MARGIN * 2.0, RAIL_ROW_H),
+                    Sense::click(),
+                );
+                let p = ui.painter();
+                // the pill card
+                p.rect_filled(
+                    rect,
+                    14.0_f32,
+                    if open || resp.hovered() { pal.card_hover } else { pal.card },
+                );
+                p.rect_stroke(rect, 14.0_f32, egui::Stroke::new(1.0_f32, pal.border));
+                ui::widgets::logo_ring(
+                    ui,
+                    egui::pos2(rect.center().x, rect.center().y - 7.0),
+                    11.0,
+                    this.logos.get(&s.provider_id),
+                    &ui::theme::monogram(&s.provider_id),
+                    ui::theme::brand(&s.provider_id, &pal),
+                    frac,
+                    ring_col,
+                    &pal,
+                    1.0,
+                );
+                // % label under the ring
+                let label = match (&s.reading, pct) {
+                    (Reading::Ok { .. }, Some(p)) => format!("{p:.0}%"),
+                    (Reading::Ok { .. }, None) => "…".into(),
+                    (Reading::NeedsAuth(_), _) => "auth".into(),
+                    (Reading::Error(_), _) => "err".into(),
+                    _ => "?".into(),
+                };
+                p.text(
+                    egui::pos2(rect.center().x, rect.bottom() - 13.0),
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    egui::FontId::monospace(9.0),
+                    ui::widgets::pct_color(pct, ok, &pal),
+                );
+                if resp.clicked() {
+                    this.rail_open = if open { None } else { Some(s.provider_id.clone()) };
+                }
+                resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
             }
-            resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
+            ui.add_space(2.0);
+            if ui::widgets::icon_button(ui, &this.icons.gear, "settings", 1.0, &pal, None).clicked() {
+                this.settings_open = true;
+            }
+        };
+
+        // Inline usage card (the mockup's popup), beside the strip.
+        let card = |ui: &mut egui::Ui, this: &mut App| {
+            let Some(id) = this.rail_open.clone() else { return };
+            let Some(s) = snaps.iter().find(|s| s.provider_id == id) else {
+                this.rail_open = None;
+                return;
+            };
+            let pct = this.render_pct(s);
+            let stale = this.is_stale(s, now);
+            ui.add_space(2.0);
+            ui::rail_card(ui, s, pct, &pal, 1.0, stale, &this.logos, now, RAIL_CARD_W);
+            let close = ui.interact(
+                ui.max_rect(),
+                ui.id().with("rail-card-click"),
+                Sense::click(),
+            );
+            if close.clicked() {
+                this.rail_open = None;
+            }
+        };
+
+        if self.rail_open.is_some() {
+            let (strip_cell, card_cell) = if edge == Edge::Left {
+                (0.0, RAIL_STRIP_W + RAIL_COL_GAP)
+            } else {
+                (RAIL_CARD_W + RAIL_COL_GAP, 0.0)
+            };
+            ui.horizontal(|ui| {
+                ui.add_space(strip_cell);
+                strip(ui, self);
+                ui.add_space(card_cell.min(RAIL_CARD_W + RAIL_COL_GAP));
+                if self.rail_open.is_some() {
+                    card(ui, self);
+                }
+            });
+        } else {
+            strip(ui, self);
         }
-        ui.add_space(2.0);
-        if ui::widgets::icon_button(ui, &self.icons.gear, "settings", 1.0, &pal, None).clicked() {
-            self.settings_open = true;
-        }
+
         if ui.input(|i| i.key_pressed(egui::Key::R)) {
             self.refresh(ctx);
         }
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.expanded {
-            self.expanded = false;
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.rail_open = None;
         }
     }
 
@@ -824,17 +949,22 @@ impl App {
                 for s in snaps {
                     let pct = self.render_pct(s);
                     let stale = self.is_stale(s, now);
-                    ui::provider_card(ui, s, pct, &pal, f, stale);
+                    ui::provider_card(ui, s, pct, &pal, f, stale, &self.logos);
                     ui.add_space(6.0);
                 }
             });
     }
 }
 
-/// Height of the vertical rail: rings + % labels + gear + margins.
-fn rail_height(n: usize) -> f32 {
-    let cells = n as f32 * (40.0 + 6.0);
-    (cells + 26.0 + 12.0).max(120.0) // gear + margins
+/// Height of the rail's inline usage card for one provider (mirrors
+/// `render_rail_card`'s layout: name row + one 18px row per window).
+fn rail_card_height(s: Option<&Snapshot>, _now: u64) -> f32 {
+    let Some(s) = s else { return 120.0 };
+    let rows = match &s.reading {
+        Reading::Ok { windows, .. } => windows.len().max(1) as f32,
+        _ => 1.0,
+    };
+    26.0 + 8.0 + rows * 18.0 + 16.0 // name row + spacing + window rows + padding
 }
 
 /// Messages the UI can send to the poll thread.
@@ -948,7 +1078,8 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             theme::apply_style(&cc.egui_ctx, &pal);
             let icons = load_icons(&cc.egui_ctx);
-            Ok(Box::new(App::new(cfg, pal, icons, dock)))
+            let logos = load_logos(&cc.egui_ctx);
+            Ok(Box::new(App::new(cfg, pal, icons, logos, dock)))
         }),
     )
 }
