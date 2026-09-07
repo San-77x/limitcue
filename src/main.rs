@@ -9,7 +9,9 @@ use std::thread;
 use eframe::egui::{self, Color32, RichText, Sense, Vec2, ViewportBuilder, ViewportCommand};
 
 use config::Config;
-use providers::{claude::Claude, codex::Codex, custom::Custom, minimax::MiniMax, Provider};
+use providers::{
+    claude::Claude, codex::Codex, custom::Custom, kimi::Kimi, minimax::MiniMax, Provider,
+};
 use types::{fmt_countdown, now_unix, Fidelity, Reading, Snapshot};
 
 fn state_path() -> std::path::PathBuf {
@@ -39,9 +41,14 @@ fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
     for p in &cfg.provider {
         if p.id == "minimax" {
             v.push(Box::new(MiniMax::new(p.clone())));
+        } else if p.id == "kimi" {
+            v.push(Box::new(Kimi::new(Some(p.clone()))));
         } else {
             v.push(Box::new(Custom::new(p.clone())));
         }
+    }
+    if !cfg.provider.iter().any(|p| p.id == "kimi") {
+        v.push(Box::new(Kimi::new(None)));
     }
     v.retain(|p| !cfg.disabled.contains(&p.id()));
     v

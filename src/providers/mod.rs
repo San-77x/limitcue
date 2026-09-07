@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod codex;
 pub mod custom;
+pub mod kimi;
 pub mod minimax;
 
 use std::time::Duration;
