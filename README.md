@@ -40,7 +40,7 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
 
 ## Install
 
-Prebuilt binaries: see [Releases](../../releases) (Linux x86_64, AppImage).
+Prebuilt binaries: see Releases (Linux x86_64, AppImage).
 
 ```sh
 # build from source
