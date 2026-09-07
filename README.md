@@ -38,6 +38,7 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
   | ChatGPT / Codex | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
   | MiniMax (Coding/Token plan) | `MINIMAX_API_KEY` or config | `api.minimax.io/v1/token_plan/remains` |
   | Kimi For Coding | `~/.kimi/config.toml`, `KIMI_API_KEY`, or Kimi Code CLI creds | `api.kimi.com/coding/v1/usages` |
+  | New-API gateways (AgentRouter etc.) | `sk-` key in config | `…/v1/dashboard/billing/{subscription,usage}` |
   | Anything else | user-defined `[[provider]]` in config | any JSON URL, dot-path field mapping |
 
 - **Honest by design.** Every adapter declares a *fidelity*: `official`

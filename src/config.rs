@@ -23,6 +23,9 @@ pub struct ProviderConfig {
     pub windows: Vec<WindowConfig>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Use legacy OpenAI billing endpoints (New-API style gateways).
+    #[serde(default)]
+    pub billing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +108,15 @@ name = "MiniMax"
 base_url = "https://api.minimax.io"        # use https://api.minimaxi.com for CN plans
 # api_key = "sk-cp-..."
 key_env = "MINIMAX_API_KEY"
+
+# New-API style gateways with legacy billing endpoints:
+[[provider]]
+id = "agentrouter"
+name = "AgentRouter"
+base_url = "https://agentrouter.org/v1"
+billing = true
+# api_key = "sk-..."
+key_env = "AGENTROUTER_API_KEY"
 
 # User-defined providers: point at any JSON usage endpoint.
 # [[provider]]

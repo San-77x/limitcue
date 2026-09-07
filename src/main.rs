@@ -1,4 +1,5 @@
 mod config;
+mod dock;
 mod providers;
 mod types;
 mod ui;
@@ -11,8 +12,10 @@ use std::time::Instant;
 use eframe::egui::{self, RichText, Sense, Vec2, ViewportBuilder, ViewportCommand};
 
 use config::Config;
+use dock::Edge;
 use providers::{
-    claude::Claude, codex::Codex, custom::Custom, kimi::Kimi, minimax::MiniMax, Provider,
+    billing::Billing, claude::Claude, codex::Codex, custom::Custom, kimi::Kimi, minimax::MiniMax,
+    Provider,
 };
 use types::{now_unix, Reading, Snapshot};
 use ui::theme::{self, Palette};
@@ -73,7 +76,9 @@ fn load_state() -> HashMap<String, Snapshot> {
 fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
     let mut v: Vec<Box<dyn Provider>> = vec![Box::new(Claude), Box::new(Codex)];
     for p in &cfg.provider {
-        if p.id == "minimax" {
+        if p.billing {
+            v.push(Box::new(Billing::new(p.clone())));
+        } else if p.id == "minimax" {
             v.push(Box::new(MiniMax::new(p.clone())));
         } else if p.id == "kimi" {
             v.push(Box::new(Kimi::new(Some(p.clone()))));
@@ -126,10 +131,12 @@ struct App {
     last_expanded_h: f32,
     refresh_at: Option<Instant>,
     icons: Icons,
+    dock: dock::SharedDock,
+    restore_sent: u32,
 }
 
 impl App {
-    fn new(cfg: Config, pal: Palette, icons: Icons) -> Self {
+    fn new(cfg: Config, pal: Palette, icons: Icons, dock: dock::SharedDock) -> Self {
         let (tx_snap, rx_snap) = mpsc::channel::<Vec<Snapshot>>();
         let (tx_tick, rx_tick) = mpsc::channel::<()>();
         let providers = build_providers(&cfg);
@@ -172,6 +179,8 @@ impl App {
             last_expanded_h: 200.0,
             refresh_at: None,
             icons,
+            dock,
+            restore_sent: 0,
         }
     }
 
@@ -263,6 +272,18 @@ impl eframe::App for App {
         self.drain(ctx);
         self.tweens.retain(|_, t| t.value().is_some());
 
+        // Ask KWin to apply the persisted dock position once, after the
+        // window exists. Retries during the first seconds: KWin only sees
+        // the window after it maps, and the app settles its own size during
+        // the first frames (pill width animation).
+        if self.restore_sent < 20 {
+            self.restore_sent += 1;
+            let st = *self.dock.lock().unwrap();
+            if (st.edge != Edge::Free || st.x != 0 || st.y != 0) && self.restore_sent % 5 == 0 {
+                dock::request_restore(&st);
+            }
+        }
+
         let pal = self.pal;
         let now = now_unix();
         let snaps = self.visible();
@@ -329,14 +350,52 @@ impl eframe::App for App {
         let f = (((self.cur_size.y - COLLAPSED_H) / span).clamp(0.0, 1.0)).min(1.0);
         let f = 1.0 - (1.0 - f) * (1.0 - f); // ease-out
 
+        // Edge docking: square the two corners on the attached edge; when
+        // docked at the bottom, the layout flips so the detail card grows
+        // *up* (header/pill stays nearest the screen edge).
+        let edge = self.dock.lock().unwrap().edge;
+        let rounding = match edge {
+            Edge::Top => egui::Rounding { nw: 0.0, ne: 0.0, sw: 17.0, se: 17.0, ..Default::default() },
+            Edge::Bottom => egui::Rounding { nw: 17.0, ne: 17.0, sw: 0.0, se: 0.0, ..Default::default() },
+            Edge::Left => egui::Rounding { nw: 0.0, sw: 0.0, ne: 17.0, se: 17.0, ..Default::default() },
+            Edge::Right => egui::Rounding { nw: 17.0, sw: 17.0, ne: 0.0, se: 0.0, ..Default::default() },
+            Edge::Free => egui::Rounding::same(17.0),
+        };
+        let flip = edge == Edge::Bottom;
+
         let frame = egui::Frame::none()
             .fill(pal.bg)
             .stroke(egui::Stroke::new(1.0_f32, pal.border))
-            .rounding(egui::Rounding::same(17.0))
+            .rounding(rounding)
             .inner_margin(egui::Margin::symmetric(11.0, if self.expanded { 8.0 } else { 5.0 }));
 
+        // Render header + detail; for bottom dock, reverse order so the pill
+        // row ends up at the bottom (detail grows upward, away from the edge).
+        let header = |ui: &mut egui::Ui, this: &mut App| {
+            this.render_header(ui, ctx, &snaps, f, now);
+        };
+        let detail = |ui: &mut egui::Ui, this: &mut App| {
+            if f > 0.02 {
+                this.render_detail(ui, &snaps, f, now);
+            }
+        };
+
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
-            // ============ header row ============
+            if flip {
+                detail(ui, self);
+                header(ui, self);
+            } else {
+                header(ui, self);
+                detail(ui, self);
+            }
+        });
+    }
+}
+
+impl App {
+    fn render_header(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], f: f32, now: u64) {
+        let pal = self.pal;
+        {
             let max_vis = if self.expanded {
                 snaps.len()
             } else {
@@ -406,26 +465,27 @@ impl eframe::App for App {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.expanded {
                 self.expanded = false;
             }
+        }
+    }
 
-            // ============ detail area (scrolls when many providers) ============
-            if f > 0.02 {
-                ui.add_space((1.0 - f) * 10.0); // content slides up as it appears
-                ui.visuals_mut().override_text_color = Some(pal.text.linear_multiply(f));
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .max_height((self.cur_size.y - HEADER_H - 34.0).max(60.0))
-                    .auto_shrink([false, true])
-                    .drag_to_scroll(true)
-                    .show(ui, |ui| {
-                        for s in &snaps {
-                            let pct = self.render_pct(s);
-                            let stale = self.is_stale(s, now);
-                            ui::provider_card(ui, s, pct, &pal, f, stale);
-                            ui.add_space(6.0);
-                        }
-                    });
-            }
-        });
+    /// ============ detail area (scrolls when many providers) ============
+    fn render_detail(&mut self, ui: &mut egui::Ui, snaps: &[Snapshot], f: f32, now: u64) {
+        let pal = self.pal;
+        ui.add_space((1.0 - f) * 10.0); // content slides in as it appears
+        ui.visuals_mut().override_text_color = Some(pal.text.linear_multiply(f));
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .max_height((self.cur_size.y - HEADER_H - 34.0).max(60.0))
+            .auto_shrink([false, true])
+            .drag_to_scroll(true)
+            .show(ui, |ui| {
+                for s in snaps {
+                    let pct = self.render_pct(s);
+                    let stale = self.is_stale(s, now);
+                    ui::provider_card(ui, s, pct, &pal, f, stale);
+                    ui.add_space(6.0);
+                }
+            });
     }
 }
 
@@ -467,6 +527,13 @@ fn main() -> eframe::Result<()> {
         run_once(&cfg);
         return Ok(());
     }
+    // D-Bus service must exist before the window so the KWin dock script can
+    // restore the position at window-add time. Bus-less environments just
+    // lose persistence, nothing else.
+    let dock = dock::shared();
+    if let Err(e) = dock::start_service(dock.clone()) {
+        eprintln!("limitcue: no D-Bus session bus ({e}) — dock position won't persist");
+    }
     // Match the initial window size to the starting state (debug/screenshot aid:
     // LIMITCUE_UI_EXPANDED=1 opens already expanded at full size).
     let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
@@ -491,7 +558,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             theme::apply_style(&cc.egui_ctx, &pal);
             let icons = load_icons(&cc.egui_ctx);
-            Ok(Box::new(App::new(cfg, pal, icons)))
+            Ok(Box::new(App::new(cfg, pal, icons, dock)))
         }),
     )
 }

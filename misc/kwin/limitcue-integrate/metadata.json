@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Id": "limitcue-integrate",
+        "Name": "LimitCue Integration",
+        "Description": "Keep the LimitCue pill above all windows and dock it flush to screen edges with persisted position",
+        "Version": "1.0",
+        "EnabledByDefault": true,
+        "ServiceTypes": ["KWin/Script"]
+    },
+    "KPackageStructure": "KWin/Script",
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "main.js"
+}
