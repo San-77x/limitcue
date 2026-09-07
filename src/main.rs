@@ -29,9 +29,13 @@ fn install_icons(ctx: &egui::Context) {
     );
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         if let Some(list) = fonts.families.get_mut(&family) {
-            list.push(ICON_FAMILY.into());
+            list.push("mdi-icons".into());
         }
     }
+    fonts.families.insert(
+        egui::FontFamily::Name(ICON_FAMILY.into()),
+        vec!["mdi-icons".into()],
+    );
     ctx.set_fonts(fonts);
 }
 
