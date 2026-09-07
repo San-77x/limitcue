@@ -279,7 +279,7 @@ impl eframe::App for App {
         if self.restore_sent < 20 {
             self.restore_sent += 1;
             let st = *self.dock.lock().unwrap();
-            if (st.edge != Edge::Free || st.x != 0 || st.y != 0) && self.restore_sent % 5 == 0 {
+            if (st.edge != Edge::Free || st.x != 0 || st.y != 0) && self.restore_sent.is_multiple_of(5) {
                 dock::request_restore(&st);
             }
         }
@@ -355,10 +355,10 @@ impl eframe::App for App {
         // *up* (header/pill stays nearest the screen edge).
         let edge = self.dock.lock().unwrap().edge;
         let rounding = match edge {
-            Edge::Top => egui::Rounding { nw: 0.0, ne: 0.0, sw: 17.0, se: 17.0, ..Default::default() },
-            Edge::Bottom => egui::Rounding { nw: 17.0, ne: 17.0, sw: 0.0, se: 0.0, ..Default::default() },
-            Edge::Left => egui::Rounding { nw: 0.0, sw: 0.0, ne: 17.0, se: 17.0, ..Default::default() },
-            Edge::Right => egui::Rounding { nw: 17.0, sw: 17.0, ne: 0.0, se: 0.0, ..Default::default() },
+            Edge::Top => egui::Rounding { nw: 0.0, ne: 0.0, sw: 17.0, se: 17.0 },
+            Edge::Bottom => egui::Rounding { nw: 17.0, ne: 17.0, sw: 0.0, se: 0.0 },
+            Edge::Left => egui::Rounding { nw: 0.0, sw: 0.0, ne: 17.0, se: 17.0 },
+            Edge::Right => egui::Rounding { nw: 17.0, sw: 17.0, ne: 0.0, se: 0.0 },
             Edge::Free => egui::Rounding::same(17.0),
         };
         let flip = edge == Edge::Bottom;

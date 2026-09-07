@@ -26,6 +26,9 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
 - **Drag it anywhere** by the Lucide grip handle (compositor-native grab;
   Wayland + X11). Borderless, always-on-top, eased expand/collapse animation.
   Hover any ring for per-window detail; `R` refreshes, `Esc` minimizes.
+  On KDE Plasma (Wayland or X11), drag it near a screen edge and it **docks
+  flush** — zero gap, square corners on the attached edge — and the detail
+  card grows *away* from the edge. The docked position survives restarts.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
   `theme` config key. Expanded cards show each reading's *fidelity* badge
   (official / derived / manual) so trust is always visible.
@@ -114,6 +117,33 @@ cp misc/limitcue.desktop ~/.config/autostart/
 Always-on-top and borderless work on KDE/GNOME. Programmatic window drag
 honours the compositor's rules; if your compositor ignores it, you can still
 move the window via its window-operations menu (usually Super+left-drag).
+
+## Edge docking (KDE Plasma)
+
+On Wayland an app cannot move or even know its own window position, so
+docking is done compositor-side. LimitCue ships a small KWin script
+(`misc/kwin/limitcue-integrate/`) that:
+
+- keeps the pill above other windows (replaces the older `limitcue-pin`
+  script — uninstall that one if you have it),
+- snaps the pill flush to the nearest screen edge when you drop a drag within
+  ~32 px of it (top/bottom/left/right),
+- re-clamps it to the edge whenever the pill resizes itself (expand/collapse),
+  and
+- reports the docked position to the app over D-Bus (`io.limitcue.Dock`), which
+  persists it to `~/.local/share/limitcue/dock.json` and restores it on the
+  next launch.
+
+Install it with:
+
+```sh
+scripts/install-kwin.sh
+```
+
+The app itself works everywhere (GNOME, X11, other compositors) — without
+KWin you just don't get snap-to-edge and position persistence, and
+always-on-top falls back to whatever the compositor allows. `--once` mode
+never touches D-Bus or files.
 
 ## Development
 

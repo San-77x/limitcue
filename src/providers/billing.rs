@@ -40,13 +40,13 @@ impl Provider for Billing {
         };
         let Some(key) = self.key() else { return make(Reading::NotConfigured) };
         let Some(base) = &self.cfg.base_url else { return make(Reading::NotConfigured) };
-        let auth = ("Authorization", format!("Bearer {key}"));
-        let sub = match http_get_json(&format!("{base}/dashboard/billing/subscription"), &[auth.clone()]) {
+        let auth = [("Authorization", format!("Bearer {key}"))];
+        let sub = match http_get_json(&format!("{base}/dashboard/billing/subscription"), &auth) {
             Ok(v) => v,
             Err(e) if e == "auth-failed" => return make(Reading::NeedsAuth("invalid API key".into())),
             Err(e) => return make(Reading::Error(e)),
         };
-        let usage = match http_get_json(&format!("{base}/dashboard/billing/usage"), &[auth]) {
+        let usage = match http_get_json(&format!("{base}/dashboard/billing/usage"), &auth) {
             Ok(v) => v,
             Err(e) => return make(Reading::Error(e)),
         };
