@@ -103,18 +103,6 @@ fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
     v
 }
 
-fn color_for(pct: Option<f64>, ok: bool) -> Color32 {
-    if !ok {
-        return Color32::from_gray(120);
-    }
-    match pct {
-        None => Color32::from_gray(160),
-        Some(p) if p > 50.0 => Color32::from_rgb(60, 200, 110),
-        Some(p) if p > 15.0 => Color32::from_rgb(240, 180, 60),
-        Some(_) => Color32::from_rgb(235, 80, 80),
-    }
-}
-
 struct App {
     snapshots: HashMap<String, Snapshot>,
     rx: mpsc::Receiver<Vec<Snapshot>>,
@@ -195,9 +183,71 @@ impl App {
     }
 }
 
-const COLLAPSED: Vec2 = Vec2::new(300.0, 30.0);
-const HEADER_H: f32 = 28.0;
-const MARGINS: [f32; 4] = [10.0, 26.0, 10.0, 26.0]; // top/bottom expanded/collapsed
+const COLLAPSED: Vec2 = Vec2::new(300.0, 34.0);
+const HEADER_H: f32 = 32.0;
+const MAX_EXPANDED_H: f32 = 400.0;
+
+mod pal {
+    use eframe::egui::Color32;
+    pub const BG: Color32 = Color32::from_rgb(22, 24, 29);
+    pub const BORDER: Color32 = Color32::from_rgb(43, 47, 56);
+    pub const CARD: Color32 = Color32::from_rgb(30, 33, 40);
+    pub const TEXT: Color32 = Color32::from_rgb(232, 234, 237);
+    pub const MUTED: Color32 = Color32::from_rgb(136, 143, 156);
+    pub const FAINT: Color32 = Color32::from_rgb(96, 102, 114);
+    pub const GREEN: Color32 = Color32::from_rgb(52, 211, 153);
+    pub const AMBER: Color32 = Color32::from_rgb(251, 191, 36);
+    pub const RED: Color32 = Color32::from_rgb(248, 113, 113);
+    pub const TRACK: Color32 = Color32::from_rgb(46, 50, 60);
+}
+
+fn pct_color(pct: Option<f64>, ok: bool) -> eframe::egui::Color32 {
+    if !ok {
+        return pal::FAINT;
+    }
+    match pct {
+        None => pal::MUTED,
+        Some(p) if p > 50.0 => pal::GREEN,
+        Some(p) if p > 15.0 => pal::AMBER,
+        Some(_) => pal::RED,
+    }
+}
+
+/// Ring gauge: track circle + progress arc (polyline segments) from 12 o'clock.
+fn ring(ui: &egui::Ui, center: egui::Pos2, r: f32, pct: Option<f64>, ok: bool, alpha: f32) {
+    let painter = ui.painter();
+    painter.circle_stroke(center, r, egui::Stroke::new(3.0_f32, pal::TRACK.linear_multiply(alpha)));
+    let color = pct_color(pct, ok);
+    let Some(p) = pct.filter(|_| ok) else {
+        return;
+    };
+    let frac = (p / 100.0).clamp(0.0, 1.0) as f32;
+    if frac <= 0.0 {
+        return;
+    }
+    if frac > 0.995 {
+        painter.circle_stroke(center, r, egui::Stroke::new(3.0_f32, color.linear_multiply(alpha)));
+        return;
+    }
+    let a0 = -std::f32::consts::FRAC_PI_2;
+    let a1 = a0 + std::f32::consts::TAU * frac;
+    let steps = (24.0 * frac).max(2.0) as usize;
+    let pts: Vec<egui::Pos2> = (0..=steps)
+        .map(|i| {
+            let a = a0 + (a1 - a0) * (i as f32 / steps as f32);
+            egui::pos2(center.x + r * a.cos(), center.y + r * a.sin())
+        })
+        .collect();
+    painter.add(egui::Shape::line(pts, egui::Stroke::new(3.0_f32, color.linear_multiply(alpha))));
+}
+
+/// Slim rounded progress bar; returns none, paints in given rect.
+fn bar(ui: &egui::Ui, rect: egui::Rect, frac: f32, color: Color32, alpha: f32) {
+    ui.painter().rect_filled(rect, rect.height() / 2.0, pal::TRACK.linear_multiply(alpha));
+    let w = (rect.width() * frac.clamp(0.0, 1.0)).max(rect.height());
+    ui.painter()
+        .rect_filled(egui::Rect::from_min_size(rect.min, Vec2::new(w, rect.height())), rect.height() / 2.0, color.linear_multiply(alpha));
+}
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -212,77 +262,80 @@ impl eframe::App for App {
                 _ => 1,
             })
             .sum();
-        let expanded_size = Vec2::new(
-            360.0,
-            HEADER_H + MARGINS[0] + MARGINS[1] + total_windows as f32 * 19.0 + snaps.len() as f32 * 32.0,
-        );
+        let ideal_h = HEADER_H + 44.0 + total_windows as f32 * 20.0 + snaps.len() as f32 * 26.0;
+        let expanded_size = Vec2::new(380.0, ideal_h.min(MAX_EXPANDED_H));
         if self.expanded {
             self.last_expanded_h = expanded_size.y;
         }
         let target = if self.expanded { expanded_size } else { COLLAPSED };
 
-        // exponential ease toward target; repaint while moving
         let dt = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
         let t = 1.0 - (-18.0 * dt).exp();
         let prev = self.cur_size;
         self.cur_size = Vec2::new(prev.x + (target.x - prev.x) * t, prev.y + (target.y - prev.y) * t);
-        if (self.cur_size - prev).length() > 0.08 || self.cur_size != prev {
+        if (self.cur_size - prev).length() > 0.08 {
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
             ctx.request_repaint();
         }
 
-        // progress 0..1 (0 = collapsed, 1 = fully expanded)
         let span = (self.last_expanded_h - COLLAPSED.y).max(1.0);
-        let f = ((self.cur_size.y - COLLAPSED.y) / span).clamp(0.0, 1.0);
-        let f = 1.0 - (1.0 - f) * (1.0 - f);
-
-        // animated inner margin (vertical) so content glides with the growth
-        let m_top = MARGINS[3] + (MARGINS[0] - MARGINS[3]) * f;
-        let m_bot = MARGINS[3] + (MARGINS[1] - MARGINS[3]) * f;
+        let f = (((self.cur_size.y - COLLAPSED.y) / span).clamp(0.0, 1.0)).powi(1).min(1.0);
+        let f = 1.0 - (1.0 - f) * (1.0 - f); // ease-out
 
         let frame = egui::Frame::none()
-            .fill(Color32::from_rgb(24, 26, 30))
-            .rounding(egui::Rounding::same(15.0))
-            .inner_margin(egui::Margin::symmetric(12.0, m_top.max(m_bot)));
+            .fill(pal::BG)
+            .stroke(egui::Stroke::new(1.0, pal::BORDER))
+            .rounding(egui::Rounding::same(17.0))
+            .inner_margin(egui::Margin::symmetric(10.0, if self.expanded { 8.0 } else { 5.0 }));
 
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            // ============ header row ============
+            let header_h = HEADER_H;
+            let (hrect, _hr) = ui.allocate_exact_size(Vec2::new(ui.available_width(), header_h), Sense::hover());
             ui.horizontal(|ui| {
-                let (grect, _gr) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
+                ui.set_clip_rect(hrect);
+                // grip
+                let (grect, _gr) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
                 ui.painter().image(
                     self.icons.grip.id(),
-                    grect.shrink(1.0),
+                    grect.shrink(2.0),
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    Color32::from_gray(130),
+                    Color32::from_gray(120).linear_multiply(0.4 + 0.6 * f),
                 );
                 let grip = ui.interact(grect.expand(4.0), ui.id().with("grip"), Sense::drag());
                 if grip.drag_started() {
                     ctx.send_viewport_cmd(ViewportCommand::StartDrag);
                 }
+                ui.add_space(2.0);
 
-                // provider dots/labels — stable header, present in both states
-                ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
-                for s in &snaps {
+                // providers: up to 4 rings, overflow as +N chip (collapsed only)
+                let max_vis = if self.expanded { snaps.len() } else { snaps.len().min(4) };
+                ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
+                for s in snaps.iter().take(max_vis) {
                     let pct = s.min_remaining();
                     let ok = matches!(s.reading, Reading::Ok { .. });
                     let label = match (&s.reading, pct) {
-                        (Reading::Ok { .. }, Some(p)) => format!("{} {:.0}%", tag(&s.provider_id), p),
-                        (Reading::Ok { .. }, None) => tag(&s.provider_id),
-                        (Reading::NeedsAuth(_), _) => format!("{} !", tag(&s.provider_id)),
-                        (Reading::Error(_), _) => format!("{} ×", tag(&s.provider_id)),
-                        _ => tag(&s.provider_id),
+                        (Reading::Ok { .. }, Some(p)) => format!("{:.0}%", p),
+                        (Reading::Ok { .. }, None) => "…".into(),
+                        (Reading::NeedsAuth(_), _) => "auth".into(),
+                        (Reading::Error(_), _) => "err".into(),
+                        _ => "?".into(),
                     };
-                    let (rect, _r) =
-                        ui.allocate_exact_size(Vec2::new(label.len() as f32 * 7.2 + 8.0, 18.0), Sense::hover());
-                    ui.painter().circle_filled(
-                        egui::pos2(rect.left() + 6.0, rect.center().y),
-                        3.5,
-                        color_for(pct, ok),
+                    let width = 20.0 + label.len() as f32 * 7.4 + 6.0;
+                    let (rect, _r) = ui.allocate_exact_size(Vec2::new(width, header_h), Sense::hover());
+                    let c = egui::pos2(rect.left() + 10.0, rect.center().y);
+                    ring(ui, c, 6.5, pct, ok, 1.0);
+                    ui.put(
+                        egui::Rect::from_min_size(egui::pos2(rect.left() + 21.0, rect.center().y - 8.0), Vec2::new(width - 21.0, 16.0)),
+                        egui::Label::new(
+                            RichText::new(format!("{} {}", tag(&s.provider_id), label))
+                                .color(pal::TEXT)
+                                .size(12.5),
+                        )
+                        .selectable(false),
                     );
-                    let label_resp = ui.put(
-                        rect,
-                        egui::Label::new(RichText::new(label).color(Color32::from_gray(225)).size(12.5)).selectable(false),
-                    );
-                    label_resp.on_hover_ui(|ui| {
+                    let resp = ui.interact(rect, ui.id().with(("hover", &s.provider_id)), Sense::hover());
+                    resp.on_hover_ui(|ui| {
                         ui.strong(s.display_name.clone());
                         match &s.reading {
                             Reading::Ok { windows, .. } => {
@@ -297,15 +350,18 @@ impl eframe::App for App {
                                 }
                             }
                             Reading::NeedsAuth(m) => { ui.colored_label(Color32::YELLOW, format!("needs auth: {m}")); }
-                            Reading::Error(m) => { ui.colored_label(Color32::LIGHT_RED, m.clone()); }
+                            Reading::Error(m) => { ui.colored_label(pal::RED, m.clone()); }
                             Reading::NotConfigured => { ui.label("not configured"); }
                         }
                         let age = now_unix().saturating_sub(s.fetched_at);
-                        ui.colored_label(Color32::from_gray(120), format!("updated {} ago", fmt_countdown(age)));
+                        ui.colored_label(pal::FAINT, format!("updated {} ago", fmt_countdown(age)));
                     });
                 }
+                if !self.expanded && snaps.len() > 4 {
+                    ui.label(RichText::new(format!("+{}", snaps.len() - 4)).color(pal::MUTED).size(12.0));
+                }
                 if snaps.is_empty() {
-                    ui.label(RichText::new("no providers").color(Color32::from_gray(130)));
+                    ui.label(RichText::new("no providers — open config to add").color(pal::FAINT).size(12.0));
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -321,7 +377,6 @@ impl eframe::App for App {
                 });
             });
 
-            // expand-on-click only when collapsed
             if f < 0.05 {
                 let body = ui.interact(ui.max_rect().shrink(2.0), ui.id().with("body"), Sense::click());
                 if body.clicked() {
@@ -335,55 +390,84 @@ impl eframe::App for App {
                 self.expanded = false;
             }
 
-            // faded detail section, revealed as the window grows
+            // ============ detail area (scrolls when many providers) ============
             if f > 0.02 {
-                ui.visuals_mut().override_text_color = Some(Color32::from_gray(205).linear_multiply(f));
+                ui.visuals_mut().override_text_color = Some(pal::TEXT.linear_multiply(f));
                 ui.separator();
-                ui.colored_label(Color32::from_gray(110).linear_multiply(f), "R refresh · Esc minimize");
-                for s in &snaps {
-                    let pct = s.min_remaining();
-                    let ok = matches!(s.reading, Reading::Ok { .. });
-                    ui.horizontal(|ui| {
-                        ui.painter().circle_filled(
-                            ui.cursor().center() - Vec2::new(0.0, 2.0),
-                            3.5,
-                            color_for(pct, ok).linear_multiply(f),
-                        );
-                        ui.strong(s.display_name.clone());
-                        if s.fidelity == Fidelity::Manual {
-                            ui.colored_label(Color32::from_gray(120), "(manual)");
+                egui::ScrollArea::vertical()
+                    .max_height((self.cur_size.y - HEADER_H - 34.0).max(60.0))
+                    .auto_shrink([false, true])
+                    .drag_to_scroll(true)
+                    .show(ui, |ui| {
+                        for s in &snaps {
+                            let pct = s.min_remaining();
+                            let ok = matches!(s.reading, Reading::Ok { .. });
+                            let card = egui::Frame::none()
+                                .fill(pal::CARD)
+                                .rounding(egui::Rounding::same(10.0))
+                                .inner_margin(egui::Margin::symmetric(10.0, 6.0));
+                            card.show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    let (rr, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
+                                    ring(ui, rr.center(), 6.5, pct, ok, f);
+                                    ui.strong(s.display_name.clone());
+                                    if s.fidelity == Fidelity::Manual {
+                                        ui.label(RichText::new("manual").color(pal::FAINT).size(10.5));
+                                    }
+                                    match &s.reading {
+                                        Reading::Ok { .. } => {}
+                                        Reading::NeedsAuth(m) => {
+                                            ui.colored_label(Color32::YELLOW, format!("· {m}"));
+                                        }
+                                        Reading::Error(m) => {
+                                            ui.colored_label(pal::RED, format!("· {m}"));
+                                        }
+                                        Reading::NotConfigured => {
+                                            ui.colored_label(pal::FAINT, "· not configured");
+                                        }
+                                    }
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        let age = now_unix().saturating_sub(s.fetched_at);
+                                        ui.colored_label(pal::FAINT, format!("{} ago", fmt_countdown(age)));
+                                    });
+                                });
+                                if let Reading::Ok { windows, .. } = &s.reading {
+                                    for w in windows {
+                                        ui.add_space(2.0);
+                                        let (r2, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 14.0), Sense::hover());
+                                        let lw = 108.0_f32.min(r2.width() * 0.45);
+                                        ui.put(
+                                            egui::Rect::from_min_size(r2.min, Vec2::new(lw, 14.0)),
+                                            egui::Label::new(RichText::new(&w.label).color(pal::MUTED).size(11.5)).selectable(false),
+                                        );
+                                        let frac = (w.remaining_percent.unwrap_or(0.0) / 100.0) as f32;
+                                        let bx = egui::Rect::from_min_size(
+                                            egui::pos2(r2.left() + lw + 6.0, r2.center().y - 2.5),
+                                            Vec2::new((r2.width() - lw - 116.0).max(40.0), 5.0),
+                                        );
+                                        bar(ui, bx, frac, pct_color(w.remaining_percent, true), f);
+                                        let mut right = String::new();
+                                        if let Some(p) = w.remaining_percent {
+                                            right.push_str(&format!("{p:.0}%"));
+                                        }
+                                        if let (Some(a), Some(b)) = (w.remaining_count, w.total_count) {
+                                            if b > 0 {
+                                                right.push_str(&format!(" {a}/{b}"));
+                                            }
+                                        }
+                                        if let Some(t) = w.resets_at {
+                                            right.push_str(&format!(" · in {}", fmt_countdown(t.saturating_sub(now_unix()))));
+                                        }
+                                        ui.put(
+                                            egui::Rect::from_min_size(egui::pos2(r2.right() - 106.0, r2.min.y), Vec2::new(106.0, 14.0)),
+                                            egui::Label::new(RichText::new(right).color(pal::TEXT).size(11.5)).selectable(false),
+                                        );
+                                    }
+                                }
+                            });
+                            ui.add_space(6.0);
                         }
                     });
-                    match &s.reading {
-                        Reading::Ok { windows, .. } => {
-                            for w in windows {
-                                let pctt = w.remaining_percent.map(|p| format!("{p:.0}% left")).unwrap_or_default();
-                                let cnt = match (w.remaining_count, w.total_count) {
-                                    (Some(a), Some(b)) if b > 0 => format!(" {a}/{b}"),
-                                    _ => String::new(),
-                                };
-                                let reset = w
-                                    .resets_at
-                                    .map(|t| fmt_countdown(t.saturating_sub(now_unix())))
-                                    .map(|c| format!(" · resets in {c}"))
-                                    .unwrap_or_default();
-                                ui.label(format!("  {}: {pctt}{cnt}{reset}", w.label));
-                            }
-                        }
-                        Reading::NeedsAuth(m) => {
-                            ui.colored_label(Color32::YELLOW, format!("  needs auth: {m}"));
-                        }
-                        Reading::Error(m) => {
-                            ui.colored_label(Color32::LIGHT_RED, format!("  {m}"));
-                        }
-                        Reading::NotConfigured => {
-                            ui.label("  not configured");
-                        }
-                    }
-                    let age = now_unix().saturating_sub(s.fetched_at);
-                    ui.colored_label(Color32::from_gray(110), format!("updated {} ago", fmt_countdown(age)));
-                    ui.add_space(2.0);
-                }
             }
         });
     }

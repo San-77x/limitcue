@@ -5,18 +5,26 @@ left on every AI coding plan you're signed into — without opening a browser,
 a terminal, or trusting a made-up number.
 
 ```
- ● CODEX 63%   ● CLAUDE 22%   ● M3 69%
+ ◔ CODEX 63%  ◑ CLAUDE 22%  ◕ M3 69%        ← collapsed: ring gauges
 ```
+
+Click it and it eases open into a detail card per provider — labelled
+quota bars, counts, and live reset countdowns — with smooth scrolling
+when you have more plans than fit on screen.
 
 Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no runtime.
 
 ## What it does
 
-- **One pill, many plans.** A dot + short label per provider, colour-coded
-  (green > 50%, amber > 15%, red, grey = stale/error).
-- **Drag it anywhere.** Borderless, always-on-top window. Hover a provider for
-  per-window detail: remaining %, counts, and reset countdowns. Click `⋯` for
-  refresh / quit.
+- **One pill, many plans.** A colour-coded ring gauge per provider drawn
+  around its remaining quota (green > 50%, amber > 15%, red, grey =
+  stale/error). More than four providers collapsed? The overflow folds into
+  a `+N` chip; expanding lists everything in a scrollable detail area with
+  a max height so it never eats your screen.
+- **Drag it anywhere** by the Lucide grip handle (compositor-native grab;
+  Wayland + X11). Borderless, always-on-top, eased expand/collapse
+  animation. Hover any ring for per-window detail; `R` refreshes,
+  `Esc` minimizes.
 - **Borrows existing credentials.** It never signs you in anywhere and never
   sends your keys anywhere but the owning provider's API:
 
