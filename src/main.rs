@@ -71,7 +71,8 @@ struct App {
     rx: mpsc::Receiver<Vec<Snapshot>>,
     tx_tick: mpsc::Sender<()>,
     cfg: Config,
-    open_popup: bool,
+    expanded: bool,
+    applied_size: Option<Vec2>,
 }
 
 impl App {
@@ -104,7 +105,7 @@ impl App {
                 let _ = rx_tick.recv_timeout(std::time::Duration::from_secs(backoff));
             }
         });
-        Self { snapshots, rx: rx_snap, tx_tick, cfg, open_popup: false }
+        Self { snapshots, rx: rx_snap, tx_tick, cfg, expanded: false, applied_size: None }
     }
 
     fn drain(&mut self, ctx: &egui::Context) {
@@ -143,93 +144,178 @@ impl App {
     }
 }
 
+const COLLAPSED: Vec2 = Vec2::new(300.0, 30.0);
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain(ctx);
+        ctx.request_repaint_after(std::time::Duration::from_secs(30));
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // drag anywhere on the pill to move it; StartDrag hands the grab to the
-            // compositor, which works on both Wayland (KWin) and X11
-            let resp = ui.interact(ui.max_rect(), ui.id().with("drag"), Sense::click_and_drag());
-            if resp.drag_started() {
-                ctx.send_viewport_cmd(ViewportCommand::StartDrag);
-            }
-            if resp.double_clicked() {
-                self.open_popup = true;
-            }
-            let snaps = self.visible();
+        let snaps = self.visible();
+        let total_windows: usize = snaps
+            .iter()
+            .map(|s| match &s.reading {
+                Reading::Ok { windows, .. } => windows.len().max(1),
+                _ => 1,
+            })
+            .sum();
+        let wanted = if self.expanded {
+            Vec2::new(360.0, 66.0 + total_windows as f32 * 19.0 + snaps.len() as f32 * 8.0)
+        } else {
+            COLLAPSED
+        };
+        if self.applied_size != Some(wanted) {
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(wanted));
+            self.applied_size = Some(wanted);
+        }
+
+        let frame = egui::Frame::none()
+            .fill(Color32::from_rgb(24, 26, 30))
+            .rounding(egui::Rounding::same(if self.expanded { 14.0 } else { 15.0 }))
+            .inner_margin(if self.expanded {
+                egui::Margin::symmetric(12.0, 10.0)
+            } else {
+                egui::Margin::symmetric(8.0, 5.0)
+            });
+
+        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+                // drag grip (left side)
+                let grip_label = ui
+                    .add(egui::Label::new(RichText::new("⠿").color(Color32::from_gray(110)).size(15.0)).selectable(false))
+                    .on_hover_text("drag to move");
+                let grip = ui.interact(grip_label.rect.expand(4.0), ui.id().with("grip"), Sense::drag());
+                if grip.drag_started() {
+                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+                }
+
+                if self.expanded {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("—").on_hover_text("minimize").clicked() {
+                            self.expanded = false;
+                        }
+                        if ui.button("⟳").on_hover_text("refresh now").clicked() {
+                            let _ = self.tx_tick.send(());
+                        }
+                        if ui.button("✕").on_hover_text("quit").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    });
+                } else {
+                    ui.label(RichText::new("LimitCue").color(Color32::from_gray(150)).size(11.5));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // click the collapsed pill body to expand
+                        let body = ui.interact(ui.max_rect().shrink(2.0), ui.id().with("body"), Sense::click());
+                        if body.clicked() {
+                            self.expanded = true;
+                        }
+                    });
+                }
+            });
+
+            if self.expanded {
+                ui.separator();
+                if snaps.is_empty() {
+                    ui.label(RichText::new("no providers configured").color(Color32::from_gray(130)));
+                }
                 for s in &snaps {
                     let pct = s.min_remaining();
                     let ok = matches!(s.reading, Reading::Ok { .. });
-                    let label = match (&s.reading, pct) {
-                        (Reading::Ok { .. }, Some(p)) => format!("{} {:.0}%", tag(&s.provider_id), p),
-                        (Reading::Ok { .. }, None) => format!("{}", tag(&s.provider_id)),
-                        (Reading::NeedsAuth(_), _) => format!("{} !", tag(&s.provider_id)),
-                        (Reading::Error(_), _) => format!("{} ×", tag(&s.provider_id)),
-                        _ => tag(&s.provider_id),
-                    };
-                    let (rect, _r) = ui.allocate_exact_size(Vec2::new(label.len() as f32 * 7.2 + 8.0, 18.0), Sense::hover());
-                    ui.painter().circle_filled(egui::pos2(rect.left() + 6.0, rect.center().y), 3.5, color_for(pct, ok));
-                    let label_resp = ui.put(
-                        rect,
-                        egui::Label::new(RichText::new(label).color(Color32::from_gray(225)).size(12.5)).selectable(false),
-                    );
-                    label_resp.on_hover_ui(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.painter().circle_filled(ui.cursor().center() - Vec2::new(0.0, 2.0), 3.5, color_for(pct, ok));
                         ui.strong(s.display_name.clone());
-                        match &s.reading {
-                            Reading::Ok { windows, .. } => {
-                                for w in windows {
-                                    let pctt = w.remaining_percent.map(|p| format!("{p:.0}% left")).unwrap_or_default();
-                                    let cnt = match (w.remaining_count, w.total_count) {
-                                        (Some(a), Some(b)) if b > 0 => format!(" {a}/{b}"),
-                                        _ => String::new(),
-                                    };
-                                    let reset = w
-                                        .resets_at
-                                        .map(|t| fmt_countdown(t.saturating_sub(now_unix())))
-                                        .map(|c| format!(" · resets in {c}"))
-                                        .unwrap_or_default();
-                                    ui.label(format!("{}: {pctt}{cnt}{reset}", w.label));
-                                }
-                                if s.fidelity == Fidelity::Manual {
-                                    ui.colored_label(Color32::from_gray(140), "user-configured source");
-                                }
-                            }
-                            Reading::NeedsAuth(m) => { ui.colored_label(Color32::YELLOW, format!("needs auth: {m}")); }
-                            Reading::Error(m) => { ui.colored_label(Color32::LIGHT_RED, m.clone()); }
-                            Reading::NotConfigured => { ui.label("not configured"); }
+                        if s.fidelity == Fidelity::Manual {
+                            ui.colored_label(Color32::from_gray(120), "(manual)");
                         }
-                        let age = now_unix().saturating_sub(s.fetched_at);
-                        ui.colored_label(Color32::from_gray(120), format!("updated {} ago", fmt_countdown(age)));
                     });
+                    match &s.reading {
+                        Reading::Ok { windows, .. } => {
+                            for w in windows {
+                                let pctt = w.remaining_percent.map(|p| format!("{p:.0}% left")).unwrap_or_default();
+                                let cnt = match (w.remaining_count, w.total_count) {
+                                    (Some(a), Some(b)) if b > 0 => format!(" {a}/{b}"),
+                                    _ => String::new(),
+                                };
+                                let reset = w
+                                    .resets_at
+                                    .map(|t| fmt_countdown(t.saturating_sub(now_unix())))
+                                    .map(|c| format!(" · resets in {c}"))
+                                    .unwrap_or_default();
+                                ui.label(format!("  {}: {pctt}{cnt}{reset}", w.label));
+                            }
+                        }
+                        Reading::NeedsAuth(m) => {
+                            ui.colored_label(Color32::YELLOW, format!("  needs auth: {m}"));
+                        }
+                        Reading::Error(m) => {
+                            ui.colored_label(Color32::LIGHT_RED, format!("  {m}"));
+                        }
+                        Reading::NotConfigured => {
+                            ui.label("  not configured");
+                        }
+                    }
+                    let age = now_unix().saturating_sub(s.fetched_at);
+                    ui.colored_label(Color32::from_gray(110), format!("updated {} ago", fmt_countdown(age)));
+                    ui.add_space(4.0);
                 }
-                if snaps.is_empty() {
-                    ui.label(RichText::new("no providers").color(Color32::from_gray(130)));
-                }
-            });
-            if ui.button("⋯").clicked() {
-                self.open_popup = true;
+            } else {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+                    for s in &snaps {
+                        let pct = s.min_remaining();
+                        let ok = matches!(s.reading, Reading::Ok { .. });
+                        let label = match (&s.reading, pct) {
+                            (Reading::Ok { .. }, Some(p)) => format!("{} {:.0}%", tag(&s.provider_id), p),
+                            (Reading::Ok { .. }, None) => format!("{}", tag(&s.provider_id)),
+                            (Reading::NeedsAuth(_), _) => format!("{} !", tag(&s.provider_id)),
+                            (Reading::Error(_), _) => format!("{} ×", tag(&s.provider_id)),
+                            _ => tag(&s.provider_id),
+                        };
+                        let (rect, _r) =
+                            ui.allocate_exact_size(Vec2::new(label.len() as f32 * 7.2 + 8.0, 18.0), Sense::hover());
+                        ui.painter().circle_filled(egui::pos2(rect.left() + 6.0, rect.center().y), 3.5, color_for(pct, ok));
+                        let label_resp = ui.put(
+                            rect,
+                            egui::Label::new(
+                                RichText::new(label).color(Color32::from_gray(225)).size(12.5),
+                            )
+                            .selectable(false),
+                        );
+                        label_resp.on_hover_ui(|ui| {
+                            ui.strong(s.display_name.clone());
+                            match &s.reading {
+                                Reading::Ok { windows, .. } => {
+                                    for w in windows {
+                                        let pctt = w.remaining_percent.map(|p| format!("{p:.0}% left")).unwrap_or_default();
+                                        let cnt = match (w.remaining_count, w.total_count) {
+                                            (Some(a), Some(b)) if b > 0 => format!(" {a}/{b}"),
+                                            _ => String::new(),
+                                        };
+                                        let reset = w
+                                            .resets_at
+                                            .map(|t| fmt_countdown(t.saturating_sub(now_unix())))
+                                            .map(|c| format!(" · resets in {c}"))
+                                            .unwrap_or_default();
+                                        ui.label(format!("{}: {pctt}{cnt}{reset}", w.label));
+                                    }
+                                    if s.fidelity == Fidelity::Manual {
+                                        ui.colored_label(Color32::from_gray(140), "user-configured source");
+                                    }
+                                }
+                                Reading::NeedsAuth(m) => { ui.colored_label(Color32::YELLOW, format!("needs auth: {m}")); }
+                                Reading::Error(m) => { ui.colored_label(Color32::LIGHT_RED, m.clone()); }
+                                Reading::NotConfigured => { ui.label("not configured"); }
+                            }
+                            let age = now_unix().saturating_sub(s.fetched_at);
+                            ui.colored_label(Color32::from_gray(120), format!("updated {} ago", fmt_countdown(age)));
+                        });
+                    }
+                    if snaps.is_empty() {
+                        ui.label(RichText::new("no providers").color(Color32::from_gray(130)));
+                    }
+                });
             }
         });
-
-        if self.open_popup {
-            let mut open = true;
-            egui::Window::new("LimitCue").open(&mut open).show(ctx, |ui| {
-                for s in self.visible() {
-                    ui.label(format!("{} — {}", s.display_name, s.provider_id));
-                }
-                ui.separator();
-                if ui.button("Refresh now").clicked() {
-                    let _ = self.tx_tick.send(());
-                }
-                if ui.button("Quit").clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            });
-            self.open_popup = open;
-        }
     }
 }
 
