@@ -15,7 +15,7 @@ use providers::{
 use types::{fmt_countdown, now_unix, Fidelity, Reading, Snapshot};
 
 const ICON_FONT: &[u8] = include_bytes!("../assets/fonts/limitcue-icons.ttf");
-const ICON_GRIP: &str = "\u{f01d9}";
+const ICON_GRIP: &str = "\u{f15fc}";
 const ICON_MIN: &str = "\u{f05b0}";
 const ICON_CLOSE: &str = "\u{f0156}";
 const ICON_REFRESH: &str = "\u{f0450}";
