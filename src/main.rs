@@ -583,9 +583,12 @@ impl eframe::App for App {
 
         // Rail: strip only when collapsed; strip + inline usage card when a
         // provider is opened. Height always fits the strip's rows.
-        let rail_vis = snaps.len().min(self.cfg.max_visible_collapsed);
-        let rail_h = RAIL_MARGIN * 2.0 + rail_vis.max(1) as f32 * RAIL_ROW_H
-            + (rail_vis.max(1) as f32 - 1.0) * RAIL_ROW_GAP
+        // The rail shows one row per provider — height is cheap vertically,
+        // so max_visible_collapsed only limits the horizontal pill.
+        let rail_rows = snaps.len().max(1) as f32;
+        let rail_h = RAIL_MARGIN * 2.0
+            + rail_rows * RAIL_ROW_H
+            + (rail_rows - 1.0) * RAIL_ROW_GAP
             + RAIL_GEAR_ZONE;
         let rail_size = if let Some(id) = &self.rail_open {
             let card_h = rail_card_height(snaps.iter().find(|s| s.provider_id == *id), now);
@@ -815,7 +818,6 @@ impl App {
     fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot]) {
         let pal = self.pal;
         let edge = self.last_edge;
-        let max_vis = snaps.len().min(self.cfg.max_visible_collapsed);
         let now = now_unix();
         ui.spacing_mut().item_spacing = Vec2::new(0.0, RAIL_ROW_GAP);
         // While the edge is unknown the window may still be the tiny init
@@ -827,7 +829,7 @@ impl App {
         // Strip (left cell when the card is open): the logo-pill rows.
         let strip = |ui: &mut egui::Ui, this: &mut App| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, RAIL_ROW_GAP);
-            for s in snaps.iter().take(max_vis) {
+            for s in snaps.iter() {
                 let pct = this.render_pct(s);
                 let stale = this.is_stale(s, now);
                 let ok = matches!(s.reading, Reading::Ok { .. });
