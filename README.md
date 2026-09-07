@@ -121,6 +121,11 @@ welcome and encouraged.
 - **Provider config is mode `0600`** (user-only readable) since it may contain
   inline keys.
 
+## Project status
+
+See [STATUS.md](STATUS.md) for what's done, in progress, and known limitations,
+and [docs/v2.md](docs/v2.md) for the feature backlog.
+
 ## License
 
 MIT
