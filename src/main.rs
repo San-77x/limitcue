@@ -72,7 +72,6 @@ struct App {
     tx_tick: mpsc::Sender<()>,
     cfg: Config,
     open_popup: bool,
-    win_pos: egui::Pos2,
 }
 
 impl App {
@@ -105,7 +104,7 @@ impl App {
                 let _ = rx_tick.recv_timeout(std::time::Duration::from_secs(backoff));
             }
         });
-        Self { snapshots, rx: rx_snap, tx_tick, cfg, open_popup: false, win_pos: egui::pos2(60.0, 40.0) }
+        Self { snapshots, rx: rx_snap, tx_tick, cfg, open_popup: false }
     }
 
     fn drain(&mut self, ctx: &egui::Context) {
@@ -149,12 +148,14 @@ impl eframe::App for App {
         self.drain(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // drag anywhere on the pill to move the window (X11; Wayland compositors vary)
-            let resp = ui.interact(ui.max_rect(), ui.id().with("drag"), Sense::drag());
-            if resp.dragged() {
-                let d = resp.drag_delta();
-                self.win_pos = egui::pos2(self.win_pos.x + d.x, self.win_pos.y + d.y);
-                ctx.send_viewport_cmd(ViewportCommand::OuterPosition(self.win_pos));
+            // drag anywhere on the pill to move it; StartDrag hands the grab to the
+            // compositor, which works on both Wayland (KWin) and X11
+            let resp = ui.interact(ui.max_rect(), ui.id().with("drag"), Sense::click_and_drag());
+            if resp.drag_started() {
+                ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+            }
+            if resp.double_clicked() {
+                self.open_popup = true;
             }
             let snaps = self.visible();
             ui.horizontal(|ui| {
