@@ -46,15 +46,21 @@ fn load_icons(ctx: &egui::Context) -> Icons {
     Icons { grip: get("grip"), min: get("min"), refresh: get("refresh"), close: get("close") }
 }
 
-fn icon_button(ui: &mut egui::Ui, tex: &egui::TextureHandle, tip: &str) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
-    if resp.hovered() {
-        ui.painter().rect_filled(rect.shrink(2.0), 6.0, Color32::from_gray(52));
+fn icon_button(ui: &mut egui::Ui, tex: &egui::TextureHandle, tip: &str, alpha: f32) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(24.0), if alpha > 0.9 { Sense::click() } else { Sense::hover() });
+    if alpha > 0.02 {
+        if resp.hovered() && alpha > 0.9 {
+            ui.painter().rect_filled(rect.shrink(2.0), 6.0, Color32::from_gray(52));
+        }
+        let base = if resp.hovered() && alpha > 0.9 { Color32::WHITE } else { Color32::from_gray(190) };
+        ui.painter().image(
+            tex.id(),
+            rect.shrink(4.5),
+            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            base.linear_multiply(alpha),
+        );
     }
-    let tint = if resp.hovered() { Color32::WHITE } else { Color32::from_gray(190) };
-    let img = rect.shrink(4.5);
-    ui.painter().image(tex.id(), img, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
-    resp.on_hover_text(tip)
+    if alpha > 0.9 { resp.on_hover_text(tip) } else { resp }
 }
 
 fn state_path() -> std::path::PathBuf {
@@ -115,7 +121,8 @@ struct App {
     tx_tick: mpsc::Sender<()>,
     cfg: Config,
     expanded: bool,
-    applied_size: Option<Vec2>,
+    cur_size: Vec2,
+    last_expanded_h: f32,
     icons: Icons,
 }
 
@@ -149,7 +156,7 @@ impl App {
                 let _ = rx_tick.recv_timeout(std::time::Duration::from_secs(backoff));
             }
         });
-        Self { snapshots, rx: rx_snap, tx_tick, cfg, expanded: false, applied_size: None, icons }
+        Self { snapshots, rx: rx_snap, tx_tick, cfg, expanded: false, cur_size: COLLAPSED, last_expanded_h: 180.0, icons }
     }
 
     fn drain(&mut self, ctx: &egui::Context) {
@@ -189,6 +196,8 @@ impl App {
 }
 
 const COLLAPSED: Vec2 = Vec2::new(300.0, 30.0);
+const HEADER_H: f32 = 28.0;
+const MARGINS: [f32; 4] = [10.0, 26.0, 10.0, 26.0]; // top/bottom expanded/collapsed
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -203,28 +212,41 @@ impl eframe::App for App {
                 _ => 1,
             })
             .sum();
-        let wanted = if self.expanded {
-            Vec2::new(360.0, 66.0 + total_windows as f32 * 19.0 + snaps.len() as f32 * 8.0)
-        } else {
-            COLLAPSED
-        };
-        if self.applied_size != Some(wanted) {
-            ctx.send_viewport_cmd(ViewportCommand::InnerSize(wanted));
-            self.applied_size = Some(wanted);
+        let expanded_size = Vec2::new(
+            360.0,
+            HEADER_H + MARGINS[0] + MARGINS[1] + total_windows as f32 * 19.0 + snaps.len() as f32 * 32.0,
+        );
+        if self.expanded {
+            self.last_expanded_h = expanded_size.y;
         }
+        let target = if self.expanded { expanded_size } else { COLLAPSED };
+
+        // exponential ease toward target; repaint while moving
+        let dt = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
+        let t = 1.0 - (-18.0 * dt).exp();
+        let prev = self.cur_size;
+        self.cur_size = Vec2::new(prev.x + (target.x - prev.x) * t, prev.y + (target.y - prev.y) * t);
+        if (self.cur_size - prev).length() > 0.08 || self.cur_size != prev {
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
+            ctx.request_repaint();
+        }
+
+        // progress 0..1 (0 = collapsed, 1 = fully expanded)
+        let span = (self.last_expanded_h - COLLAPSED.y).max(1.0);
+        let f = ((self.cur_size.y - COLLAPSED.y) / span).clamp(0.0, 1.0);
+        let f = 1.0 - (1.0 - f) * (1.0 - f);
+
+        // animated inner margin (vertical) so content glides with the growth
+        let m_top = MARGINS[3] + (MARGINS[0] - MARGINS[3]) * f;
+        let m_bot = MARGINS[3] + (MARGINS[1] - MARGINS[3]) * f;
 
         let frame = egui::Frame::none()
             .fill(Color32::from_rgb(24, 26, 30))
-            .rounding(egui::Rounding::same(if self.expanded { 14.0 } else { 15.0 }))
-            .inner_margin(if self.expanded {
-                egui::Margin::symmetric(12.0, 10.0)
-            } else {
-                egui::Margin::symmetric(8.0, 5.0)
-            });
+            .rounding(egui::Rounding::same(15.0))
+            .inner_margin(egui::Margin::symmetric(12.0, m_top.max(m_bot)));
 
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                // drag grip (left side)
                 let (grect, _gr) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
                 ui.painter().image(
                     self.icons.grip.id(),
@@ -237,48 +259,96 @@ impl eframe::App for App {
                     ctx.send_viewport_cmd(ViewportCommand::StartDrag);
                 }
 
-                if self.expanded {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if icon_button(ui, &self.icons.min, "minimize (or press Esc)").clicked() {
-                            self.expanded = false;
+                // provider dots/labels — stable header, present in both states
+                ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+                for s in &snaps {
+                    let pct = s.min_remaining();
+                    let ok = matches!(s.reading, Reading::Ok { .. });
+                    let label = match (&s.reading, pct) {
+                        (Reading::Ok { .. }, Some(p)) => format!("{} {:.0}%", tag(&s.provider_id), p),
+                        (Reading::Ok { .. }, None) => tag(&s.provider_id),
+                        (Reading::NeedsAuth(_), _) => format!("{} !", tag(&s.provider_id)),
+                        (Reading::Error(_), _) => format!("{} ×", tag(&s.provider_id)),
+                        _ => tag(&s.provider_id),
+                    };
+                    let (rect, _r) =
+                        ui.allocate_exact_size(Vec2::new(label.len() as f32 * 7.2 + 8.0, 18.0), Sense::hover());
+                    ui.painter().circle_filled(
+                        egui::pos2(rect.left() + 6.0, rect.center().y),
+                        3.5,
+                        color_for(pct, ok),
+                    );
+                    let label_resp = ui.put(
+                        rect,
+                        egui::Label::new(RichText::new(label).color(Color32::from_gray(225)).size(12.5)).selectable(false),
+                    );
+                    label_resp.on_hover_ui(|ui| {
+                        ui.strong(s.display_name.clone());
+                        match &s.reading {
+                            Reading::Ok { windows, .. } => {
+                                for w in windows {
+                                    let pctt = w.remaining_percent.map(|p| format!("{p:.0}% left")).unwrap_or_default();
+                                    let reset = w
+                                        .resets_at
+                                        .map(|t| fmt_countdown(t.saturating_sub(now_unix())))
+                                        .map(|c| format!(" · resets in {c}"))
+                                        .unwrap_or_default();
+                                    ui.label(format!("{}: {pctt}{reset}", w.label));
+                                }
+                            }
+                            Reading::NeedsAuth(m) => { ui.colored_label(Color32::YELLOW, format!("needs auth: {m}")); }
+                            Reading::Error(m) => { ui.colored_label(Color32::LIGHT_RED, m.clone()); }
+                            Reading::NotConfigured => { ui.label("not configured"); }
                         }
-                        if icon_button(ui, &self.icons.refresh, "refresh now").clicked() {
-                            let _ = self.tx_tick.send(());
-                        }
-                        
-                        if icon_button(ui, &self.icons.close, "quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                } else {
-                    ui.label(RichText::new("LimitCue").color(Color32::from_gray(150)).size(11.5));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // click the collapsed pill body to expand
-                        let body = ui.interact(ui.max_rect().shrink(2.0), ui.id().with("body"), Sense::click());
-                        if body.clicked() {
-                            self.expanded = true;
-                        }
-                        if ui.input(|i| i.key_pressed(egui::Key::R)) {
-                            let _ = self.tx_tick.send(());
-                        }
+                        let age = now_unix().saturating_sub(s.fetched_at);
+                        ui.colored_label(Color32::from_gray(120), format!("updated {} ago", fmt_countdown(age)));
                     });
                 }
+                if snaps.is_empty() {
+                    ui.label(RichText::new("no providers").color(Color32::from_gray(130)));
+                }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if icon_button(ui, &self.icons.min, "minimize (or press Esc)", f).clicked() {
+                        self.expanded = false;
+                    }
+                    if icon_button(ui, &self.icons.refresh, "refresh now", f).clicked() {
+                        let _ = self.tx_tick.send(());
+                    }
+                    if icon_button(ui, &self.icons.close, "quit", f).clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
             });
 
-            if self.expanded {
+            // expand-on-click only when collapsed
+            if f < 0.05 {
+                let body = ui.interact(ui.max_rect().shrink(2.0), ui.id().with("body"), Sense::click());
+                if body.clicked() {
+                    self.expanded = true;
+                }
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::R)) {
+                let _ = self.tx_tick.send(());
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.expanded {
+                self.expanded = false;
+            }
+
+            // faded detail section, revealed as the window grows
+            if f > 0.02 {
+                ui.visuals_mut().override_text_color = Some(Color32::from_gray(205).linear_multiply(f));
                 ui.separator();
-                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                    self.expanded = false;
-                }
-                ui.colored_label(Color32::from_gray(110), "press R to refresh · Esc to minimize");
-                if snaps.is_empty() {
-                    ui.label(RichText::new("no providers configured").color(Color32::from_gray(130)));
-                }
+                ui.colored_label(Color32::from_gray(110).linear_multiply(f), "R refresh · Esc minimize");
                 for s in &snaps {
                     let pct = s.min_remaining();
                     let ok = matches!(s.reading, Reading::Ok { .. });
                     ui.horizontal(|ui| {
-                        ui.painter().circle_filled(ui.cursor().center() - Vec2::new(0.0, 2.0), 3.5, color_for(pct, ok));
+                        ui.painter().circle_filled(
+                            ui.cursor().center() - Vec2::new(0.0, 2.0),
+                            3.5,
+                            color_for(pct, ok).linear_multiply(f),
+                        );
                         ui.strong(s.display_name.clone());
                         if s.fidelity == Fidelity::Manual {
                             ui.colored_label(Color32::from_gray(120), "(manual)");
@@ -312,64 +382,8 @@ impl eframe::App for App {
                     }
                     let age = now_unix().saturating_sub(s.fetched_at);
                     ui.colored_label(Color32::from_gray(110), format!("updated {} ago", fmt_countdown(age)));
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
                 }
-            } else {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
-                    for s in &snaps {
-                        let pct = s.min_remaining();
-                        let ok = matches!(s.reading, Reading::Ok { .. });
-                        let label = match (&s.reading, pct) {
-                            (Reading::Ok { .. }, Some(p)) => format!("{} {:.0}%", tag(&s.provider_id), p),
-                            (Reading::Ok { .. }, None) => format!("{}", tag(&s.provider_id)),
-                            (Reading::NeedsAuth(_), _) => format!("{} !", tag(&s.provider_id)),
-                            (Reading::Error(_), _) => format!("{} ×", tag(&s.provider_id)),
-                            _ => tag(&s.provider_id),
-                        };
-                        let (rect, _r) =
-                            ui.allocate_exact_size(Vec2::new(label.len() as f32 * 7.2 + 8.0, 18.0), Sense::hover());
-                        ui.painter().circle_filled(egui::pos2(rect.left() + 6.0, rect.center().y), 3.5, color_for(pct, ok));
-                        let label_resp = ui.put(
-                            rect,
-                            egui::Label::new(
-                                RichText::new(label).color(Color32::from_gray(225)).size(12.5),
-                            )
-                            .selectable(false),
-                        );
-                        label_resp.on_hover_ui(|ui| {
-                            ui.strong(s.display_name.clone());
-                            match &s.reading {
-                                Reading::Ok { windows, .. } => {
-                                    for w in windows {
-                                        let pctt = w.remaining_percent.map(|p| format!("{p:.0}% left")).unwrap_or_default();
-                                        let cnt = match (w.remaining_count, w.total_count) {
-                                            (Some(a), Some(b)) if b > 0 => format!(" {a}/{b}"),
-                                            _ => String::new(),
-                                        };
-                                        let reset = w
-                                            .resets_at
-                                            .map(|t| fmt_countdown(t.saturating_sub(now_unix())))
-                                            .map(|c| format!(" · resets in {c}"))
-                                            .unwrap_or_default();
-                                        ui.label(format!("{}: {pctt}{cnt}{reset}", w.label));
-                                    }
-                                    if s.fidelity == Fidelity::Manual {
-                                        ui.colored_label(Color32::from_gray(140), "user-configured source");
-                                    }
-                                }
-                                Reading::NeedsAuth(m) => { ui.colored_label(Color32::YELLOW, format!("needs auth: {m}")); }
-                                Reading::Error(m) => { ui.colored_label(Color32::LIGHT_RED, m.clone()); }
-                                Reading::NotConfigured => { ui.label("not configured"); }
-                            }
-                            let age = now_unix().saturating_sub(s.fetched_at);
-                            ui.colored_label(Color32::from_gray(120), format!("updated {} ago", fmt_countdown(age)));
-                        });
-                    }
-                    if snaps.is_empty() {
-                        ui.label(RichText::new("no providers").color(Color32::from_gray(130)));
-                    }
-                });
             }
         });
     }
