@@ -118,6 +118,14 @@ fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
     keyed.into_iter().map(|(_, _, p)| p).collect()
 }
 
+// Header-row geometry, shared by the collapsed pill (whose window width is
+// derived from it) and the expanded header (whose chip budget is derived
+// from it), so the two can't drift apart when a button is added or resized.
+const H_MARGIN: f32 = 11.0; // horizontal frame inner margin
+const GRIP_W: f32 = 18.0;
+const GRIP_GAP: f32 = 2.0;
+const HEADER_BUTTONS_W: f32 = 26.0 * 4.0 + 8.0 * 3.0; // min/gear/refresh/close + spacing
+const HEADER_ROW_SPACING: f32 = 10.0; // chip/chip and chips/buttons gap
 const COLLAPSED_H: f32 = 36.0;
 const HEADER_H: f32 = 26.0;
 const EXPANDED_W: f32 = 380.0;
@@ -423,17 +431,46 @@ impl App {
         v
     }
 
+    /// How many of `snaps` fit into `avail` px of chip row (chips consume
+    /// `spacing + chip_width` each, the first one without leading spacing).
+    /// Always shows at least one chip; hidden ones fold into the `+N` chip.
+    /// Widths are measured at the widest stable label (`100%`) so the count
+    /// can't grow when a real, narrower percent renders later.
+    fn fitting_chips(
+        ctx: &egui::Context,
+        snaps: &[Snapshot],
+        pal: &Palette,
+        avail: f32,
+        max_any: usize,
+    ) -> usize {
+        let mut used = 0.0;
+        let mut n = 0;
+        for (i, s) in snaps.iter().enumerate() {
+            if i >= max_any {
+                break;
+            }
+            let text_w = ui::chip_text_w(ctx, s, Some(100.0), pal, 1.0);
+            let w = ui::chip_width(text_w) + if i == 0 { 0.0 } else { HEADER_ROW_SPACING };
+            if i > 0 && used + w > avail {
+                break;
+            }
+            used += w;
+            n += 1;
+        }
+        n.max(1).min(snaps.len().max(1))
+    }
+
     /// Collapsed pill width that fits its content exactly.
     fn collapsed_width(&self, ctx: &egui::Context, snaps: &[Snapshot]) -> f32 {
         let max_vis = snaps.len().min(self.cfg.max_visible_collapsed);
-        let mut w = 11.0 * 2.0 // frame margins
-            + 18.0 + 2.0 // grip + gap
-            + 26.0 * 4.0 + 8.0 * 3.0; // four icon buttons + spacing
+        let mut w = H_MARGIN * 2.0 // frame margins
+            + GRIP_W + GRIP_GAP // grip + gap
+            + HEADER_BUTTONS_W;
         for s in snaps.iter().take(max_vis) {
-            w += 10.0 + ui::chip_width(ui::chip_text_w(ctx, s, self.render_pct(s), &self.pal, 1.0));
+            w += HEADER_ROW_SPACING + ui::chip_width(ui::chip_text_w(ctx, s, self.render_pct(s), &self.pal, 1.0));
         }
         if snaps.len() > max_vis {
-            w += 10.0 + 32.0; // +N chip
+            w += HEADER_ROW_SPACING + 32.0; // +N chip
         }
         if snaps.is_empty() {
             w = w.max(280.0);
@@ -617,10 +654,28 @@ impl App {
     fn render_header(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], f: f32, now: u64) {
         let pal = self.pal;
         {
-            let max_vis = if self.expanded {
+            // The header row is grip+buttons (RTL) plus chips (LTR) sharing one
+            // fixed width. Budget the chips so they can never run under the
+            // buttons; anything that doesn't fit folds into the `+N` chip.
+            let chips_avail = if self.expanded {
+                EXPANDED_W
+                    - H_MARGIN * 2.0
+                    - GRIP_W
+                    - GRIP_GAP
+                    - HEADER_BUTTONS_W
+                    - HEADER_ROW_SPACING
+            } else {
+                f32::INFINITY
+            };
+            let hard_cap = if self.expanded {
                 snaps.len()
             } else {
-                snaps.len().min(self.cfg.max_visible_collapsed)
+                self.cfg.max_visible_collapsed
+            };
+            let max_vis = if self.expanded && chips_avail.is_finite() {
+                Self::fitting_chips(ctx, snaps, &pal, chips_avail, hard_cap)
+            } else {
+                snaps.len().min(hard_cap)
             };
             ui.horizontal(|ui| {
                 // grip
@@ -648,10 +703,11 @@ impl App {
                     ui::draw_chip(ui, rect, s, pct, &pal, 1.0, stale, resp.hovered());
                     resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
                 }
-                if !self.expanded && snaps.len() > max_vis
-                    && ui::widgets::overflow_chip(ui, snaps.len() - max_vis, &pal).clicked() {
-                        self.expanded = true;
-                    }
+                if snaps.len() > max_vis
+                    && ui::widgets::overflow_chip(ui, snaps.len() - max_vis, &pal).clicked()
+                {
+                    self.expanded = true;
+                }
                 if snaps.is_empty() {
                     ui.label(
                         RichText::new("no providers — edit config.toml").color(pal.faint).size(12.0),
