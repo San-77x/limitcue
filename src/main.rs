@@ -319,18 +319,14 @@ impl eframe::App for App {
                         (Reading::Error(_), _) => "err".into(),
                         _ => "?".into(),
                     };
-                    let width = 20.0 + label.len() as f32 * 7.4 + 6.0;
+                    let text = format!("{} {}", tag(&s.provider_id), label);
+                    let width = 22.0 + text.chars().count() as f32 * 7.4 + 8.0;
                     let (rect, _r) = ui.allocate_exact_size(Vec2::new(width, header_h), Sense::hover());
-                    let c = egui::pos2(rect.left() + 10.0, rect.center().y);
+                    let c = egui::pos2(rect.left() + 11.0, rect.center().y);
                     ring(ui, c, 6.5, pct, ok, 1.0);
                     ui.put(
-                        egui::Rect::from_min_size(egui::pos2(rect.left() + 21.0, rect.center().y - 8.0), Vec2::new(width - 21.0, 16.0)),
-                        egui::Label::new(
-                            RichText::new(format!("{} {}", tag(&s.provider_id), label))
-                                .color(pal::TEXT)
-                                .size(12.5),
-                        )
-                        .selectable(false),
+                        egui::Rect::from_min_size(egui::pos2(rect.left() + 22.0, rect.center().y - 8.0), Vec2::new(width - 22.0, 16.0)),
+                        egui::Label::new(RichText::new(text).color(pal::TEXT).size(12.5)).selectable(false).truncate(),
                     );
                     let resp = ui.interact(rect, ui.id().with(("hover", &s.provider_id)), Sense::hover());
                     resp.on_hover_ui(|ui| {
@@ -356,7 +352,10 @@ impl eframe::App for App {
                     });
                 }
                 if !self.expanded && snaps.len() > 4 {
-                    ui.label(RichText::new(format!("+{}", snaps.len() - 4)).color(pal::MUTED).size(12.0));
+                    ui.label(
+                        RichText::new(format!("+{}", snaps.len() - 4)).color(pal::MUTED).size(12.0),
+                    )
+                    .on_hover_text("click to expand and show all providers");
                 }
                 if snaps.is_empty() {
                     ui.label(RichText::new("no providers — open config to add").color(pal::FAINT).size(12.0));
