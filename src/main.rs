@@ -182,7 +182,7 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 // drag grip (left side)
                 let grip_label = ui
-                    .add(egui::Label::new(RichText::new("⠿").color(Color32::from_gray(110)).size(15.0)).selectable(false))
+                    .add(egui::Label::new(RichText::new("≡").color(Color32::from_gray(110)).size(16.0)).selectable(false))
                     .on_hover_text("drag to move");
                 let grip = ui.interact(grip_label.rect.expand(4.0), ui.id().with("grip"), Sense::drag());
                 if grip.drag_started() {
@@ -191,13 +191,11 @@ impl eframe::App for App {
 
                 if self.expanded {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("—").on_hover_text("minimize").clicked() {
+                        if ui.button("—").on_hover_text("minimize (or press Esc)").clicked() {
                             self.expanded = false;
                         }
-                        if ui.button("⟳").on_hover_text("refresh now").clicked() {
-                            let _ = self.tx_tick.send(());
-                        }
-                        if ui.button("✕").on_hover_text("quit").clicked() {
+                        
+                        if ui.button("×").on_hover_text("quit").clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     });
@@ -209,12 +207,19 @@ impl eframe::App for App {
                         if body.clicked() {
                             self.expanded = true;
                         }
+                        if ui.input(|i| i.key_pressed(egui::Key::R)) {
+                            let _ = self.tx_tick.send(());
+                        }
                     });
                 }
             });
 
             if self.expanded {
                 ui.separator();
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.expanded = false;
+                }
+                ui.colored_label(Color32::from_gray(110), "press R to refresh · Esc to minimize");
                 if snaps.is_empty() {
                     ui.label(RichText::new("no providers configured").color(Color32::from_gray(130)));
                 }
