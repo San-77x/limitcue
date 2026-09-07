@@ -47,15 +47,15 @@ fn load_icons(ctx: &egui::Context) -> Icons {
 }
 
 fn icon_button(ui: &mut egui::Ui, tex: &egui::TextureHandle, tip: &str, alpha: f32) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(24.0), if alpha > 0.9 { Sense::click() } else { Sense::hover() });
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(26.0), if alpha > 0.9 { Sense::click() } else { Sense::hover() });
     if alpha > 0.02 {
         if resp.hovered() && alpha > 0.9 {
             ui.painter().rect_filled(rect.shrink(2.0), 6.0, Color32::from_gray(52));
         }
-        let base = if resp.hovered() && alpha > 0.9 { Color32::WHITE } else { Color32::from_gray(190) };
+        let base = if resp.hovered() && alpha > 0.9 { Color32::WHITE } else { Color32::from_gray(215) };
         ui.painter().image(
             tex.id(),
-            rect.shrink(4.5),
+            egui::Rect::from_center_size(rect.center(), Vec2::splat(17.0)),
             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             base.linear_multiply(alpha),
         );
@@ -183,8 +183,8 @@ impl App {
     }
 }
 
-const COLLAPSED: Vec2 = Vec2::new(300.0, 34.0);
-const HEADER_H: f32 = 32.0;
+const COLLAPSED: Vec2 = Vec2::new(300.0, 36.0);
+const HEADER_H: f32 = 26.0;
 const MAX_EXPANDED_H: f32 = 400.0;
 
 mod pal {
@@ -262,7 +262,7 @@ impl eframe::App for App {
                 _ => 1,
             })
             .sum();
-        let ideal_h = HEADER_H + 44.0 + total_windows as f32 * 20.0 + snaps.len() as f32 * 26.0;
+        let ideal_h = HEADER_H + 46.0 + total_windows as f32 * 20.0 + snaps.len() as f32 * 26.0;
         let expanded_size = Vec2::new(380.0, ideal_h.min(MAX_EXPANDED_H));
         if self.expanded {
             self.last_expanded_h = expanded_size.y;
@@ -286,7 +286,7 @@ impl eframe::App for App {
             .fill(pal::BG)
             .stroke(egui::Stroke::new(1.0, pal::BORDER))
             .rounding(egui::Rounding::same(17.0))
-            .inner_margin(egui::Margin::symmetric(10.0, if self.expanded { 8.0 } else { 5.0 }));
+            .inner_margin(egui::Margin::symmetric(11.0, if self.expanded { 8.0 } else { 5.0 }));
 
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             // ============ header row ============
@@ -295,12 +295,12 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.set_clip_rect(hrect);
                 // grip
-                let (grect, _gr) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
+                let (grect, _gr) = ui.allocate_exact_size(Vec2::new(18.0, HEADER_H), Sense::hover());
                 ui.painter().image(
                     self.icons.grip.id(),
-                    grect.shrink(2.0),
+                    egui::Rect::from_center_size(grect.center(), Vec2::splat(15.0)),
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    Color32::from_gray(120).linear_multiply(0.4 + 0.6 * f),
+                    Color32::from_gray(165).linear_multiply(0.75 + 0.25 * f),
                 );
                 let grip = ui.interact(grect.expand(4.0), ui.id().with("grip"), Sense::drag());
                 if grip.drag_started() {
