@@ -210,7 +210,6 @@ pub fn rail_card(
                             pal,
                             alpha,
                         );
-                        // "N% used" under the bar, like the reference spec
                         ui.add_space(4.0);
                         let used = w.remaining_percent.map(|p| 100.0 - p);
                         ui.painter().text(

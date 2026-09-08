@@ -853,10 +853,6 @@ impl App {
         }
     }
 
-    /// Vertical rail shown when docked left/right (matches the reference
-    /// mockups): one logo-pill row per provider — dark rounded card, logo
-    /// ring, percent under it — then a settings gear at the bottom. Click a
-    /// row to slide the inline usage card out beside the strip.
     /// Vertical rail shown when docked left/right: a pure-black notch body
     /// with concave fillets where it meets the screen edge, one ring cell per
     /// provider, and a settings orb below. Hovering a cell (or the gap+card
