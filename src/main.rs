@@ -144,12 +144,12 @@ fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
 // Header-row geometry, shared by the collapsed pill (whose window width is
 // derived from it) and the expanded header (whose chip budget is derived
 // from it), so the two can't drift apart when a button is added or resized.
-const H_MARGIN: f32 = 11.0; // horizontal frame inner margin
+const H_MARGIN: f32 = 10.0; // horizontal frame inner margin
 const GRIP_W: f32 = 18.0;
 const GRIP_GAP: f32 = 2.0;
 const HEADER_BUTTONS_W: f32 = 26.0 * 4.0 + 8.0 * 3.0; // min/gear/refresh/close + spacing
 const HEADER_ROW_SPACING: f32 = 10.0; // chip/chip and chips/buttons gap
-const COLLAPSED_H: f32 = 36.0;
+const COLLAPSED_H: f32 = 38.0;
 const HEADER_H: f32 = 26.0;
 const EXPANDED_W: f32 = 380.0;
 const MAX_EXPANDED_H: f32 = 400.0;
@@ -160,16 +160,19 @@ const SPIN_SECS: f32 = 0.55;
 
 // Side-dock rail (left/right): a black notch hugging the screen edge —
 // one ring cell per provider, an orb button below, and a tail-card usage
-// popup beside the hovered cell.
-const RAIL_STRIP_W: f32 = 62.0; // notch body width
-const RAIL_ROW_H: f32 = 60.0; // one ring cell (ring + percent)
-const RAIL_ROW_GAP: f32 = 8.0;
+// popup beside the hovered cell. The window is STRIP + FLARE wide so the
+// concave bezel fillets fit inside it while the visible spine stays slim.
+const RAIL_STRIP_W: f32 = 40.0; // visible black notch spine
+const RAIL_ROW_H: f32 = 54.0; // one ring cell (ring + percent)
+const RAIL_ROW_GAP: f32 = 10.0;
 const RAIL_COL_GAP: f32 = 8.0; // notch ↔ card gap when the card is open
 const RAIL_CARD_W: f32 = 260.0; // usage card width
-const RAIL_RING_R: f32 = 22.0; // ring radius in a cell
-const RAIL_CORNER: f32 = 15.0; // convex corner radius of the notch body
-const RAIL_FLARE: f32 = 13.0; // concave fillet where the body meets the edge
-const RAIL_ORB: f32 = 26.0; // settings orb diameter
+const RAIL_RING_R: f32 = 14.0; // ring radius in a cell
+const RAIL_CORNER: f32 = 11.0; // convex corner radius of the notch body
+const RAIL_FLARE: f32 = 10.0; // concave fillet where the body meets the edge
+const RAIL_ORB: f32 = 20.0; // settings orb diameter
+/// Ring stroke width in a rail cell, scaled for the small radius.
+const RAIL_RING_STROKE: f32 = 1.6;
 /// Card tail width (base at the notch edge, tip on the card).
 const RAIL_TAIL_W: f32 = 12.0;
 /// How long the card stays after the pointer leaves everything (grace for
@@ -223,6 +226,8 @@ struct App {
     rail_hover_at: Option<Instant>,
     /// Rail-card fade (0..1): springs toward 1 while hovered, toward 0 after.
     rail_card_f: f32,
+    /// The notch is the primary surface. LIMITCUE_FLOAT=1 restores the pill.
+    notch_mode: bool,
 }
 
 impl App {
@@ -236,6 +241,7 @@ impl App {
         let expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
         let settings_open = std::env::var("LIMITCUE_UI_SETTINGS").map(|v| v != "0").unwrap_or(false);
         let rail_open = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
+        let notch_mode = std::env::var("LIMITCUE_FLOAT").map(|v| v == "0").unwrap_or(true);
         let cfg_next = cfg.clone();
         Self {
             snapshots,
@@ -252,7 +258,7 @@ impl App {
             logos,
             dock,
             restore_sent: 0,
-            last_edge: Edge::Free,
+            last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
             settings_open,
             new_provider_id: String::new(),
@@ -260,6 +266,7 @@ impl App {
             rail_last: None,
             rail_hover_at: None,
             rail_card_f: 0.0,
+            notch_mode,
         }
     }
 
@@ -521,9 +528,11 @@ impl App {
     /// Collapsed pill width that fits its content exactly.
     fn collapsed_width(&self, ctx: &egui::Context, snaps: &[Snapshot]) -> f32 {
         let max_vis = snaps.len().min(self.cfg.max_visible_collapsed);
+        // The collapsed state is a real edge pill, not a shrunken window.
+        // Controls are not laid out until expanded, so the shell hugs the
+        // provider chips instead of reserving invisible button space.
         let mut w = H_MARGIN * 2.0 // frame margins
-            + GRIP_W + GRIP_GAP // grip + gap
-            + HEADER_BUTTONS_W;
+            + GRIP_W + GRIP_GAP; // grip + gap
         for s in snaps.iter().take(max_vis) {
             w += HEADER_ROW_SPACING + ui::chip_width(ui::chip_text_w(ctx, s, self.render_pct(s), &self.pal, 1.0));
         }
@@ -562,7 +571,8 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain(ctx);
         self.tweens.retain(|_, t| t.value().is_some());
-        let edge = self.dock.lock().unwrap().edge;
+        let stored_edge = self.dock.lock().unwrap().edge;
+        let edge = if self.notch_mode && stored_edge == Edge::Free { Edge::Left } else { stored_edge };
         if edge != self.last_edge {
             self.last_edge = edge;
             ctx.request_repaint();
@@ -584,7 +594,13 @@ impl eframe::App for App {
         let now = now_unix();
         let snaps = self.visible();
         // Left/right dock: the pill becomes a vertical rail (rings + %).
-        let rail = matches!(edge, Edge::Left | Edge::Right);
+        // In notch mode this is the only primary surface: there is no
+        // dashboard-style expand state. Details are revealed by hovering a
+        // provider socket and live in the adjacent contextual card.
+        let rail = self.notch_mode || matches!(edge, Edge::Left | Edge::Right);
+        if self.notch_mode {
+            self.expanded = false;
+        }
 
         // Expanded height grows with content, capped by MAX_EXPANDED_H (then scrolls).
         let ideal_h = HEADER_H + 16.0
@@ -627,13 +643,15 @@ impl eframe::App for App {
                 // fading out: keep sizing for the card that just closed
                 self.rail_last.clone()
             });
-            let card_h = ui::rail_card_height(id.as_deref().and_then(|i| snaps.iter().find(|s| s.provider_id == i)));
+            let card_h = ui::rail_card_height(id.as_deref().and_then(|i| snaps.iter().find(|s| s.provider_id == *i)));
             Vec2::new(
                 RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                rail_h.max(card_h + 4.0),
+                (rail_h + RAIL_FLARE).max(card_h + 4.0),
             )
         } else {
-            Vec2::new(RAIL_STRIP_W, rail_h)
+            // Spine plus a transparent zone so the bezel fillets fit inside
+            // the window instead of being clipped at rest.
+            Vec2::new(RAIL_STRIP_W + RAIL_FLARE, rail_h)
         };
 
         let target = if rail {
@@ -738,7 +756,9 @@ impl eframe::App for App {
             }
         };
         let detail = |ui: &mut egui::Ui, this: &mut App| {
-            if f > 0.02 {
+            // Rail mode has no detail area — everything lives in the notch
+            // and its tail-card.
+            if !rail && f > 0.02 {
                 this.render_detail(ui, &snaps, f, now);
             }
         };
@@ -819,23 +839,25 @@ impl App {
                     );
                 }
 
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let spin = self
-                        .refresh_at
-                        .map(|t0| t0.elapsed().as_secs_f32() / SPIN_SECS * std::f32::consts::TAU * 1.5);
-                    if ui::widgets::icon_button(ui, &self.icons.min, "minimize (or press Esc)", f, &pal, None).clicked() {
-                        self.expanded = false;
-                    }
-                    if ui::widgets::icon_button(ui, &self.icons.gear, "settings", f, &pal, None).clicked() {
-                        self.settings_open = true;
-                    }
-                    if ui::widgets::icon_button(ui, &self.icons.refresh, "refresh now", f, &pal, spin).clicked() {
-                        self.refresh(ctx);
-                    }
-                    if ui::widgets::icon_button(ui, &self.icons.close, "quit", f, &pal, None).clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
+                if self.expanded {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let spin = self
+                            .refresh_at
+                            .map(|t0| t0.elapsed().as_secs_f32() / SPIN_SECS * std::f32::consts::TAU * 1.5);
+                        if ui::widgets::icon_button(ui, &self.icons.min, "minimize (or press Esc)", f, &pal, None).clicked() {
+                            self.expanded = false;
+                        }
+                        if ui::widgets::icon_button(ui, &self.icons.gear, "settings", f, &pal, None).clicked() {
+                            self.settings_open = true;
+                        }
+                        if ui::widgets::icon_button(ui, &self.icons.refresh, "refresh now", f, &pal, spin).clicked() {
+                            self.refresh(ctx);
+                        }
+                        if ui::widgets::icon_button(ui, &self.icons.close, "quit", f, &pal, None).clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    });
+                }
             });
 
             if f < 0.05 {
@@ -874,14 +896,13 @@ impl App {
 
         // ---- hover bookkeeping: does the card stay open? -----------------
         let over_card = self.rail_card_f > 0.0 && pointer.is_some_and(|pt| {
-            let card_x = if on_left {
-                RAIL_STRIP_W + RAIL_COL_GAP
+            // Card x-range plus the gap toward the strip, so crossing the
+            // gap (or sitting anywhere on the card) doesn't count as "out".
+            let (x0, x1) = if on_left {
+                (RAIL_STRIP_W - 2.0, ui_rect.right())
             } else {
-                0.0
+                (-2.0, RAIL_COL_GAP + 2.0)
             };
-            // include the gap so crossing to the card doesn't count as "out"
-            let x0 = if on_left { RAIL_STRIP_W - 2.0 } else { card_x - 2.0 };
-            let x1 = if on_left { ui_rect.right() } else { card_x + RAIL_COL_GAP + 2.0 };
             pt.x >= x0 && pt.x <= x1 && pt.y >= ui_rect.top() && pt.y <= ui_rect.bottom()
         });
 
@@ -932,7 +953,7 @@ impl App {
             }
             // ring + white logo (dark disc), centered in the cell
             let ring_center = egui::pos2(row_rect.center().x, row_rect.center().y - 8.0);
-            ui::widgets::logo_ring_on(
+            ui::widgets::logo_ring_stroke_on(
                 ui,
                 ring_center,
                 RAIL_RING_R,
@@ -944,6 +965,7 @@ impl App {
                 &pal,
                 1.0,
                 pal.rail_disc,
+                RAIL_RING_STROKE,
             );
             // percent under the ring (used %, white; auth/err labels colored)
             let label = match (&s.reading, pct) {
@@ -1034,6 +1056,15 @@ impl App {
             let pct = self.render_pct(s);
             let stale = self.is_stale(s, now);
             let a = self.rail_card_f.clamp(0.0, 1.0);
+            // The usage card is a small floating bubble, not a second rail.
+            // Keep it vertically attached to the hovered socket so the
+            // pointer can cross the tail without the card jumping.
+            let card_h = ui::rail_card_height(Some(s));
+            // Center on the hovered row, but the card can be taller than the
+            // strip — clamp with min<=max guaranteed (max() before min()).
+            let card_y = (hover_row_cy - card_h / 2.0)
+                .max(ui_rect.top() + 8.0)
+                .min((ui_rect.bottom() - card_h - 8.0).max(ui_rect.top() + 8.0));
             let card_rect = Rect::from_min_size(
                 egui::pos2(
                     if on_left {
@@ -1041,9 +1072,9 @@ impl App {
                     } else {
                         0.0
                     },
-                    ui_rect.top(),
+                    card_y,
                 ),
-                Vec2::new(RAIL_CARD_W, ui_rect.height()),
+                Vec2::new(RAIL_CARD_W, card_h),
             );
             // The card paints into its own rect, but the tail must cross the
             // gap between card and strip — draw through the ui painter so the
@@ -1116,6 +1147,21 @@ impl App {
         let pal = self.pal;
         ui.add_space((1.0 - f) * 10.0); // content slides in as it appears
         ui.visuals_mut().override_text_color = Some(pal.text.linear_multiply(f));
+        // Small wordmark above the list (lives here, not in the chip row —
+        // the header budget doesn't account for it).
+        ui.label(
+            RichText::new("LIMITCUE")
+                .monospace()
+                .size(9.5)
+                .strong()
+                .color(pal.accent.linear_multiply(0.85 * f)),
+        );
+        ui.label(
+            RichText::new("/ USAGE")
+                .monospace()
+                .size(8.5)
+                .color(pal.faint.linear_multiply(f)),
+        );
         ui.separator();
         egui::ScrollArea::vertical()
             .max_height((self.cur_size.y - HEADER_H - 34.0).max(60.0))
@@ -1222,7 +1268,13 @@ fn main() -> eframe::Result<()> {
     // Match the initial window size to the starting state (debug/screenshot aid:
     // LIMITCUE_UI_EXPANDED=1 opens already expanded at full size).
     let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
-    let init_size = if start_expanded {
+    let notch_mode = std::env::var("LIMITCUE_FLOAT").map(|v| v == "0").unwrap_or(true);
+    let init_size = if notch_mode {
+        // Resting notch: spine + the transparent zone the bezel fillets
+        // live in; height matches the rail's own layout math.
+        let rail_h = 4.0 * RAIL_ROW_H + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        Vec2::new(RAIL_STRIP_W + RAIL_FLARE, rail_h)
+    } else if start_expanded {
         Vec2::new(EXPANDED_W, MAX_EXPANDED_H)
     } else {
         Vec2::new(260.0, 30.0)
@@ -1234,7 +1286,7 @@ fn main() -> eframe::Result<()> {
             let (x, y) = v.split_once(',')?;
             Some(egui::pos2(x.parse().ok()?, y.parse().ok()?))
         })
-        .unwrap_or_else(|| egui::pos2(60.0, 40.0));
+        .unwrap_or_else(|| if notch_mode { egui::pos2(0.0, 120.0) } else { egui::pos2(60.0, 40.0) });
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_decorations(false)

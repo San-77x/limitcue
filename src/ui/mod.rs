@@ -351,8 +351,12 @@ pub fn provider_card(
     let hovered = ui.ctx().read_response(card_id).map(|r| r.hovered()).unwrap_or(false);
     egui::Frame::none()
         .fill(if hovered { pal.card_hover } else { pal.card })
-        .rounding(egui::Rounding::same(10.0))
-        .inner_margin(egui::Margin::symmetric(10.0, 7.0))
+        .stroke(egui::Stroke::new(
+            1.0_f32,
+            if hovered { pal.accent.linear_multiply(0.42) } else { pal.border },
+        ))
+        .rounding(egui::Rounding::same(13.0))
+        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
         .show(ui, |ui| {
             let now = now_unix();
             let ok = matches!(s.reading, Reading::Ok { .. });
@@ -391,6 +395,8 @@ pub fn provider_card(
                     ui.label(RichText::new(line).color(pal.faint.linear_multiply(alpha)).size(10.5).monospace());
                 });
             });
+
+            ui.add_space(2.0);
 
             match &s.reading {
                 Reading::Ok { windows, .. } => {

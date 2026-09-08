@@ -15,7 +15,6 @@
 //
 // Edges: 0 free, 1 top, 2 bottom, 3 left, 4 right.
 
-const SNAP_PX = 32; // distance from an output edge that triggers docking
 const APP = "limitcue";
 
 function isLimitCue(w) {
@@ -53,20 +52,16 @@ function isFlush(w, edge) {
     return false;
 }
 
-// Which edge the window is currently closest to (within SNAP_PX), else 0.
+// Which SIDE edge the window is currently closest to, else 0. The notch
+// docks left/right only — top/bottom drags snap to whichever side is
+// nearer. The threshold is generous: anywhere outside SNAP_PX of a side
+// still snaps to the nearer side, so a window is never left undocked.
 function nearestEdge(w) {
     let g = w.frameGeometry;
     let a = workArea(w);
-    let dTop = Math.abs(g.y - a.y);
-    let dBottom = Math.abs(g.y + g.height - (a.y + a.height));
     let dLeft = Math.abs(g.x - a.x);
     let dRight = Math.abs(g.x + g.width - (a.x + a.width));
-    let best = 0, bestD = SNAP_PX;
-    if (dTop < bestD) { best = 1; bestD = dTop; }
-    if (dBottom < bestD) { best = 2; bestD = dBottom; }
-    if (dLeft < bestD) { best = 3; bestD = dLeft; }
-    if (dRight < bestD) { best = 4; bestD = dRight; }
-    return best;
+    return dLeft <= dRight ? 3 : 4;
 }
 
 // Re-clamp to the docked edge unless the user is mid-drag; keeps the pill

@@ -137,6 +137,26 @@ pub fn logo_ring_on(
     alpha: f32,
     disc: Color32,
 ) {
+    logo_ring_stroke_on(ui, center, r, logo, letter, brand, frac, color, pal, alpha, disc, 2.5)
+}
+
+/// [`logo_ring_on`] with a caller-chosen ring stroke width (the rail's
+/// small cells use a thinner stroke so the arc doesn't read chunky).
+#[allow(clippy::too_many_arguments)]
+pub fn logo_ring_stroke_on(
+    ui: &egui::Ui,
+    center: Pos2,
+    r: f32,
+    logo: Option<&egui::TextureHandle>,
+    letter: &str,
+    brand: Color32,
+    frac: f32,
+    color: Color32,
+    pal: &Palette,
+    alpha: f32,
+    disc: Color32,
+    stroke: f32,
+) {
     let Some(tex) = logo else {
         return monogram_ring_on(ui, center, r, letter, brand, frac, color, pal, alpha, disc);
     };
@@ -151,7 +171,7 @@ pub fn logo_ring_on(
         Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
         Color32::WHITE.linear_multiply(alpha),
     );
-    ring(ui, center, r, 2.5, frac, color, pal, alpha);
+    ring(ui, center, r, stroke, frac, color, pal, alpha);
 }
 
 /// Slim rounded progress bar with a track.

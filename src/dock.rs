@@ -46,6 +46,9 @@ impl Edge {
         }
     }
 
+    /// Deprecated: the notch is side-only now and the restore script derives
+    /// the edge itself, so nothing serializes edges anymore.
+    #[allow(dead_code)]
     pub fn to_u8(self) -> u8 {
         match self {
             Edge::Free => 0,
@@ -121,42 +124,38 @@ pub fn start_service(state: SharedDock) -> Result<(), zbus::Error> {
     Ok(())
 }
 
-/// Ask KWin (via its Scripting D-Bus interface) to apply the persisted dock
-/// position to our window. Writes a one-shot script with the geometry baked
-/// in, then loads + starts it; KWin runs it against the window that already
-/// exists. Best-effort: failures just mean no restore this launch.
-pub fn request_restore(state: &DockState) {
+/// Ask KWin (via its Scripting D-Bus interface) to dock our window to the
+/// nearer screen side. The generated one-shot ignores the stored edge — the
+/// notch is side-only — and reports the settled edge back over D-Bus so the
+/// app persists it. Best-effort: failures just mean no restore this launch.
+pub fn request_restore(_state: &DockState) {
     let dir = cache_dir();
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
     let path = dir.join("apply.js");
-    let edge = state.edge.to_u8();
-    let x = state.x;
-    let y = state.y;
-    let js = format!(
-        r#"// generated one-shot by limitcue: restore dock position
+    let js = r#"// generated one-shot by limitcue: restore dock position
+// The notch docks to the left/right sides only. Stored top/bottom/free
+// positions are coerced: snap to whichever side the window's midpoint is
+// nearer, keep the window's own y, and report the side edge back so the
+// app persists it.
 const W = "limitcue";
-for (const w of workspace.windowList()) {{
+for (const w of workspace.windowList()) {
     if ((w.resourceClass + "").indexOf(W) < 0) continue;
     w.keepAbove = true;
     let a = w.output ? w.output.geometry : workspace.virtualScreenGeometry;
     let g = w.frameGeometry;
-    let nx = g.x, ny = g.y;
-    if ({edge} === 1) ny = a.y;
-    else if ({edge} === 2) ny = a.y + a.height - g.height;
-    else if ({edge} === 3) nx = a.x;
-    else if ({edge} === 4) nx = a.x + a.width - g.width;
-    else {{
-        nx = Math.min(Math.max({x}, a.x), a.x + a.width - g.width);
-        ny = Math.min(Math.max({y}, a.y), a.y + a.height - g.height);
-    }}
-    w.frameGeometry = {{ x: nx, y: ny, width: g.width, height: g.height }};
-    print("LC-RESTORE applied edge={edge} " + nx + "," + ny);
+    let mid = g.x + g.width / 2;
+    let edge = (mid < a.x + a.width / 2) ? 3 : 4;
+    let nx = (edge === 3) ? a.x : a.x + a.width - g.width;
+    let ny = Math.min(Math.max(g.y, a.y), a.y + a.height - g.height);
+    w.frameGeometry = { x: nx, y: ny, width: g.width, height: g.height };
+    callDBus("io.limitcue", "/io/limitcue/dock", "io.limitcue.Dock",
+             "StorePosition", Math.round(nx), Math.round(ny), edge);
+    print("LC-RESTORE applied edge=" + edge + " " + nx + "," + ny);
     break;
-}}
-"#
-    );
+}
+"#;
     if std::fs::write(&path, js).is_err() {
         return;
     }
