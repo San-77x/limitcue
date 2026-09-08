@@ -890,7 +890,10 @@ impl App {
         });
 
         // ---- the notch body ----------------------------------------------
-        let body = Rect::from_min_size(ui_rect.min, Vec2::new(RAIL_STRIP_W, ui_rect.height()));
+        // The strip hugs the docked edge: window-left for a left dock,
+        // window-right for a right dock (the card then fills the remainder).
+        let body_x = if on_left { ui_rect.left() } else { ui_rect.right() - RAIL_STRIP_W };
+        let body = Rect::from_min_size(egui::pos2(body_x, ui_rect.top()), Vec2::new(RAIL_STRIP_W, ui_rect.height()));
         let (c0, c1) = if on_left {
             (egui::pos2(body.right(), body.top()), egui::pos2(body.right(), body.bottom()))
         } else {
@@ -1046,10 +1049,12 @@ impl App {
                 ),
                 Vec2::new(RAIL_CARD_W, ui_rect.height()),
             );
-            // fade+slide the card in with egui's area painter: draw manually
-            let card_p = ui.painter_at(card_rect);
+            // The card paints into its own rect, but the tail must cross the
+            // gap between card and strip — draw through the ui painter so the
+            // tip isn't clipped at the card boundary.
+            let card_p = ui.painter();
             let fill = pal.rail_deep.linear_multiply(a);
-            card_p.rect_filled(card_rect.shrink(0.0), 16.0_f32, fill);
+            card_p.rect_filled(card_rect, 16.0_f32, fill);
             // tail triangle from the card edge toward the hovered cell
             let tail_base_x = if on_left { card_rect.left() } else { card_rect.right() };
             let tip_x = if on_left {
@@ -1057,11 +1062,22 @@ impl App {
             } else {
                 card_rect.right() + RAIL_TAIL_W
             };
+            // Pinned (debug-seeded) cards: point the tail at that provider's
+            // row so screenshots don't depend on pointer placement.
+            let row_cy = if pinned {
+                snaps
+                    .iter()
+                    .position(|s| s.provider_id == id)
+                    .map(|i| body.top() + (i as f32 + 0.5) * RAIL_ROW_H + i as f32 * RAIL_ROW_GAP)
+                    .unwrap_or(hover_row_cy)
+            } else {
+                hover_row_cy
+            };
             let tw = 9.0; // half the tail's vertical extent
             // clamp order matters when the card is shorter than the margins
             let (lo, hi) = (card_rect.top() + 24.0, card_rect.bottom() - 24.0);
             let cy = if lo <= hi {
-                hover_row_cy.clamp(lo, hi)
+                row_cy.clamp(lo, hi)
             } else {
                 card_rect.center().y
             };
