@@ -929,6 +929,17 @@ impl App {
         ui::widgets::edge_flare(ui, c0, along, away, RAIL_FLARE, pal.rail_bg, 1.0);
         ui::widgets::edge_flare(ui, c1, along, -away, RAIL_FLARE, pal.rail_bg, 1.0);
 
+        // ---- whole-notch drag surface --------------------------------------
+        // Any drag on the body (left or middle button) hands off to the
+        // compositor's native window move; the KWin integration re-snaps to
+        // the nearer side when the move ends. No visible grip needed.
+        let drag = ui.interact(body, ui.id().with("rail-drag"), Sense::drag());
+        if drag.drag_started_by(egui::PointerButton::Primary)
+            || drag.drag_started_by(egui::PointerButton::Middle)
+        {
+            ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+        }
+
         // ---- ring cells ---------------------------------------------------
         let cell_w = RAIL_STRIP_W;
         let mut hovered_id: Option<String> = None;
@@ -995,7 +1006,9 @@ impl App {
             egui::pos2(body.center().x, next_y + RAIL_ORB / 2.0),
             Vec2::splat(RAIL_ORB),
         );
-        let orb = ui.allocate_rect(orb_rect, Sense::click());
+        // Click-drag on the orb also moves the window (it's part of the
+        // notch surface); a plain click still opens settings.
+        let orb = ui.allocate_rect(orb_rect, Sense::click_and_drag());
         let orb_hover = orb.hovered();
         ui.painter().circle_filled(
             orb_rect.center(),
@@ -1017,7 +1030,12 @@ impl App {
         if orb.clicked() {
             self.settings_open = true;
         }
-        orb.on_hover_text("settings");
+        if orb.drag_started_by(egui::PointerButton::Primary)
+            || orb.drag_started_by(egui::PointerButton::Middle)
+        {
+            ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+        }
+        orb.on_hover_text("settings · drag the notch to move it");
 
         // ---- hover state machine ------------------------------------------
         // (Debug runs seeded with LIMITCUE_UI_RAIL pin the card open so

@@ -23,8 +23,10 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
   expanding lists everything in a scrollable detail area with a max height so
   it never eats your screen. Stale readings fade toward grey instead of
   pretending to be fresh.
-- **Drag it anywhere** by the Lucide grip handle (compositor-native grab;
-  Wayland + X11). Borderless, always-on-top, eased expand/collapse animation.
+- **Drag it anywhere** — grab it anywhere (compositor-native grab;
+  Wayland + X11). No grip icon needed: press-and-drag the pill itself, or
+  the notch when it's docked to a side. Borderless, always-on-top, eased
+  expand/collapse animation.
   Hover any ring for per-window detail; `R` refreshes, `Esc` minimizes.
   On KDE Plasma (Wayland or X11), drag it near a screen edge and it **docks
   flush** — zero gap, square corners on the attached edge — and the detail
@@ -39,10 +41,13 @@ it. Each tracked provider gets its own cell — a dark disc ringed by a
 progress arc (real logo for Claude, Codex/OpenAI, Gemini, Kimi, MiniMax and
 AgentRouter; a monogram letter otherwise) with the used percentage in white
 underneath — and a settings orb sits at the bottom (arc at rest, gear on
-hover). Hovering a cell slides out a rounded usage card with a
-speech-bubble tail pointing at it: per-window label, bar, reset time and
-"N% used". The card lingers through a short grace period after the pointer
-leaves so you can read it, then fades out.
+hover). The whole notch is draggable: press and drag anywhere on it (left
+or middle button) and the compositor moves the window; on release it snaps
+back flush to whichever side you dropped it nearest. Hovering a cell slides
+out a rounded usage card with a speech-bubble tail pointing at it:
+per-window label, bar, reset time and "N% used". The card lingers through
+a short grace period after the pointer leaves so you can read it, then
+fades out.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
   `theme` config key. Expanded cards show each reading's *fidelity* badge
   (official / derived / manual) so trust is always visible.
