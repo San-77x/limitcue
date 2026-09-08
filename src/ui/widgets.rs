@@ -58,6 +58,7 @@ pub fn ring(
 
 /// Brand-colored disc with the provider's initial, wrapped by a progress ring.
 /// The progress arc is the gauge; the disc is the provider identity.
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub fn monogram_ring(
     ui: &egui::Ui,
@@ -70,9 +71,26 @@ pub fn monogram_ring(
     pal: &Palette,
     alpha: f32,
 ) {
+    monogram_ring_on(ui, center, r, letter, brand, frac, color, pal, alpha, pal.card_hover)
+}
+
+/// [`monogram_ring`] with an explicit disc fill color.
+#[allow(clippy::too_many_arguments)]
+pub fn monogram_ring_on(
+    ui: &egui::Ui,
+    center: Pos2,
+    r: f32,
+    letter: &str,
+    brand: Color32,
+    frac: f32,
+    color: Color32,
+    pal: &Palette,
+    alpha: f32,
+    disc: Color32,
+) {
     let p = ui.painter();
     let disc_r = r - 3.0;
-    p.circle_filled(center, disc_r, brand.linear_multiply(0.92 * alpha));
+    p.circle_filled(center, disc_r, disc.linear_multiply(0.92 * alpha));
     if disc_r >= 6.0 && !letter.is_empty() {
         p.text(
             center,
@@ -87,6 +105,7 @@ pub fn monogram_ring(
 
 /// Like [`monogram_ring`], but the disc carries the provider's real logo
 /// (white PNG) instead of a letter. `logo` None falls back to the monogram.
+/// `disc` overrides the disc fill (the rail uses a near-black disc).
 #[allow(clippy::too_many_arguments)]
 pub fn logo_ring(
     ui: &egui::Ui,
@@ -100,13 +119,31 @@ pub fn logo_ring(
     pal: &Palette,
     alpha: f32,
 ) {
+    logo_ring_on(ui, center, r, logo, letter, brand, frac, color, pal, alpha, pal.card_hover)
+}
+
+/// [`logo_ring`] with an explicit disc fill color.
+#[allow(clippy::too_many_arguments)]
+pub fn logo_ring_on(
+    ui: &egui::Ui,
+    center: Pos2,
+    r: f32,
+    logo: Option<&egui::TextureHandle>,
+    letter: &str,
+    brand: Color32,
+    frac: f32,
+    color: Color32,
+    pal: &Palette,
+    alpha: f32,
+    disc: Color32,
+) {
     let Some(tex) = logo else {
-        return monogram_ring(ui, center, r, letter, brand, frac, color, pal, alpha);
+        return monogram_ring_on(ui, center, r, letter, brand, frac, color, pal, alpha, disc);
     };
     let p = ui.painter();
-    // Dark disc (like the mockups) so the white mark pops on any theme.
+    // Dark disc so the white mark pops on any theme.
     let disc_r = r - 3.0;
-    p.circle_filled(center, disc_r, pal.card_hover.linear_multiply(0.95 * alpha));
+    p.circle_filled(center, disc_r, disc.linear_multiply(0.95 * alpha));
     let side = disc_r * 1.15; // logo square inside the disc
     p.image(
         tex.id(),
@@ -180,6 +217,43 @@ pub fn overflow_chip(ui: &mut egui::Ui, n: usize, pal: &Palette) -> egui::Respon
 /// A status dot (needs-auth / error marker).
 pub fn dot(ui: &egui::Ui, center: Pos2, color: Color32, alpha: f32) {
     ui.painter().circle_filled(center, 3.0, color.linear_multiply(alpha));
+}
+
+/// Concave fillet where the rail body meets a screen edge: a filled corner
+/// whose hypotenuse curves inward (quarter-circle of radius `r`), so the pill
+/// reads as flaring out of the bezel. `alpha` tweens it in/out with the size
+/// animation. `along` and `away` are signed unit directions: `along` points
+/// from the corner along the screen edge into the pill, `away` points from
+/// the corner into the pill (perpendicular to the edge).
+pub fn edge_flare(ui: &egui::Ui, corner: Pos2, along: f32, away: f32, r: f32, color: Color32, alpha: f32) {
+    if alpha <= 0.02 || r <= 0.5 {
+        return;
+    }
+    let col = color.linear_multiply(alpha);
+    let p = ui.painter();
+    // Quarter circle: center at corner + along*r + away*r, radius r. The arc
+    // runs from the point r·along off the center to the point r·away off it,
+    // bulging toward the corner; sample angles between those two endpoints
+    // through the quadrant that keeps the arc on the corner side.
+    let cx = corner.x + along * r;
+    let cy = corner.y + away * r;
+    let ang_a = if along > 0.0 { 0.0 } else { std::f32::consts::PI };
+    let ang_b = if away > 0.0 { std::f32::consts::FRAC_PI_2 } else { -std::f32::consts::FRAC_PI_2 };
+    let mut d = ang_b - ang_a;
+    while d > std::f32::consts::PI {
+        d -= std::f32::consts::TAU;
+    }
+    while d < -std::f32::consts::PI {
+        d += std::f32::consts::TAU;
+    }
+    let steps = 8;
+    let mut pts = Vec::with_capacity(steps + 2);
+    for i in 0..=steps {
+        let ang = ang_a + d * (i as f32 / steps as f32);
+        pts.push(egui::pos2(cx + r * ang.cos(), cy + r * ang.sin()));
+    }
+    pts.push(corner);
+    p.add(Shape::convex_polygon(pts, col, Stroke::NONE));
 }
 
 /// Icon button drawn from a texture; `angle` optionally spins the glyph

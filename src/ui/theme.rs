@@ -23,6 +23,12 @@ pub struct Palette {
     /// Unfilled track behind rings and bars.
     pub track: Color32,
     pub accent: Color32,
+    /// Fill of the docked side-rail body (pure black notch look).
+    pub rail_bg: Color32,
+    /// Disc fill behind a provider logo on the rail.
+    pub rail_disc: Color32,
+    /// Deeper shade for the same rail (hover fill / card body).
+    pub rail_deep: Color32,
 }
 
 pub const THEMES: &[&str] = &["midnight", "tokyo-night", "catppuccin", "gruvbox"];
@@ -41,6 +47,9 @@ pub const MIDNIGHT: Palette = Palette {
     stale: Color32::from_rgb(122, 128, 140),
     track: Color32::from_rgb(46, 50, 60),
     accent: Color32::from_rgb(125, 162, 247),
+    rail_bg: Color32::BLACK,
+    rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
+    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
 };
 
 pub const TOKYO_NIGHT: Palette = Palette {
@@ -57,6 +66,9 @@ pub const TOKYO_NIGHT: Palette = Palette {
     stale: Color32::from_rgb(107, 115, 159),
     track: Color32::from_rgb(42, 46, 66),
     accent: Color32::from_rgb(122, 162, 247),
+    rail_bg: Color32::BLACK,
+    rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
+    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
 };
 
 pub const CATPPUCCIN: Palette = Palette {
@@ -73,6 +85,9 @@ pub const CATPPUCCIN: Palette = Palette {
     stale: Color32::from_rgb(127, 132, 156),
     track: Color32::from_rgb(49, 50, 68),
     accent: Color32::from_rgb(137, 180, 250),
+    rail_bg: Color32::BLACK,
+    rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
+    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
 };
 
 pub const GRUVBOX: Palette = Palette {
@@ -89,6 +104,9 @@ pub const GRUVBOX: Palette = Palette {
     stale: Color32::from_rgb(146, 131, 116),
     track: Color32::from_rgb(60, 56, 54),
     accent: Color32::from_rgb(131, 165, 152),
+    rail_bg: Color32::BLACK,
+    rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
+    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
 };
 
 pub fn palette(name: &str) -> Palette {

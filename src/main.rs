@@ -9,7 +9,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
 
-use eframe::egui::{self, RichText, Sense, Vec2, ViewportBuilder, ViewportCommand};
+use eframe::egui::{self, Color32, Rect, RichText, Sense, Vec2, ViewportBuilder, ViewportCommand};
 
 use config::Config;
 use dock::Edge;
@@ -158,15 +158,23 @@ const SETTINGS_H: f32 = 420.0;
 const TWEEN_SECS: f32 = 0.45;
 const SPIN_SECS: f32 = 0.55;
 
-// Side-dock rail (left/right): a narrow strip of logo-pill rows pinned to
-// the screen edge; expanding slides a usage card out beside it.
-const RAIL_STRIP_W: f32 = 76.0; // collapsed rail width
-const RAIL_CARD_W: f32 = 240.0; // usage card width when expanded
-const RAIL_ROW_H: f32 = 46.0; // one logo-pill row
-const RAIL_ROW_GAP: f32 = 6.0;
-const RAIL_COL_GAP: f32 = 6.0; // strip ↔ card gap when expanded
-const RAIL_MARGIN: f32 = 6.0; // frame inner margin on the rail
-const RAIL_GEAR_ZONE: f32 = 30.0; // gear button + spacing under the rows
+// Side-dock rail (left/right): a black notch hugging the screen edge —
+// one ring cell per provider, an orb button below, and a tail-card usage
+// popup beside the hovered cell.
+const RAIL_STRIP_W: f32 = 62.0; // notch body width
+const RAIL_ROW_H: f32 = 60.0; // one ring cell (ring + percent)
+const RAIL_ROW_GAP: f32 = 8.0;
+const RAIL_COL_GAP: f32 = 8.0; // notch ↔ card gap when the card is open
+const RAIL_CARD_W: f32 = 260.0; // usage card width
+const RAIL_RING_R: f32 = 22.0; // ring radius in a cell
+const RAIL_CORNER: f32 = 15.0; // convex corner radius of the notch body
+const RAIL_FLARE: f32 = 13.0; // concave fillet where the body meets the edge
+const RAIL_ORB: f32 = 26.0; // settings orb diameter
+/// Card tail width (base at the notch edge, tip on the card).
+const RAIL_TAIL_W: f32 = 12.0;
+/// How long the card stays after the pointer leaves everything (grace for
+/// crossing the gap between notch and card).
+const RAIL_HOVER_OUT_SECS: f32 = 0.35;
 
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
@@ -208,6 +216,13 @@ struct App {
     new_provider_id: String,
     /// Provider whose inline usage card is open on the rail (left/right dock).
     rail_open: Option<String>,
+    /// Provider whose card is fading out (kept for height budgeting).
+    rail_last: Option<String>,
+    /// Last instant the pointer was over the rail/card — drives the card's
+    /// hover-out grace period.
+    rail_hover_at: Option<Instant>,
+    /// Rail-card fade (0..1): springs toward 1 while hovered, toward 0 after.
+    rail_card_f: f32,
 }
 
 impl App {
@@ -242,6 +257,9 @@ impl App {
             settings_open,
             new_provider_id: String::new(),
             rail_open,
+            rail_last: None,
+            rail_hover_at: None,
+            rail_card_f: 0.0,
         }
     }
 
@@ -535,6 +553,11 @@ impl App {
     }
 }
 
+/// Rail-card spring rate for the fade in/out (per-second exponential).
+fn t_rail_spring(dt: f32) -> f32 {
+    1.0 - (-9.0 * dt).exp()
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain(ctx);
@@ -581,20 +604,33 @@ impl eframe::App for App {
             self.last_expanded_h = expanded_size.y;
         }
 
-        // Rail: strip only when collapsed; strip + inline usage card when a
-        // provider is opened. Height always fits the strip's rows.
-        // The rail shows one row per provider — height is cheap vertically,
-        // so max_visible_collapsed only limits the horizontal pill.
+        let dt = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
+
+        // Rail: notch body only when nothing is hovered; body + tail-card
+        // while a provider is hovered (card fades/springs, so its height is
+        // budgeted at full once the pointer is on it). The rail shows one
+        // cell per provider — max_visible_collapsed only limits the
+        // horizontal pill.
         let rail_rows = snaps.len().max(1) as f32;
-        let rail_h = RAIL_MARGIN * 2.0
-            + rail_rows * RAIL_ROW_H
-            + (rail_rows - 1.0) * RAIL_ROW_GAP
-            + RAIL_GEAR_ZONE;
-        let rail_size = if let Some(id) = &self.rail_open {
-            let card_h = rail_card_height(snaps.iter().find(|s| s.provider_id == *id), now);
+        let rail_h = rail_rows * RAIL_ROW_H + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        let card_want = self.rail_open.is_some();
+        let card_f_target = if card_want { 1.0 } else { 0.0 };
+        self.rail_card_f += (card_f_target - self.rail_card_f) * (t_rail_spring(dt));
+        if self.rail_card_f < 0.01 {
+            self.rail_card_f = 0.0;
+        }
+        if card_want {
+            self.rail_card_f = self.rail_card_f.max(0.02);
+        }
+        let rail_size = if self.rail_card_f > 0.0 {
+            let id = self.rail_open.clone().or_else(|| {
+                // fading out: keep sizing for the card that just closed
+                self.rail_last.clone()
+            });
+            let card_h = ui::rail_card_height(id.as_deref().and_then(|i| snaps.iter().find(|s| s.provider_id == i)));
             Vec2::new(
                 RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                rail_h.max(card_h),
+                rail_h.max(card_h + 4.0),
             )
         } else {
             Vec2::new(RAIL_STRIP_W, rail_h)
@@ -616,7 +652,6 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
         }
 
-        let dt = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
         let t = 1.0 - (-18.0 * dt).exp();
         let prev = self.cur_size;
         self.cur_size = Vec2::new(prev.x + (target.x - prev.x) * t, prev.y + (target.y - prev.y) * t);
@@ -653,23 +688,30 @@ impl eframe::App for App {
         // Edge docking: square the two corners on the attached edge; when
         // docked at the bottom, the layout flips so the detail card grows
         // *up* (header/pill stays nearest the screen edge).
-        let rounding = match edge {
-            Edge::Top => egui::Rounding { nw: 0.0, ne: 0.0, sw: 17.0, se: 17.0 },
-            Edge::Bottom => egui::Rounding { nw: 17.0, ne: 17.0, sw: 0.0, se: 0.0 },
-            Edge::Left => egui::Rounding { nw: 0.0, sw: 0.0, ne: 17.0, se: 17.0 },
-            Edge::Right => egui::Rounding { nw: 17.0, sw: 17.0, ne: 0.0, se: 0.0 },
-            Edge::Free => egui::Rounding::same(17.0),
+        let rounding = if rail {
+            // the notch body paints its own corners; keep the frame square
+            egui::Rounding::ZERO
+        } else {
+            match edge {
+                Edge::Top => egui::Rounding { nw: 0.0, ne: 0.0, sw: 17.0, se: 17.0 },
+                Edge::Bottom => egui::Rounding { nw: 17.0, ne: 17.0, sw: 0.0, se: 0.0 },
+                Edge::Left => egui::Rounding { nw: 0.0, sw: 0.0, ne: 17.0, se: 17.0 },
+                Edge::Right => egui::Rounding { nw: 17.0, sw: 17.0, ne: 0.0, se: 0.0 },
+                Edge::Free => egui::Rounding::same(17.0),
+            }
         };
         let flip = edge == Edge::Bottom;
 
-        let frame = egui::Frame::none()
-            .fill(pal.bg)
-            .stroke(egui::Stroke::new(1.0_f32, pal.border))
-            .rounding(rounding)
-            .inner_margin(egui::Margin::symmetric(
-                if rail { RAIL_MARGIN } else { 11.0 },
-                if self.expanded { 8.0 } else if rail { RAIL_MARGIN } else { 5.0 },
-            ));
+        let frame = if rail {
+            // Transparent host: the notch paints its own black body and fillets.
+            egui::Frame::none()
+        } else {
+            egui::Frame::none()
+                .fill(pal.bg)
+                .stroke(egui::Stroke::new(1.0_f32, pal.border))
+                .rounding(rounding)
+                .inner_margin(egui::Margin::symmetric(11.0, if self.expanded { 8.0 } else { 5.0 }))
+        };
 
         // Settings replaces the whole layout (pill grows to a panel).
         if self.settings_open {
@@ -815,118 +857,238 @@ impl App {
     /// mockups): one logo-pill row per provider — dark rounded card, logo
     /// ring, percent under it — then a settings gear at the bottom. Click a
     /// row to slide the inline usage card out beside the strip.
+    /// Vertical rail shown when docked left/right: a pure-black notch body
+    /// with concave fillets where it meets the screen edge, one ring cell per
+    /// provider, and a settings orb below. Hovering a cell (or the gap+card
+    /// while the card is open) slides the tail-card usage popup out beside
+    /// that cell; it lingers through a short grace period after the pointer
+    /// leaves.
     fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot]) {
         let pal = self.pal;
         let edge = self.last_edge;
-        let now = now_unix();
-        ui.spacing_mut().item_spacing = Vec2::new(0.0, RAIL_ROW_GAP);
         // While the edge is unknown the window may still be the tiny init
-        // pill — don't render rows into a rect they can't fit in.
+        // pill — don't render the notch into a rect it can't fit in.
         if edge == Edge::Free {
             return;
         }
+        let now = now_unix();
+        let on_left = edge == Edge::Left;
+        let ui_rect = ui.max_rect();
+        let pointer = ctx.input(|i| i.pointer.hover_pos());
 
-        // Strip (left cell when the card is open): the logo-pill rows.
-        let strip = |ui: &mut egui::Ui, this: &mut App| {
-            ui.spacing_mut().item_spacing = Vec2::new(0.0, RAIL_ROW_GAP);
-            for s in snaps.iter() {
-                let pct = this.render_pct(s);
-                let stale = this.is_stale(s, now);
-                let ok = matches!(s.reading, Reading::Ok { .. });
-                let frac = (pct.unwrap_or(0.0) / 100.0) as f32;
-                let ring_col = if stale {
-                    ui::theme::mix(ui::widgets::pct_color(pct, ok, &pal), pal.stale, 0.6)
-                } else {
-                    ui::widgets::pct_color(pct, ok, &pal)
-                };
-                let open = this.rail_open.as_deref() == Some(s.provider_id.as_str());
-                let (rect, resp) = ui.allocate_exact_size(
-                    Vec2::new(RAIL_STRIP_W - RAIL_MARGIN * 2.0, RAIL_ROW_H),
-                    Sense::click(),
-                );
-                let p = ui.painter();
-                // the pill card
-                p.rect_filled(
-                    rect,
-                    14.0_f32,
-                    if open || resp.hovered() { pal.card_hover } else { pal.card },
-                );
-                p.rect_stroke(rect, 14.0_f32, egui::Stroke::new(1.0_f32, pal.border));
-                ui::widgets::logo_ring(
-                    ui,
-                    egui::pos2(rect.center().x, rect.center().y - 7.0),
-                    11.0,
-                    this.logos.get(&s.provider_id),
-                    &ui::theme::monogram(&s.provider_id),
-                    ui::theme::brand(&s.provider_id, &pal),
-                    frac,
-                    ring_col,
-                    &pal,
-                    1.0,
-                );
-                // % label under the ring
-                let label = match (&s.reading, pct) {
-                    (Reading::Ok { .. }, Some(p)) => format!("{p:.0}%"),
-                    (Reading::Ok { .. }, None) => "…".into(),
-                    (Reading::NeedsAuth(_), _) => "auth".into(),
-                    (Reading::Error(_), _) => "err".into(),
-                    _ => "?".into(),
-                };
-                p.text(
-                    egui::pos2(rect.center().x, rect.bottom() - 13.0),
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::monospace(9.0),
-                    ui::widgets::pct_color(pct, ok, &pal),
-                );
-                if resp.clicked() {
-                    this.rail_open = if open { None } else { Some(s.provider_id.clone()) };
-                }
-                resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
-            }
-            ui.add_space(2.0);
-            if ui::widgets::icon_button(ui, &this.icons.gear, "settings", 1.0, &pal, None).clicked() {
-                this.settings_open = true;
-            }
+        // ---- hover bookkeeping: does the card stay open? -----------------
+        let over_card = self.rail_card_f > 0.0 && pointer.is_some_and(|pt| {
+            let card_x = if on_left {
+                RAIL_STRIP_W + RAIL_COL_GAP
+            } else {
+                0.0
+            };
+            // include the gap so crossing to the card doesn't count as "out"
+            let x0 = if on_left { RAIL_STRIP_W - 2.0 } else { card_x - 2.0 };
+            let x1 = if on_left { ui_rect.right() } else { card_x + RAIL_COL_GAP + 2.0 };
+            pt.x >= x0 && pt.x <= x1 && pt.y >= ui_rect.top() && pt.y <= ui_rect.bottom()
+        });
+
+        // ---- the notch body ----------------------------------------------
+        let body = Rect::from_min_size(ui_rect.min, Vec2::new(RAIL_STRIP_W, ui_rect.height()));
+        let (c0, c1) = if on_left {
+            (egui::pos2(body.right(), body.top()), egui::pos2(body.right(), body.bottom()))
+        } else {
+            (egui::pos2(body.left(), body.top()), egui::pos2(body.left(), body.bottom()))
         };
+        let r = RAIL_CORNER.min(body.height() / 2.0);
+        // body with two square edge-corners and two 15px rounded corners
+        let body_rounding = if on_left {
+            egui::Rounding { nw: 0.0, sw: 0.0, ne: r, se: r }
+        } else {
+            egui::Rounding { nw: r, sw: r, ne: 0.0, se: 0.0 }
+        };
+        ui.painter().rect_filled(body, body_rounding, pal.rail_bg);
+        // concave fillets at the two square corners (into the bezel)
+        let (along, away) = if on_left { (1.0, 1.0) } else { (-1.0, -1.0) };
+        ui::widgets::edge_flare(ui, c0, along, away, RAIL_FLARE, pal.rail_bg, 1.0);
+        ui::widgets::edge_flare(ui, c1, along, -away, RAIL_FLARE, pal.rail_bg, 1.0);
 
-        // Inline usage card (the mockup's popup), beside the strip.
-        let card = |ui: &mut egui::Ui, this: &mut App| {
-            let Some(id) = this.rail_open.clone() else { return };
-            let Some(s) = snaps.iter().find(|s| s.provider_id == id) else {
-                this.rail_open = None;
+        // ---- ring cells ---------------------------------------------------
+        let cell_w = RAIL_STRIP_W;
+        let mut hovered_id: Option<String> = None;
+        let mut hover_row_cy: f32 = body.center().y;
+        let mut next_y = body.top();
+        for s in snaps {
+            let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, RAIL_ROW_H));
+            next_y = row_rect.bottom() + RAIL_ROW_GAP;
+            let pct = self.render_pct(s);
+            let stale = self.is_stale(s, now);
+            let ok = matches!(s.reading, Reading::Ok { .. });
+            let ring_col = if stale {
+                ui::theme::mix(ui::widgets::pct_color(pct, ok, &pal), pal.stale, 0.6)
+            } else {
+                ui::widgets::pct_color(pct, ok, &pal)
+            };
+            let resp = ui.allocate_rect(row_rect, Sense::hover());
+            let hovered = resp.hovered();
+            if hovered {
+                hovered_id = Some(s.provider_id.clone());
+                hover_row_cy = row_rect.center().y;
+            }
+            // ring + white logo (dark disc), centered in the cell
+            let ring_center = egui::pos2(row_rect.center().x, row_rect.center().y - 8.0);
+            ui::widgets::logo_ring_on(
+                ui,
+                ring_center,
+                RAIL_RING_R,
+                self.logos.get(&s.provider_id),
+                &ui::theme::monogram(&s.provider_id),
+                ui::theme::brand(&s.provider_id, &pal),
+                (pct.unwrap_or(0.0) / 100.0) as f32,
+                ring_col,
+                &pal,
+                1.0,
+                pal.rail_disc,
+            );
+            // percent under the ring (used %, white; auth/err labels colored)
+            let label = match (&s.reading, pct) {
+                (Reading::Ok { .. }, Some(v)) => format!("{:.0}%", 100.0 - v),
+                (Reading::Ok { .. }, None) => "…".into(),
+                (Reading::NeedsAuth(_), _) => "auth".into(),
+                (Reading::Error(_), _) => "err".into(),
+                _ => "?".into(),
+            };
+            let label_col = match &s.reading {
+                Reading::Ok { .. } => Color32::WHITE,
+                Reading::NeedsAuth(_) => pal.warn,
+                Reading::Error(_) => pal.bad,
+                _ => pal.muted,
+            };
+            ui.painter().text(
+                egui::pos2(row_rect.center().x, row_rect.bottom() - 10.0),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::monospace(11.5),
+                label_col,
+            );
+        }
+
+        // ---- settings orb --------------------------------------------------
+        let orb_rect = Rect::from_center_size(
+            egui::pos2(body.center().x, next_y + RAIL_ORB / 2.0),
+            Vec2::splat(RAIL_ORB),
+        );
+        let orb = ui.allocate_rect(orb_rect, Sense::click());
+        let orb_hover = orb.hovered();
+        ui.painter().circle_filled(
+            orb_rect.center(),
+            RAIL_ORB / 2.0,
+            if orb_hover { pal.rail_disc } else { pal.rail_deep },
+        );
+        // arc at rest, gear on hover (the spec's orb behavior)
+        if orb_hover {
+            let gear_center = orb_rect.center();
+            ui.painter().image(
+                self.icons.gear.id(),
+                Rect::from_center_size(gear_center, Vec2::splat(15.0)),
+                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        } else {
+            ui::widgets::ring(ui, orb_rect.center(), 6.0, 1.8, 0.75, pal.muted, &pal, 0.9);
+        }
+        if orb.clicked() {
+            self.settings_open = true;
+        }
+        orb.on_hover_text("settings");
+
+        // ---- hover state machine ------------------------------------------
+        // (Debug runs seeded with LIMITCUE_UI_RAIL pin the card open so
+        // screenshots don't depend on pointer placement.)
+        let over_body = pointer.is_some_and(|pt| body.contains(pt));
+        if over_body || over_card {
+            self.rail_hover_at = Some(Instant::now());
+        }
+        let in_grace = self
+            .rail_hover_at
+            .map(|t0| t0.elapsed().as_secs_f32() < RAIL_HOVER_OUT_SECS)
+            .unwrap_or(false);
+        // Debug runs seeded with LIMITCUE_UI_RAIL keep that card open without
+        // a pointer on it (screenshot automation); any hover releases the pin.
+        let seeded = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
+        let pinned = self.rail_hover_at.is_none()
+            && self.rail_open.is_some()
+            && seeded.as_deref() == self.rail_open.as_deref();
+        if let Some(id) = hovered_id.clone() {
+            self.rail_open = Some(id);
+        } else if !pinned && !in_grace && !over_card {
+            if let Some(prev) = self.rail_open.take() {
+                self.rail_last = Some(prev);
+            }
+        }
+
+        // ---- the tail-card popup ------------------------------------------
+        if self.rail_card_f > 0.0 {
+            let Some(id) = self.rail_open.clone().or_else(|| self.rail_last.clone()) else {
                 return;
             };
-            let pct = this.render_pct(s);
-            let stale = this.is_stale(s, now);
-            ui.add_space(2.0);
-            ui::rail_card(ui, s, pct, &pal, 1.0, stale, &this.logos, now, RAIL_CARD_W);
-            let close = ui.interact(
-                ui.max_rect(),
-                ui.id().with("rail-card-click"),
-                Sense::click(),
-            );
-            if close.clicked() {
-                this.rail_open = None;
-            }
-        };
-
-        if self.rail_open.is_some() {
-            let (strip_cell, card_cell) = if edge == Edge::Left {
-                (0.0, RAIL_STRIP_W + RAIL_COL_GAP)
-            } else {
-                (RAIL_CARD_W + RAIL_COL_GAP, 0.0)
+            let Some(s) = snaps.iter().find(|s| s.provider_id == id) else {
+                self.rail_open = None;
+                return;
             };
-            ui.horizontal(|ui| {
-                ui.add_space(strip_cell);
-                strip(ui, self);
-                ui.add_space(card_cell.min(RAIL_CARD_W + RAIL_COL_GAP));
-                if self.rail_open.is_some() {
-                    card(ui, self);
-                }
-            });
-        } else {
-            strip(ui, self);
+            let pct = self.render_pct(s);
+            let stale = self.is_stale(s, now);
+            let a = self.rail_card_f.clamp(0.0, 1.0);
+            let card_rect = Rect::from_min_size(
+                egui::pos2(
+                    if on_left {
+                        RAIL_STRIP_W + RAIL_COL_GAP
+                    } else {
+                        0.0
+                    },
+                    ui_rect.top(),
+                ),
+                Vec2::new(RAIL_CARD_W, ui_rect.height()),
+            );
+            // fade+slide the card in with egui's area painter: draw manually
+            let card_p = ui.painter_at(card_rect);
+            let fill = pal.rail_deep.linear_multiply(a);
+            card_p.rect_filled(card_rect.shrink(0.0), 16.0_f32, fill);
+            // tail triangle from the card edge toward the hovered cell
+            let tail_base_x = if on_left { card_rect.left() } else { card_rect.right() };
+            let tip_x = if on_left {
+                card_rect.left() - RAIL_TAIL_W
+            } else {
+                card_rect.right() + RAIL_TAIL_W
+            };
+            let tw = 9.0; // half the tail's vertical extent
+            // clamp order matters when the card is shorter than the margins
+            let (lo, hi) = (card_rect.top() + 24.0, card_rect.bottom() - 24.0);
+            let cy = if lo <= hi {
+                hover_row_cy.clamp(lo, hi)
+            } else {
+                card_rect.center().y
+            };
+            card_p.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(tail_base_x, cy - tw),
+                    egui::pos2(tail_base_x, cy + tw),
+                    egui::pos2(tip_x, cy),
+                ],
+                fill,
+                egui::Stroke::NONE,
+            ));
+            // content (scaled presence via alpha)
+            let content_ui = &mut ui.new_child(
+                egui::UiBuilder::new().max_rect(card_rect).layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            ui::rail_card(
+                content_ui,
+                s,
+                pct,
+                &pal,
+                a,
+                stale,
+                &self.logos,
+                now,
+                RAIL_CARD_W,
+            );
         }
 
         if ui.input(|i| i.key_pressed(egui::Key::R)) {
@@ -956,17 +1118,6 @@ impl App {
                 }
             });
     }
-}
-
-/// Height of the rail's inline usage card for one provider (mirrors
-/// `render_rail_card`'s layout: name row + one 18px row per window).
-fn rail_card_height(s: Option<&Snapshot>, _now: u64) -> f32 {
-    let Some(s) = s else { return 120.0 };
-    let rows = match &s.reading {
-        Reading::Ok { windows, .. } => windows.len().max(1) as f32,
-        _ => 1.0,
-    };
-    26.0 + 8.0 + rows * 18.0 + 16.0 // name row + spacing + window rows + padding
 }
 
 /// Messages the UI can send to the poll thread.

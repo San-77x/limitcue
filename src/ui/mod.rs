@@ -12,7 +12,7 @@ pub mod theme;
 pub mod widgets;
 
 use theme::Palette;
-use widgets::{badge, bar, dot, logo_ring, pct_color};
+use widgets::{badge, bar, dot, logo_ring, logo_ring_on, pct_color};
 
 /// Short uppercase tag for the collapsed pill.
 pub fn tag(id: &str) -> String {
@@ -114,9 +114,10 @@ pub fn draw_chip(
     );
 }
 
-/// Compact usage card shown beside the side-rail strip when a provider row
-/// is clicked (the mockup's inline popup): logo + name on top, then one row
-/// per window — label, bar, right-aligned `63% · 12/30 · in 2h 41m`.
+/// Usage card shown beside the side-rail strip when a provider row is
+/// hovered: logo + name on top, then one block per window — label (left) +
+/// reset copy (right), a rounded track bar, and "N% used" underneath. The
+/// tail triangle is drawn by the caller (it needs the hovered row's offset).
 #[allow(clippy::too_many_arguments)]
 pub fn rail_card(
     ui: &mut egui::Ui,
@@ -137,18 +138,18 @@ pub fn rail_card(
         pct_color(pct, ok, pal)
     };
     egui::Frame::none()
-        .fill(pal.card)
-        .rounding(egui::Rounding::same(12.0))
-        .stroke(egui::Stroke::new(1.0_f32, pal.border))
-        .inner_margin(egui::Margin::symmetric(10.0, 8.0))
+        .fill(pal.rail_deep)
+        .rounding(egui::Rounding::same(16.0))
+        .inner_margin(egui::Margin::same(16.0))
         .show(ui, |ui| {
-            ui.set_width(width - 20.0);
+            ui.set_width(width - 32.0);
+            // header: glyph + "<Provider> Usage"
             ui.horizontal(|ui| {
                 let (r, _) = ui.allocate_exact_size(Vec2::splat(20.0), egui::Sense::hover());
-                logo_ring(
+                logo_ring_on(
                     ui,
                     r.center(),
-                    9.0,
+                    10.0,
                     logos.get(&s.provider_id),
                     &theme::monogram(&s.provider_id),
                     theme::brand(&s.provider_id, pal),
@@ -156,53 +157,73 @@ pub fn rail_card(
                     ring_col,
                     pal,
                     alpha,
+                    pal.rail_disc,
                 );
-                ui.add_space(1.0);
+                ui.add_space(4.0);
                 let name_col = if stale { theme::mix(pal.text, pal.faint, 0.4) } else { pal.text };
-                ui.label(RichText::new(&s.display_name).color(name_col.linear_multiply(alpha)).size(12.5));
+                ui.label(
+                    RichText::new(format!("{} Usage", s.display_name))
+                        .color(name_col.linear_multiply(alpha))
+                        .size(13.5),
+                );
             });
-            ui.add_space(4.0);
+            ui.add_space(6.0);
             match &s.reading {
                 Reading::Ok { windows, .. } => {
-                    for w in windows {
+                    for (i, w) in windows.iter().enumerate() {
+                        if i > 0 {
+                            ui.add_space(8.0);
+                        }
+                        // label (left) + reset copy (right)
                         let (r, _) = ui.allocate_exact_size(
-                            Vec2::new(ui.available_width(), 18.0),
+                            Vec2::new(ui.available_width(), 16.0),
                             egui::Sense::hover(),
                         );
-                        // window label (fixed column, truncated)
-                        ui.put(
-                            egui::Rect::from_min_size(
-                                egui::pos2(r.min.x, r.center().y - 8.0),
-                                Vec2::new(72.0, 16.0),
-                            ),
-                            egui::Label::new(
-                                RichText::new(&w.label).color(pal.muted.linear_multiply(alpha)).size(11.0),
-                            )
-                            .selectable(false)
-                            .truncate(),
+                        ui.painter().text(
+                            egui::pos2(r.left(), r.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            &w.label,
+                            theme::mono(11.5),
+                            pal.text.linear_multiply(alpha),
                         );
-                        // bar between label and value columns
-                        let bar_rect = eframe::egui::Rect::from_min_max(
-                            egui::pos2(r.min.x + 76.0, r.center().y - 3.0),
-                            egui::pos2((r.right() - 92.0).max(r.min.x + 122.0), r.center().y + 3.0),
-                        );
-                        if bar_rect.width() >= 30.0 {
-                            bar(
-                                ui,
-                                bar_rect,
-                                (w.remaining_percent.unwrap_or(0.0) / 100.0) as f32,
-                                pct_color(w.remaining_percent, true, pal),
-                                pal,
-                                alpha,
+                        if let Some(t) = w.resets_at {
+                            let reset = fmt_countdown(t.saturating_sub(now));
+                            ui.painter().text(
+                                egui::pos2(r.right(), r.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                format!("Resets in {reset}"),
+                                theme::mono(11.0),
+                                pal.muted.linear_multiply(alpha),
                             );
                         }
-                        // right-aligned tabular value
-                        let galley = ui.painter().layout_job(value_job(w, pal, alpha, now));
-                        ui.painter().galley(
-                            egui::pos2(r.right() - galley.rect.width(), r.center().y - galley.rect.height() / 2.0),
-                            galley,
-                            pal.text,
+                        // 5pt rounded track bar under the label row
+                        ui.allocate_exact_size(Vec2::new(ui.available_width(), 5.0), egui::Sense::hover());
+                        let bar_rect = eframe::egui::Rect::from_min_max(
+                            egui::pos2(r.left(), r.bottom() + 5.0),
+                            egui::pos2(r.right(), r.bottom() + 10.0),
                         );
+                        bar(
+                            ui,
+                            bar_rect,
+                            (w.remaining_percent.unwrap_or(0.0) / 100.0) as f32,
+                            pct_color(w.remaining_percent, true, pal),
+                            pal,
+                            alpha,
+                        );
+                        // "N% used" under the bar, like the reference spec
+                        ui.add_space(4.0);
+                        let used = w.remaining_percent.map(|p| 100.0 - p);
+                        ui.painter().text(
+                            egui::pos2(r.left(), bar_rect.bottom() + 9.0),
+                            egui::Align2::LEFT_CENTER,
+                            match used {
+                                Some(u) => format!("{u:.0}% used"),
+                                None => w.label.clone(),
+                            },
+                            theme::mono(11.0),
+                            pct_color(used, true, pal).linear_multiply(alpha),
+                        );
+                        ui.allocate_exact_size(Vec2::new(ui.available_width(), 8.0), egui::Sense::hover());
                     }
                 }
                 Reading::NeedsAuth(m) | Reading::Error(m) => {
@@ -223,7 +244,7 @@ pub fn rail_card(
                     ui.label(RichText::new("not configured").color(pal.faint.linear_multiply(alpha)).size(11.0));
                 }
             }
-            ui.add_space(3.0);
+            ui.add_space(4.0);
             let age = now.saturating_sub(s.fetched_at);
             let mut age_line = format!("updated {} ago", fmt_countdown(age));
             if stale {
@@ -231,6 +252,17 @@ pub fn rail_card(
             }
             ui.label(RichText::new(age_line).color(pal.faint.linear_multiply(alpha)).size(9.5).monospace());
         });
+}
+
+/// Height of the [`rail_card`] layout for one provider (frame margins +
+/// header + one 43px block per window, or the error/auth row).
+pub fn rail_card_height(s: Option<&Snapshot>) -> f32 {
+    let Some(s) = s else { return 120.0 };
+    let rows = match &s.reading {
+        Reading::Ok { windows, .. } => windows.len().max(1) as f32,
+        _ => 1.0,
+    };
+    32.0 + 20.0 + 6.0 + rows * (16.0 + 5.0 + 10.0 + 4.0 + 8.0) + (rows - 1.0) * 8.0 + 4.0 + 14.0
 }
 
 /// Hover tooltip with the full per-window breakdown for one provider.

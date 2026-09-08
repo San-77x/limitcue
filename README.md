@@ -29,13 +29,14 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
   On KDE Plasma (Wayland or X11), drag it near a screen edge and it **docks
   flush** — zero gap, square corners on the attached edge — and the detail
   card grows *away* from the edge. The docked position survives restarts.
-  Left/right docks flip the pill into a **vertical rail**: one dark pill row
-  per provider, each with the provider's logo inside a progress ring and the
-  percentage underneath (a real logo for Claude, Codex/OpenAI, Gemini, Kimi,
-  MiniMax and AgentRouter; a monogram letter for anything else). Click a row
-  and an inline usage card slides out beside the strip with per-window bars
-  and reset times; `Esc` or a click closes it again. A gear at the bottom of
-  the strip opens settings — the style swaps automatically to fit the edge.
+  Left/right docks flip the pill into a **vertical rail**: a pure-black notch
+  hugging the screen edge with inverse-rounded corners where it meets the
+  bezel, one ring cell per provider (real logo for Claude, Codex/OpenAI,
+  Gemini, Kimi, MiniMax and AgentRouter; a monogram letter otherwise) and the
+  used percentage in white underneath, plus a settings orb (arc at rest, gear
+  on hover). Hovering a cell slides out a rounded usage card with a tail
+  pointing at it — per-window label, bar, reset time and "N% used" — and the
+  card lingers briefly after the pointer leaves so you can read it.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
   `theme` config key. Expanded cards show each reading's *fidelity* badge
   (official / derived / manual) so trust is always visible.
