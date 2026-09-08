@@ -97,8 +97,9 @@ struct DockIface {
 #[zbus::interface(name = "io.limitcue.Dock")]
 impl DockIface {
     /// Called by the KWin script after the user finishes a drag.
-    fn store_position(&mut self, x: i32, y: i32, edge: u8) {
-        let st = DockState { edge: Edge::from_u8(edge), x, y };
+    /// (`callDBus` can only marshal plain ints — no u8s, no structs.)
+    fn store_position(&mut self, x: i32, y: i32, edge: i32) {
+        let st = DockState { edge: Edge::from_u8(edge.clamp(0, 4) as u8), x, y };
         save_dock(&st);
         *self.state.lock().unwrap() = st;
     }

@@ -1064,6 +1064,14 @@ fn main() -> eframe::Result<()> {
     } else {
         Vec2::new(260.0, 30.0)
     };
+    // Debug launch position (screenshot automation): LIMITCUE_UI_POS=X,Y.
+    let init_pos = std::env::var("LIMITCUE_UI_POS")
+        .ok()
+        .and_then(|v| {
+            let (x, y) = v.split_once(',')?;
+            Some(egui::pos2(x.parse().ok()?, y.parse().ok()?))
+        })
+        .unwrap_or_else(|| egui::pos2(60.0, 40.0));
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_decorations(false)
@@ -1071,7 +1079,7 @@ fn main() -> eframe::Result<()> {
             .with_always_on_top()
             .with_resizable(false)
             .with_inner_size(init_size)
-            .with_position(egui::pos2(60.0, 40.0)),
+            .with_position(init_pos),
         ..Default::default()
     };
     eframe::run_native(
