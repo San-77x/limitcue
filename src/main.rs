@@ -716,8 +716,10 @@ impl eframe::App for App {
             snaps.iter().find(|s| s.provider_id == id)
         }) {
             Some(snapshot) => {
-                // The card height is derived from the provider's actual
-                // windows; no fixed-height fallback is reserved.
+                // The transparent host may grow for a tall card, but the
+                // visible notch itself stays exactly rail_h tall. Its body is
+                // laid out separately below, so opening a multi-window card
+                // cannot make the pill appear to stretch.
                 let card_h = ui::rail_card_height(snapshot);
                 Vec2::new(
                     RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
@@ -825,7 +827,7 @@ impl eframe::App for App {
         // row ends up at the bottom (detail grows upward, away from the edge).
         let header = |ui: &mut egui::Ui, this: &mut App| {
             if rail {
-                this.render_rail(ui, ctx, &snaps);
+                this.render_rail(ui, ctx, &snaps, rail_h);
             } else {
                 this.render_header(ui, ctx, &snaps, f, now);
             }
@@ -957,7 +959,7 @@ impl App {
     /// while the card is open) slides the tail-card usage popup out beside
     /// that cell; it lingers through a short grace period after the pointer
     /// leaves.
-    fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot]) {
+    fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], rail_h: f32) {
         let pal = self.pal;
         let edge = self.last_edge;
         // While the edge is unknown the window may still be the tiny init
@@ -974,7 +976,12 @@ impl App {
         // The strip hugs the docked edge: window-left for a left dock,
         // window-right for a right dock (the card then fills the remainder).
         let body_x = if on_left { ui_rect.left() } else { ui_rect.right() - RAIL_STRIP_W };
-        let body = Rect::from_min_size(egui::pos2(body_x, ui_rect.top()), Vec2::new(RAIL_STRIP_W, ui_rect.height()));
+        // Keep the visible notch at its normal fixed height even when the
+        // transparent host is taller to accommodate the adjacent card.
+        let body = Rect::from_min_size(
+            egui::pos2(body_x, ui_rect.top()),
+            Vec2::new(RAIL_STRIP_W, rail_h),
+        );
         let r = RAIL_CORNER.min(body.height() / 2.0);
         // body with two square edge-corners and two 15px rounded corners
         let body_rounding = if on_left {
