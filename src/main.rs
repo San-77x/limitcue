@@ -1091,40 +1091,29 @@ impl App {
         orb.on_hover_text("settings · drag the notch to move it");
 
         // ---- hover state machine ------------------------------------------
-        // The card is hover-only: open while a provider row is hovered (or
-        // the pointer sits on the card itself, or crosses the gap toward it)
-        // and closed as soon as the pointer leaves — the keep-zone is the
-        // card's REAL rect plus only the gap corridor, nothing else.
-        // Debug runs seeded with LIMITCUE_UI_RAIL keep that card open without
-        // a pointer (screenshot automation); any hover releases the pin.
+        // The card is a real hover target, not just painted pixels. This is
+        // important for a transparent, resizable viewport: raw pointer
+        // coordinates can survive a resize for a frame and make a card look
+        // stuck even after the pointer has left it.
         let card_rect_now = self
             .rail_open
             .as_deref()
-            .or(self.rail_last.as_deref())
             .and_then(|id| rail_card_rect(id, snaps, ui_rect, on_left, body.top()));
-        let keep_zone = card_rect_now.map(|cr| {
-            if on_left {
-                Rect::from_min_max(
-                    egui::pos2(cr.left() - RAIL_COL_GAP - 4.0, cr.top() - 4.0),
-                    egui::pos2(cr.right() + 4.0, cr.bottom() + 4.0),
-                )
-            } else {
-                Rect::from_min_max(
-                    egui::pos2(cr.left() - 4.0, cr.top() - 4.0),
-                    egui::pos2(cr.right() + RAIL_COL_GAP + 4.0, cr.bottom() + 4.0),
-                )
-            }
+        let card_hovered = card_rect_now.is_some_and(|rect| {
+            ui.interact(rect, ui.id().with(("rail-card", self.rail_open.as_deref())), Sense::hover())
+                .hovered()
         });
-        let over_card = self.rail_card_f > 0.0
-            && self.rail_open.is_some()
-            && pointer.is_some_and(|pt| keep_zone.is_some_and(|z| z.contains(pt)));
+        // Screenshot hook: pin only when there is no pointer at all. Normal
+        // desktop interaction never uses this path.
         let seeded = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
         let pinned = pointer.is_none()
             && self.rail_open.is_some()
             && seeded.as_deref() == self.rail_open.as_deref();
-        if let Some(id) = hovered_id.clone() {
+        // Strict hover-only behavior: a row or the visible card itself must
+        // be hovered. There is no broad transparent keep-zone around it.
+        if let Some(id) = hovered_id {
             self.rail_open = Some(id);
-        } else if !pinned && !over_card {
+        } else if !pinned && !card_hovered {
             if let Some(prev) = self.rail_open.take() {
                 self.rail_last = Some(prev);
             }
@@ -1157,8 +1146,7 @@ impl App {
             } else {
                 card_rect.right() + RAIL_TAIL_W
             };
-            // The tail always points at the card provider's own cell (works
-            // for hover and for the debug-seeded pin alike).
+            // The tail always points at the card provider's own cell.
             let row_cy = snaps
                 .iter()
                 .position(|p| p.provider_id == id)
