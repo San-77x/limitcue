@@ -265,6 +265,25 @@ the provider closest to empty, so a bar can style itself:
 The exit status is always 0 — a status bar should not grow an error box
 because one provider needs re-authenticating.
 
+Each of those spawns a process and re-fetches. For anything that polls often —
+a status bar, an editor plugin, a shell prompt — the running app publishes its
+**cached** reading two ways, so asking costs no provider requests:
+
+```sh
+# D-Bus
+gdbus call --session --dest io.limitcue \
+  --object-path /io/limitcue/usage --method io.limitcue.Usage.Get
+gdbus call --session --dest io.limitcue \
+  --object-path /io/limitcue/usage --method io.limitcue.Usage.Refresh
+
+# unix socket — connect, read one JSON line, done
+socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/limitcue.sock
+```
+
+`Refresh` returns immediately and the result lands on the next `Get`: a caller
+should not be blocked on somebody else's rate limit. The socket is created
+0600 and both are read-only and local-only.
+
 ## Settings
 
 The gear icon on the pill — or the orb at the foot of the notch — opens the

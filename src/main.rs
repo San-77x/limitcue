@@ -4,6 +4,7 @@ mod notify;
 mod dock;
 mod history;
 mod providers;
+mod service;
 mod types;
 mod ui;
 
@@ -379,6 +380,7 @@ struct App {
     icons: Icons,
     logos: HashMap<String, egui::TextureHandle>,
     dock: dock::SharedDock,
+    usage: service::SharedUsage,
     restore_sent: u32,
     /// Screen y the notch should be painted at — the position the user chose.
     /// The host window is taller than the notch and sits *above* this, so the
@@ -422,11 +424,18 @@ struct App {
 }
 
 impl App {
-    fn new(cfg: Config, pal: Palette, icons: Icons, logos: HashMap<String, egui::TextureHandle>, dock: dock::SharedDock) -> Self {
+    fn new(
+        cfg: Config,
+        pal: Palette,
+        icons: Icons,
+        logos: HashMap<String, egui::TextureHandle>,
+        dock: dock::SharedDock,
+        usage: service::SharedUsage,
+    ) -> Self {
         let (tx_snap, rx_snap) = mpsc::channel::<Vec<Snapshot>>();
         let (tx_tick, rx_tick) = mpsc::channel::<Ctl>();
         let snapshots = load_state();
-        spawn_poller(cfg.clone(), tx_snap, rx_tick);
+        spawn_poller(cfg.clone(), tx_snap, rx_tick, usage.clone());
         // Debug hooks: start expanded / with settings open / with a rail card
         // open (tests, screenshots).
         let expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
@@ -465,6 +474,7 @@ impl App {
             placed: None,
             reported_y: f32::NAN,
             dock,
+            usage,
             restore_sent: 0,
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
@@ -1548,7 +1558,7 @@ impl App {
         let (tx_tick, rx_tick) = mpsc::channel::<Ctl>();
         self.rx = rx_snap;
         self.tx_tick = tx_tick;
-        spawn_poller(self.cfg.clone(), tx_snap, rx_tick);
+        spawn_poller(self.cfg.clone(), tx_snap, rx_tick, self.usage.clone());
     }
 
     fn refresh(&mut self, ctx: &egui::Context) {
@@ -1634,6 +1644,10 @@ impl eframe::App for App {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         debug_shot(ctx, self.started, &mut self.shot_requested);
+        // Someone asked for a fresh reading over D-Bus.
+        if self.usage.take_refresh() {
+            self.refresh(ctx);
+        }
         self.drain(ctx);
         self.tweens.retain(|_, t| t.value().is_some());
         let stored_edge = self.dock.lock().unwrap().edge;
@@ -2362,6 +2376,7 @@ fn spawn_poller(
     cfg: Config,
     tx_snap: mpsc::Sender<Vec<Snapshot>>,
     rx_tick: mpsc::Receiver<Ctl>,
+    usage: service::SharedUsage,
 ) {
     let providers = build_all(&cfg);
     let poll_secs = cfg.poll_interval_secs;
@@ -2384,6 +2399,9 @@ fn spawn_poller(
                 out.push(s);
             }
             notifier.review(&out, &cfg);
+            // Publish before handing to the UI: a reader asking over D-Bus or
+            // the socket should not have to wait for a repaint.
+            usage.store(&out);
             if tx_snap.send(out).is_err() {
                 break;
             }
@@ -2428,9 +2446,11 @@ fn main() -> eframe::Result<()> {
     // restore the position at window-add time. Bus-less environments just
     // lose persistence, nothing else.
     let dock = dock::shared();
-    if let Err(e) = dock::start_service(dock.clone()) {
+    let usage: service::SharedUsage = Default::default();
+    if let Err(e) = service::start_dbus(dock.clone(), usage.clone()) {
         eprintln!("limitcue: no D-Bus session bus ({e}) — dock position won't persist");
     }
+    service::start_socket(usage.clone());
     // Match the initial window size to the starting state (debug/screenshot aid:
     // LIMITCUE_UI_EXPANDED=1 opens already expanded at full size).
     let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
@@ -2471,7 +2491,7 @@ fn main() -> eframe::Result<()> {
             theme::apply_style(&cc.egui_ctx, &pal);
             let icons = load_icons(&cc.egui_ctx);
             let logos = load_logos(&cc.egui_ctx);
-            Ok(Box::new(App::new(cfg, pal, icons, logos, dock)))
+            Ok(Box::new(App::new(cfg, pal, icons, logos, dock, usage)))
         }),
     )
 }

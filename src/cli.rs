@@ -67,6 +67,11 @@ OPTIONS
   -h, --help               show this
   -V, --version            show the version
 
+WHILE THE APP IS RUNNING
+  D-Bus    io.limitcue  /io/limitcue/usage  io.limitcue.Usage.Get / .Refresh
+  Socket   $XDG_RUNTIME_DIR/limitcue.sock   connect, read one JSON line
+  Both serve the cached reading, so polling them costs no provider requests.
+
 CONFIG
   ~/.config/limitcue/config.toml   providers, theme, poll interval
   Providers are easier to add from Settings → Providers → Add.
@@ -143,7 +148,7 @@ fn esc(s: &str) -> String {
 
 /// A deliberately flat, stable document — not the app's internal state dumped
 /// out. Anything reading this should not have to track our enum shapes.
-fn json_doc(snaps: &[Snapshot]) -> String {
+pub fn json_doc(snaps: &[Snapshot]) -> String {
     let now = now_unix();
     let mut out = format!("{{\"generated_at\":{now},\"providers\":[");
     for (i, s) in snaps.iter().enumerate() {

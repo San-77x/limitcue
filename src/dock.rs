@@ -20,7 +20,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
-use zbus::blocking::connection::Builder;
 
 /// Screen edge the pill is docked to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -93,8 +92,14 @@ fn save_dock(st: &DockState) {
 
 /// D-Bus interface served at /io/limitcue/dock (io.limitcue.Dock).
 /// The KWin script calls StorePosition after each drag.
-struct DockIface {
+pub struct DockIface {
     state: SharedDock,
+}
+
+impl DockIface {
+    pub fn new(state: SharedDock) -> Self {
+        Self { state }
+    }
 }
 
 #[zbus::interface(name = "io.limitcue.Dock")]
@@ -119,22 +124,6 @@ impl DockIface {
         }
         self.store_position(x, y, edge);
     }
-}
-
-/// Serve `io.limitcue.Dock` on the session bus.
-/// Fails silently (returned) if no bus is available (headless/CI) —
-/// docking then just doesn't persist; everything else works.
-pub fn start_service(state: SharedDock) -> Result<(), zbus::Error> {
-    // A second instance would collide on the well-known name; that's fine —
-    // the older instance serves the same data.
-    let conn = Builder::session()?
-        .name("io.limitcue")?
-        .serve_at("/io/limitcue/dock", DockIface { state })?
-        .build()?;
-    // The connection owns the object server; keep it alive for the process
-    // lifetime (single-purpose app).
-    std::mem::forget(conn);
-    Ok(())
 }
 
 /// Ask KWin (via its Scripting D-Bus interface) to place our window.
