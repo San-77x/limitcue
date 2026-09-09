@@ -43,7 +43,7 @@ pub fn ring(
     }
     let a0 = -std::f32::consts::FRAC_PI_2;
     let a1 = a0 + std::f32::consts::TAU * frac;
-    let steps = ((36.0 * frac) as usize).max(2);
+    let steps = ((72.0 * frac) as usize).max(3);
     let pts: Vec<Pos2> = (0..=steps)
         .map(|i| {
             let a = a0 + (a1 - a0) * (i as f32 / steps as f32);
@@ -172,6 +172,69 @@ pub fn logo_ring_stroke_on(
         Color32::WHITE.linear_multiply(alpha),
     );
     ring(ui, center, r, stroke, frac, color, pal, alpha);
+}
+
+/// Gauge cell for the rail and card header: track ring + heat-colored
+/// progress arc (fraction = share *used*), with the provider's white mark
+/// sitting directly on the notch black inside — no disc, the ring is the
+/// only chrome. Falls back to a monogram letter when there is no logo.
+#[allow(clippy::too_many_arguments)]
+pub fn gauge(
+    ui: &egui::Ui,
+    center: Pos2,
+    r: f32,
+    stroke: f32,
+    logo: Option<&egui::TextureHandle>,
+    letter: &str,
+    used: f32,
+    color: Color32,
+    track: Color32,
+    alpha: f32,
+) {
+    let p = ui.painter();
+    p.circle_stroke(center, r, Stroke::new(stroke, track.linear_multiply(alpha)));
+    let side = r * 1.05; // white mark inside the ring
+    match logo {
+        Some(tex) => {
+            p.image(
+                tex.id(),
+                Rect::from_center_size(center, Vec2::splat(side)),
+                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE.linear_multiply(alpha),
+            );
+        }
+        None => {
+            p.text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                letter,
+                theme::semibold(r * 0.95),
+                Color32::WHITE.linear_multiply(alpha),
+            );
+        }
+    }
+    // arc on top of the track, rounded caps, from 12 o'clock
+    let frac = used.clamp(0.0, 1.0);
+    if frac <= 0.004 {
+        return;
+    }
+    let col = color.linear_multiply(alpha);
+    if frac >= 0.999 {
+        p.circle_stroke(center, r, Stroke::new(stroke, col));
+        return;
+    }
+    let a0 = -std::f32::consts::FRAC_PI_2;
+    let a1 = a0 + std::f32::consts::TAU * frac;
+    let steps = ((72.0 * frac) as usize).max(3);
+    let pts: Vec<Pos2> = (0..=steps)
+        .map(|i| {
+            let a = a0 + (a1 - a0) * (i as f32 / steps as f32);
+            egui::pos2(center.x + r * a.cos(), center.y + r * a.sin())
+        })
+        .collect();
+    p.circle_filled(pts[0], stroke / 2.0, col);
+    p.circle_filled(*pts.last().unwrap(), stroke / 2.0, col);
+    p.add(Shape::line(pts, Stroke::new(stroke, col)));
 }
 
 /// Slim rounded progress bar with a track.

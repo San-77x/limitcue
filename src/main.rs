@@ -1319,6 +1319,7 @@ fn main() -> eframe::Result<()> {
         "limitcue",
         options,
         Box::new(move |cc| {
+            theme::install_fonts(&cc.egui_ctx);
             theme::apply_style(&cc.egui_ctx, &pal);
             let icons = load_icons(&cc.egui_ctx);
             let logos = load_logos(&cc.egui_ctx);

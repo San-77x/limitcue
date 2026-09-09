@@ -3,7 +3,7 @@
 //! Every color in the UI comes from a [`Palette`]; nothing else hard-codes
 //! colors. All themes are dark and share the same semantic roles.
 
-use eframe::egui::{self, Color32, FontId, Rounding, Stroke, Style};
+use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, FontId, Rounding, Stroke, Style};
 
 /// Semantic palette for one theme.
 #[derive(Debug, Clone, Copy)]
@@ -29,6 +29,8 @@ pub struct Palette {
     pub rail_disc: Color32,
     /// Deeper shade for the same rail (hover fill / card body).
     pub rail_deep: Color32,
+    /// Gauge heat scale keyed on percent *used*: calm → caution → hot → out.
+    pub gauge: [Color32; 4],
 }
 
 pub const THEMES: &[&str] = &["midnight", "tokyo-night", "catppuccin", "gruvbox"];
@@ -50,6 +52,7 @@ pub const MIDNIGHT: Palette = Palette {
     rail_bg: Color32::BLACK,
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
     rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    gauge: [Color32::from_rgb(52, 211, 97), Color32::from_rgb(255, 214, 10), Color32::from_rgb(255, 149, 0), Color32::from_rgb(255, 69, 58)],
 };
 
 pub const TOKYO_NIGHT: Palette = Palette {
@@ -69,6 +72,7 @@ pub const TOKYO_NIGHT: Palette = Palette {
     rail_bg: Color32::BLACK,
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
     rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    gauge: [Color32::from_rgb(158, 206, 106), Color32::from_rgb(224, 175, 104), Color32::from_rgb(255, 158, 100), Color32::from_rgb(247, 118, 142)],
 };
 
 pub const CATPPUCCIN: Palette = Palette {
@@ -88,6 +92,7 @@ pub const CATPPUCCIN: Palette = Palette {
     rail_bg: Color32::BLACK,
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
     rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    gauge: [Color32::from_rgb(166, 227, 161), Color32::from_rgb(249, 226, 175), Color32::from_rgb(250, 179, 135), Color32::from_rgb(243, 139, 168)],
 };
 
 pub const GRUVBOX: Palette = Palette {
@@ -107,6 +112,7 @@ pub const GRUVBOX: Palette = Palette {
     rail_bg: Color32::BLACK,
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
     rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    gauge: [Color32::from_rgb(184, 187, 38), Color32::from_rgb(250, 189, 47), Color32::from_rgb(254, 128, 25), Color32::from_rgb(251, 73, 52)],
 };
 
 pub fn palette(name: &str) -> Palette {
@@ -142,6 +148,63 @@ pub fn monogram(id: &str) -> String {
 
 pub fn mono(size: f32) -> FontId {
     FontId::monospace(size)
+}
+
+/// Inter (SIL OFL, assets/fonts) in three weights. Regular is installed as
+/// the default proportional face; Medium/SemiBold are named families.
+const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
+const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
+const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
+
+pub fn sans(size: f32) -> FontId {
+    FontId::proportional(size)
+}
+
+pub fn medium(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name("inter-medium".into()))
+}
+
+pub fn semibold(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name("inter-semibold".into()))
+}
+
+/// Register Inter. Called once before the first frame.
+pub fn install_fonts(ctx: &egui::Context) {
+    let mut fonts = FontDefinitions::default();
+    fonts.font_data.insert("inter".into(), FontData::from_static(INTER_REGULAR));
+    fonts.font_data.insert("inter-medium".into(), FontData::from_static(INTER_MEDIUM));
+    fonts.font_data.insert("inter-semibold".into(), FontData::from_static(INTER_SEMIBOLD));
+    // Keep egui's bundled emoji/symbol faces as fallbacks behind Inter.
+    let fallbacks = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let with = |primary: &str| {
+        let mut v = vec![primary.to_string()];
+        v.extend(fallbacks.iter().cloned());
+        v
+    };
+    fonts.families.insert(FontFamily::Proportional, with("inter"));
+    fonts.families.insert(FontFamily::Name("inter-medium".into()), with("inter-medium"));
+    fonts.families.insert(FontFamily::Name("inter-semibold".into()), with("inter-semibold"));
+    ctx.set_fonts(fonts);
+}
+
+/// Continuous gauge colour for a *used* fraction (0..1): the theme's calm
+/// colour holds until ~45 %, then warms through caution and hot toward the
+/// exhausted colour.
+pub fn heat(used: f32, pal: &Palette) -> Color32 {
+    let [g, y, o, r] = pal.gauge;
+    let u = used.clamp(0.0, 1.0);
+    let seg = |a: Color32, b: Color32, lo: f32, hi: f32| mix(a, b, (u - lo) / (hi - lo));
+    if u < 0.45 {
+        g
+    } else if u < 0.6 {
+        seg(g, y, 0.45, 0.6)
+    } else if u < 0.75 {
+        seg(y, o, 0.6, 0.75)
+    } else if u < 0.95 {
+        seg(o, r, 0.75, 0.95)
+    } else {
+        r
+    }
 }
 
 /// Linear blend between two colors, `t`=0 → `a`, `t`=1 → `b`.
