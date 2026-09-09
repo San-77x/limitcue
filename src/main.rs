@@ -1133,17 +1133,16 @@ impl App {
             RAIL_ORB / 2.0,
             if orb_hover { ui::theme::mix(pal.rail_deep, Color32::WHITE, 0.12) } else { pal.rail_deep },
         );
-        // arc at rest, gear on hover (the spec's orb behavior)
-        if orb_hover {
-            let gear_center = orb_rect.center();
-            ui.painter().image(
-                self.icons.gear.id(),
-                Rect::from_center_size(gear_center, Vec2::splat(16.0)),
-                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE,
+        // Neutral three-dot menu mark: this control is navigation/settings,
+        // not another quota gauge. The dots brighten together on hover.
+        let dot_color = if orb_hover { Color32::WHITE } else { pal.muted };
+        let dot_radius = if orb_hover { 2.0 } else { 1.7 };
+        for offset in [-6.0_f32, 0.0, 6.0] {
+            ui.painter().circle_filled(
+                egui::pos2(orb_rect.center().x + offset, orb_rect.center().y),
+                dot_radius,
+                dot_color,
             );
-        } else {
-            ui::widgets::ring(ui, orb_rect.center(), 7.5, 2.0, 0.75, pal.muted, &pal, 0.9);
         }
         if orb.clicked() {
             self.settings_open = true;
