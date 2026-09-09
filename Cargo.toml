@@ -15,6 +15,7 @@ toml = "0.8"
 ureq = { version = "2", features = ["json"] }
 png = "0.17"
 dirs = "5"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zbus = { version = "4", features = ["blocking"] }
 
 [profile.release]

@@ -72,6 +72,23 @@ pub fn now_unix() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// Human copy for a reset time: near resets count down ("in 51 min",
+/// "in 5h 12m"), far ones show the wall-clock moment ("Thu 12:00 AM").
+pub fn fmt_reset(resets_at: u64, now: u64) -> String {
+    let secs = resets_at.saturating_sub(now);
+    if secs < 3600 {
+        return format!("Resets in {} min", (secs / 60).max(1));
+    }
+    if secs < 48 * 3600 {
+        return format!("Resets in {}h {:02}m", secs / 3600, (secs % 3600) / 60);
+    }
+    use chrono::TimeZone;
+    match chrono::Local.timestamp_opt(resets_at as i64, 0) {
+        chrono::LocalResult::Single(dt) => format!("Resets {}", dt.format("%a %-I:%M %p")),
+        _ => format!("Resets in {}", fmt_countdown(secs)),
+    }
+}
+
 pub fn fmt_countdown(secs: u64) -> String {
     let h = secs / 3600;
     let m = (secs % 3600) / 60;
