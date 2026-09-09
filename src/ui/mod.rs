@@ -236,11 +236,9 @@ pub fn rail_card(
         .as_shape(rect, egui::Rounding::same(CARD_CORNER)),
     );
     p.rect_filled(rect, CARD_CORNER, dim(pal.rail_deep));
-    p.rect_stroke(
-        rect,
-        CARD_CORNER,
-        egui::Stroke::new(1.0_f32, Color32::from_white_alpha(24).linear_multiply(a)),
-    );
+    // No outline: the shadow already separates the panel from the desktop, and
+    // a hairline ring around a translucent surface reads as a seam. The sheen
+    // below is a highlight along the top lip, not a border.
     widgets::sheen(&p, rect, CARD_CORNER, dim(pal.sheen));
 
     let x0 = rect.left() + PAD_X;

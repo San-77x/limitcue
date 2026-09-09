@@ -66,8 +66,8 @@ answers three questions in reading order:
    right; provenance (official / derived / manual, or *stale*) sits in the
    header next to the name.
 
-The panel is glass: a translucent body, a hairline edge, a specular lip along
-the top and a soft drop shadow. Long window lists grow with the available
+The panel is glass: a translucent body, a specular lip along the top and a
+soft drop shadow — no outline, which on a translucent surface reads as a seam. Long window lists grow with the available
 monitor space and scroll only when the screen cannot fit them. The card takes
 the side of the hovered notch row with more room, flipping above the row when
 the lower side is too short, and is strictly hover-bound: it appears the
