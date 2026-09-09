@@ -37,20 +37,25 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
 Docked left or right, the pill becomes a black notch welded to the screen
 edge: a pure-`#000` strip with **concave fillets** where it meets the bezel,
 so it reads as flaring out of the display hardware rather than floating on
-it. Each tracked provider gets its own cell — a dark disc ringed by a
-progress arc (real logo for Claude, Codex/OpenAI, Gemini, Kimi, MiniMax and
-AgentRouter; a monogram letter otherwise) with the used percentage in white
-underneath — and a settings orb sits at the bottom (arc at rest, gear on
-hover). The whole notch is draggable: press and drag anywhere on it (left
-or middle button) and the compositor moves the window; on release it snaps
-back flush to whichever side you dropped it nearest. Hovering a cell slides
-out a rounded usage card with a speech-bubble tail pointing at it:
-per-window label, bar, reset time and "N% used". The card lingers through
-a short grace period after the pointer leaves so you can read it, then
+it. Each tracked provider gets its own cell — a clean **gauge**: the
+provider's white mark (real logo for Claude, Codex/OpenAI, Gemini, Kimi,
+MiniMax and AgentRouter; a monogram letter otherwise) framed by a track
+ring and a heat-colored arc showing the share *used* — green while
+plenty remains, warming through yellow and orange to red as the window
+empties, with the used percentage in white underneath. A settings orb sits
+at the bottom (arc at rest, gear on hover). The whole notch is draggable:
+press and drag anywhere on it (left or middle button) and the compositor
+moves the window; on release it snaps back flush to whichever side you
+dropped it nearest. Hovering a cell slides out a black usage card with a
+speech-bubble tail pointing at it: per-window label, human reset copy
+("Resets in 51 min", "Resets Sat 04:00 AM"), a 6 px heat bar and
+"N% Used", separated by hairlines. The card lingers through a
+short grace period after the pointer leaves so you can read it, then
 fades out.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
-  `theme` config key. Expanded cards show each reading's *fidelity* badge
-  (official / derived / manual) so trust is always visible.
+  `theme` config key. Each theme carries its own gauge heat scale; expanded
+  cards show each reading's *fidelity* badge (official / derived / manual)
+  so trust is always visible.
 - **Borrows existing credentials.** It never signs you in anywhere and never
   sends your keys anywhere but the owning provider's API:
 
@@ -191,6 +196,13 @@ cargo run -- --once    # one-shot poll, print, exit
 Adding a first-party adapter = one file in `src/providers/` implementing the
 `Provider` trait + one registry line. Tests pinned to recorded fixtures are
 welcome and encouraged.
+
+UI text is set in [Inter](https://rsms.me/inter/) (SIL OFL; three weights
+embedded from `assets/fonts/`, ~1 MB added to the binary) with tabular Hack
+mono kept for numerals in the pill. Debug hooks for screenshot automation:
+`LIMITCUE_UI_SHOT=/path.png` captures the window after the layout settles
+and exits, `LIMITCUE_UI_RAIL=<provider_id>` pins a usage card open,
+`LIMITCUE_UI_SNAP=1` skips size animations.
 
 ## Privacy
 
