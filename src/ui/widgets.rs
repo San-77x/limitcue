@@ -425,3 +425,278 @@ pub fn meter(painter: &egui::Painter, rect: Rect, frac: f32, color: Color32, tra
     let w = (rect.width() * frac).max(rect.height());
     painter.rect_filled(Rect::from_min_size(rect.min, Vec2::new(w, rect.height())), r, color);
 }
+
+// ===========================================================================
+// Settings controls. Everything is hand-painted: egui's stock widgets carry
+// a different visual language (and its arrow/trash glyphs are not in Inter,
+// so they render as tofu).
+// ===========================================================================
+
+/// iOS-style switch. Animated, and the whole row-height rect is clickable.
+pub fn switch(ui: &mut egui::Ui, on: &mut bool, pal: &Palette) -> egui::Response {
+    let size = Vec2::new(34.0, 20.0);
+    let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    let t = ui.ctx().animate_bool_with_time(resp.id, *on, 0.13);
+    let track = theme::mix(pal.control_hi, pal.accent, t);
+    let p = ui.painter();
+    p.rect_filled(rect, rect.height() / 2.0, track);
+    if t < 0.999 {
+        p.rect_stroke(
+            rect,
+            rect.height() / 2.0,
+            Stroke::new(1.0_f32, pal.border.gamma_multiply(1.0 - t)),
+        );
+    }
+    let knob_r = rect.height() / 2.0 - 3.0;
+    let x0 = rect.left() + 3.0 + knob_r;
+    let cx = x0 + (rect.width() - 6.0 - knob_r * 2.0) * t;
+    let knob = if t > 0.5 { Color32::WHITE } else { pal.muted };
+    p.circle_filled(egui::pos2(cx, rect.center().y), knob_r, knob);
+    resp
+}
+
+/// Minimal slider: 3 px track, accent fill, small knob, tabular value on the
+/// right. Returns true when the value changed this frame.
+pub fn slider(
+    ui: &mut egui::Ui,
+    value: &mut i64,
+    range: std::ops::RangeInclusive<i64>,
+    step: i64,
+    suffix: &str,
+    pal: &Palette,
+) -> bool {
+    let value_w = 54.0;
+    let h = 20.0;
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::click_and_drag());
+    const KNOB_R: f32 = 7.0;
+    let track = Rect::from_min_max(
+        egui::pos2(rect.left() + KNOB_R, rect.center().y - 1.5),
+        egui::pos2(rect.right() - value_w - KNOB_R, rect.center().y + 1.5),
+    );
+    let (lo, hi) = (*range.start() as f32, *range.end() as f32);
+    let mut changed = false;
+    if resp.is_pointer_button_down_on() {
+        if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
+            let t = ((pos.x - track.left()) / track.width().max(1.0)).clamp(0.0, 1.0);
+            let raw = lo + (hi - lo) * t;
+            let snapped = ((raw / step as f32).round() as i64 * step).clamp(*range.start(), *range.end());
+            if snapped != *value {
+                *value = snapped;
+                changed = true;
+            }
+        }
+    }
+    let t = ((*value as f32 - lo) / (hi - lo).max(1.0)).clamp(0.0, 1.0);
+    let p = ui.painter();
+    p.rect_filled(track, 1.5_f32, pal.control_hi);
+    p.rect_filled(
+        Rect::from_min_size(track.min, Vec2::new(track.width() * t, track.height())),
+        1.5_f32,
+        pal.accent,
+    );
+    let knob_c = egui::pos2(track.left() + track.width() * t, track.center().y);
+    let hot = resp.hovered() || resp.is_pointer_button_down_on();
+    let knob_r = if hot { KNOB_R } else { KNOB_R - 1.0 };
+    p.circle_filled(knob_c, knob_r, pal.bg);
+    p.circle_stroke(knob_c, knob_r, Stroke::new(2.0_f32, pal.accent));
+    p.text(
+        egui::pos2(rect.right(), rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        format!("{value}{suffix}"),
+        theme::mono(11.5),
+        pal.text,
+    );
+    changed
+}
+
+/// Segmented control (settings tabs). Returns the index that is selected
+/// after this frame's clicks.
+pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize, pal: &Palette) -> usize {
+    let h = 28.0;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::hover());
+    ui.painter().rect_filled(rect, 9.0_f32, pal.control);
+    let seg_w = rect.width() / labels.len() as f32;
+    // The thumb slides between segments so switching tabs reads as motion,
+    // not a repaint.
+    let t = ui.ctx().animate_value_with_time(
+        ui.id().with(("seg-thumb", labels.len())),
+        selected as f32,
+        0.14,
+    );
+    let thumb = Rect::from_min_size(
+        egui::pos2(rect.left() + seg_w * t + 3.0, rect.top() + 3.0),
+        Vec2::new(seg_w - 6.0, h - 6.0),
+    );
+    ui.painter().rect_filled(thumb, 7.0_f32, pal.control_hi);
+    let mut out = selected;
+    for (i, label) in labels.iter().enumerate() {
+        let seg = Rect::from_min_size(
+            egui::pos2(rect.left() + seg_w * i as f32, rect.top()),
+            Vec2::new(seg_w, h),
+        );
+        let resp = ui.interact(seg, ui.id().with(("seg", i)), Sense::click());
+        if resp.clicked() {
+            out = i;
+        }
+        let col = if i == selected {
+            pal.text
+        } else if resp.hovered() {
+            pal.muted
+        } else {
+            pal.faint
+        };
+        ui.painter().text(
+            seg.center(),
+            egui::Align2::CENTER_CENTER,
+            *label,
+            theme::medium(12.0),
+            col,
+        );
+    }
+    out
+}
+
+/// Pill button. `primary` fills with the accent; otherwise it is a ghost
+/// with a hairline border.
+pub fn pill_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    primary: bool,
+    enabled: bool,
+    pal: &Palette,
+) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), theme::medium(12.0), pal.text);
+    let size = Vec2::new(galley.rect.width() + 26.0, 28.0);
+    let (rect, resp) = ui.allocate_exact_size(size, if enabled { Sense::click() } else { Sense::hover() });
+    let hot = enabled && resp.hovered();
+    let p = ui.painter();
+    let (fill, stroke, fg) = match (primary, enabled) {
+        (true, true) => (
+            if hot { theme::mix(pal.accent, Color32::WHITE, 0.14) } else { pal.accent },
+            Color32::TRANSPARENT,
+            theme::on_brand(pal.accent),
+        ),
+        (true, false) => (pal.control, Color32::TRANSPARENT, pal.faint),
+        (false, true) => (
+            if hot { pal.control_hi } else { Color32::TRANSPARENT },
+            pal.border,
+            if hot { pal.text } else { pal.muted },
+        ),
+        (false, false) => (Color32::TRANSPARENT, pal.border, pal.faint),
+    };
+    p.rect(rect, 8.0_f32, fill, Stroke::new(1.0_f32, stroke));
+    p.galley(
+        egui::pos2(
+            rect.center().x - galley.rect.width() / 2.0,
+            rect.center().y - galley.rect.height() / 2.0,
+        ),
+        ui.painter().layout_no_wrap(label.to_owned(), theme::medium(12.0), fg),
+        fg,
+    );
+    resp
+}
+
+/// Small painted glyph button used for row actions — no font glyphs, so it
+/// can never render as tofu. `mark` selects the shape.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Mark {
+    Up,
+    Down,
+    Cross,
+}
+
+pub fn glyph_button(
+    ui: &mut egui::Ui,
+    mark: Mark,
+    enabled: bool,
+    tip: &str,
+    pal: &Palette,
+) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        Vec2::splat(22.0),
+        if enabled { Sense::click() } else { Sense::hover() },
+    );
+    let hot = enabled && resp.hovered();
+    let p = ui.painter();
+    if hot {
+        p.rect_filled(rect, 6.0_f32, pal.control_hi);
+    }
+    let col = if !enabled {
+        pal.faint.gamma_multiply(0.45)
+    } else if hot {
+        if mark == Mark::Cross { pal.bad } else { pal.text }
+    } else {
+        pal.muted
+    };
+    let c = rect.center();
+    let s = Stroke::new(1.4_f32, col);
+    match mark {
+        Mark::Up | Mark::Down => {
+            let dy = if mark == Mark::Up { 1.0 } else { -1.0 };
+            p.add(Shape::line(
+                vec![
+                    egui::pos2(c.x - 4.0, c.y + 2.0 * dy),
+                    egui::pos2(c.x, c.y - 2.0 * dy),
+                    egui::pos2(c.x + 4.0, c.y + 2.0 * dy),
+                ],
+                s,
+            ));
+        }
+        Mark::Cross => {
+            p.line_segment([egui::pos2(c.x - 3.5, c.y - 3.5), egui::pos2(c.x + 3.5, c.y + 3.5)], s);
+            p.line_segment([egui::pos2(c.x + 3.5, c.y - 3.5), egui::pos2(c.x - 3.5, c.y + 3.5)], s);
+        }
+    }
+    if enabled {
+        resp.on_hover_text(tip)
+    } else {
+        resp
+    }
+}
+
+/// Theme swatch chip: three gauge stops over the theme's own background, so
+/// a theme is chosen by looking at it rather than by reading its name.
+pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette) -> egui::Response {
+    let other = theme::palette(name);
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(80.0, 46.0), Sense::click());
+    let p = ui.painter();
+    p.rect_filled(rect, 9.0_f32, other.bg);
+    let border = if selected {
+        Stroke::new(1.6_f32, pal.accent)
+    } else if resp.hovered() {
+        Stroke::new(1.0_f32, other.muted)
+    } else {
+        Stroke::new(1.0_f32, other.border)
+    };
+    p.rect_stroke(rect, 9.0_f32, border);
+    // three heat stops as a miniature gauge strip
+    let strip = Rect::from_min_size(
+        egui::pos2(rect.left() + 9.0, rect.top() + 11.0),
+        Vec2::new(rect.width() - 18.0, 4.0),
+    );
+    let seg = strip.width() / 3.0;
+    for (i, c) in [other.gauge[0], other.gauge[1], other.gauge[3]].iter().enumerate() {
+        let r = Rect::from_min_size(
+            egui::pos2(strip.left() + seg * i as f32, strip.top()),
+            Vec2::new(seg - 3.0, strip.height()),
+        );
+        p.rect_filled(r, 2.0_f32, *c);
+    }
+    let label = elide(
+        ui,
+        name.split('-').next().unwrap_or(name),
+        theme::medium(10.0),
+        if selected { other.text } else { other.muted },
+        rect.width() - 12.0,
+    );
+    p.galley(
+        egui::pos2(rect.center().x - label.rect.width() / 2.0, rect.bottom() - 20.0),
+        label,
+        other.text,
+    );
+    resp
+}

@@ -33,6 +33,10 @@ pub struct Palette {
     pub hairline: Color32,
     /// Specular highlight along the top lip of a glass surface.
     pub sheen: Color32,
+    /// Raised control surface inside the settings sheet (rows, inputs, wells).
+    pub control: Color32,
+    /// Same, one step brighter — hover / active segment.
+    pub control_hi: Color32,
     /// Gauge heat scale keyed on percent *used*: calm → caution → hot → out.
     pub gauge: [Color32; 4],
 }
@@ -58,6 +62,8 @@ pub const MIDNIGHT: Palette = Palette {
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
     hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
     sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
+    control: Color32::from_rgb(28, 30, 34),
+    control_hi: Color32::from_rgb(40, 43, 48),
     gauge: [Color32::from_rgb(52, 211, 97), Color32::from_rgb(255, 214, 10), Color32::from_rgb(255, 149, 0), Color32::from_rgb(255, 69, 58)],
 };
 
@@ -80,6 +86,8 @@ pub const TOKYO_NIGHT: Palette = Palette {
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
     hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
     sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
+    control: Color32::from_rgb(36, 40, 59),
+    control_hi: Color32::from_rgb(48, 53, 76),
     gauge: [Color32::from_rgb(158, 206, 106), Color32::from_rgb(224, 175, 104), Color32::from_rgb(255, 158, 100), Color32::from_rgb(247, 118, 142)],
 };
 
@@ -102,6 +110,8 @@ pub const CATPPUCCIN: Palette = Palette {
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
     hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
     sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
+    control: Color32::from_rgb(35, 35, 52),
+    control_hi: Color32::from_rgb(49, 50, 68),
     gauge: [Color32::from_rgb(166, 227, 161), Color32::from_rgb(249, 226, 175), Color32::from_rgb(250, 179, 135), Color32::from_rgb(243, 139, 168)],
 };
 
@@ -124,6 +134,8 @@ pub const GRUVBOX: Palette = Palette {
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
     hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
     sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
+    control: Color32::from_rgb(56, 53, 51),
+    control_hi: Color32::from_rgb(72, 68, 65),
     gauge: [Color32::from_rgb(184, 187, 38), Color32::from_rgb(250, 189, 47), Color32::from_rgb(254, 128, 25), Color32::from_rgb(251, 73, 52)],
 };
 

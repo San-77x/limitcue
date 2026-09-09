@@ -152,7 +152,7 @@ const HEADER_ROW_SPACING: f32 = 10.0; // chip/chip and chips/buttons gap
 const COLLAPSED_H: f32 = 38.0;
 const HEADER_H: f32 = 26.0;
 const EXPANDED_W: f32 = 380.0;
-const SETTINGS_W: f32 = 380.0;
+const SETTINGS_W: f32 = 420.0;
 const VIEWPORT_H_MARGIN: f32 = 48.0;
 const TWEEN_SECS: f32 = 0.45;
 const SPIN_SECS: f32 = 0.55;
@@ -196,7 +196,188 @@ impl Tween {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SettingsTab {
     General,
+    Providers,
+    /// Kept under the old name for the `LIMITCUE_UI_SETTINGS` debug hook;
+    /// the tab is labelled "Appearance".
     Personalization,
+}
+
+/// Settings sheet geometry.
+const SETTINGS_PAD: f32 = 16.0;
+/// Height reserved for the pinned action bar (rule + gap + buttons).
+const SETTINGS_ACTIONS_H: f32 = 10.0 + 1.0 + 10.0 + 28.0;
+
+/// Do two configs describe the same UI state? Drives the "unsaved changes"
+/// hint — `Config` is not `PartialEq` and gaining that would mean deriving it
+/// across every provider field, so compare the serialized form.
+fn cfg_eq(a: &Config, b: &Config) -> bool {
+    toml::to_string(a).ok() == toml::to_string(b).ok()
+}
+
+/// Remaining width, never negative — egui panics on a negative child size.
+fn avail(ui: &egui::Ui) -> f32 {
+    ui.available_width().max(1.0)
+}
+
+/// Small tracked caps label that titles a group of settings rows.
+fn section(ui: &mut egui::Ui, title: &str, pal: &Palette) {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 16.0), Sense::hover());
+    let col = theme::mix(pal.faint, pal.muted, 0.55);
+    let g = ui.painter().layout_job(theme::caps_job(title, 9.5, col));
+    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+    ui.add_space(7.0);
+}
+
+/// Rounded well that holds a group of rows.
+fn card<R>(ui: &mut egui::Ui, pal: &Palette, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::none()
+        .fill(pal.control)
+        .stroke(egui::Stroke::new(1.0_f32, pal.border))
+        .rounding(egui::Rounding::same(11.0))
+        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+        .show(ui, |ui| {
+            ui.style_mut().spacing.item_spacing = Vec2::new(8.0, 0.0);
+            add(ui)
+        })
+        .inner
+}
+
+/// Full-width rule separating two rows inside a [`card`].
+fn hairline(ui: &mut egui::Ui, pal: &Palette) {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 1.0), Sense::hover());
+    ui.painter().rect_filled(r, 0.0_f32, pal.border);
+}
+
+/// A settings row: title over an explanatory line on the left, the control
+/// on the right. The description is what makes a setting self-explanatory,
+/// so it is part of the row rather than a tooltip.
+fn setting_row<R>(
+    ui: &mut egui::Ui,
+    title: &str,
+    desc: &str,
+    pal: &Palette,
+    control: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    ui.add_space(9.0);
+    let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 15.0), Sense::hover());
+    ui.painter().text(
+        egui::pos2(r.left(), r.center().y),
+        egui::Align2::LEFT_CENTER,
+        title,
+        theme::medium(12.5),
+        pal.text,
+    );
+    ui.add_space(3.0);
+    let (d, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 13.0), Sense::hover());
+    ui.painter().galley(
+        egui::pos2(d.left(), d.top()),
+        ui.painter().layout(desc.to_owned(), theme::sans(10.0), pal.faint, d.width()),
+        pal.faint,
+    );
+    ui.add_space(8.0);
+    let out = control(ui);
+    ui.add_space(9.0);
+    out
+}
+
+/// [`setting_row`] with the control right-aligned on the title line. Use it
+/// when the control is compact (a button, a switch); the full-width variant
+/// is for controls that want the whole row, like a slider.
+fn control_row<R>(
+    ui: &mut egui::Ui,
+    title: &str,
+    desc: &str,
+    reserve: f32,
+    pal: &Palette,
+    control: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    ui.add_space(9.0);
+    let mut out = None;
+    ui.horizontal(|ui| {
+        let (r, _) = ui.allocate_exact_size(
+            Vec2::new((ui.available_width() - reserve).max(1.0), 30.0),
+            Sense::hover(),
+        );
+        ui.painter().text(
+            egui::pos2(r.left(), r.top() + 1.0),
+            egui::Align2::LEFT_TOP,
+            title,
+            theme::medium(12.5),
+            pal.text,
+        );
+        ui.painter().galley(
+            egui::pos2(r.left(), r.top() + 16.0),
+            ui.painter().layout(desc.to_owned(), theme::sans(10.0), pal.faint, r.width()),
+            pal.faint,
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            out = Some(control(ui));
+        });
+    });
+    ui.add_space(9.0);
+    out.expect("control_row body runs exactly once")
+}
+
+/// [`setting_row`] whose control is a switch, laid out on the title line so
+/// the affordance sits where the eye already is.
+fn toggle_row(ui: &mut egui::Ui, title: &str, desc: &str, value: &mut bool, pal: &Palette) -> bool {
+    let mut changed = false;
+    ui.add_space(9.0);
+    ui.horizontal(|ui| {
+        let (r, _) = ui.allocate_exact_size(
+            Vec2::new((ui.available_width() - 42.0).max(1.0), 30.0),
+            Sense::hover(),
+        );
+        ui.painter().text(
+            egui::pos2(r.left(), r.top() + 1.0),
+            egui::Align2::LEFT_TOP,
+            title,
+            theme::medium(12.5),
+            pal.text,
+        );
+        ui.painter().galley(
+            egui::pos2(r.left(), r.top() + 16.0),
+            ui.painter().layout(desc.to_owned(), theme::sans(10.0), pal.faint, r.width()),
+            pal.faint,
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            changed = ui::widgets::switch(ui, value, pal).changed();
+        });
+    });
+    ui.add_space(9.0);
+    changed
+}
+
+/// The provider's white mark on a dark disc, dimmed when it is switched off.
+fn provider_mark(
+    ui: &mut egui::Ui,
+    id: &str,
+    logos: &HashMap<String, egui::TextureHandle>,
+    pal: &Palette,
+    enabled: bool,
+) {
+    let (r, _) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::hover());
+    let a = if enabled { 1.0 } else { 0.4 };
+    ui.painter().circle_filled(r.center(), 13.0, pal.rail_disc);
+    match logos.get(id) {
+        Some(tex) => {
+            ui.painter().image(
+                tex.id(),
+                Rect::from_center_size(r.center(), Vec2::splat(15.0)),
+                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE.linear_multiply(a),
+            );
+        }
+        None => {
+            ui.painter().text(
+                r.center(),
+                egui::Align2::CENTER_CENTER,
+                theme::monogram(id),
+                theme::semibold(12.0),
+                Color32::WHITE.linear_multiply(a),
+            );
+        }
+    }
 }
 
 struct App {
@@ -218,6 +399,8 @@ struct App {
     cfg_next: Config,
     settings_open: bool,
     settings_tab: SettingsTab,
+    /// Measured height of the settings body, used to size the sheet.
+    settings_body_h: f32,
     new_provider_id: String,
     /// Provider whose inline usage card is open on the rail (left/right dock).
     rail_open: Option<String>,
@@ -245,7 +428,13 @@ impl App {
         // Debug hooks: start expanded / with settings open / with a rail card
         // open (tests, screenshots).
         let expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
-        let settings_open = std::env::var("LIMITCUE_UI_SETTINGS").map(|v| v != "0").unwrap_or(false);
+        let settings_var = std::env::var("LIMITCUE_UI_SETTINGS").unwrap_or_default();
+        let settings_open = !settings_var.is_empty() && settings_var != "0";
+        let settings_tab = match settings_var.as_str() {
+            "providers" => SettingsTab::Providers,
+            "appearance" => SettingsTab::Personalization,
+            _ => SettingsTab::General,
+        };
         let rail_open = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
         let notch_mode = std::env::var("LIMITCUE_FLOAT").map(|v| v == "0").unwrap_or(true);
         let cfg_next = cfg.clone();
@@ -267,7 +456,8 @@ impl App {
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
             settings_open,
-            settings_tab: SettingsTab::General,
+            settings_tab,
+            settings_body_h: 0.0,
             new_provider_id: String::new(),
             rail_open,
             rail_last: None,
@@ -314,195 +504,418 @@ impl App {
         }
     }
 
-    /// Draw the settings screen. Saves `self.cfg_next` back to config.toml on
-    /// apply and pushes it to the poll thread (provider list, order, interval).
+    /// Draw the settings sheet. Saves `self.cfg_next` back to config.toml on
+    /// Save and pushes it to the poll thread (provider list, order, interval).
+    ///
+    /// The sheet is three fixed bands — title, tabs, action bar — around one
+    /// scrolling body, so the buttons are always reachable no matter how many
+    /// providers are configured. Every control is hand-painted: egui's stock
+    /// widgets speak a different visual language, and its arrow/trash glyphs
+    /// are not in Inter, so they used to render as tofu boxes.
     fn settings_ui(&mut self, ui: &mut egui::Ui, pal: &Palette) {
-        use egui::{Align, Layout};
+        use ui::widgets as w;
         let mut dirty = false;
+        // The window is still notch-sized on the frame the sheet opens; every
+        // allocation below has to survive that before the resize lands.
+        let full = ui.available_width().max(1.0);
+        // The text field is the one stock egui widget left in the sheet;
+        // restyle it here rather than in apply_style(), which runs once at
+        // startup and so cannot follow the live theme preview.
+        {
+            let v = &mut ui.style_mut().visuals;
+            v.extreme_bg_color = pal.bg;
+            v.selection.bg_fill = pal.accent.gamma_multiply(0.30);
+            v.selection.stroke = egui::Stroke::new(1.0_f32, pal.accent);
+            v.text_cursor.stroke = egui::Stroke::new(1.4_f32, pal.accent);
+            v.widgets.inactive.rounding = egui::Rounding::same(8.0);
+            v.widgets.hovered.rounding = egui::Rounding::same(8.0);
+            v.widgets.active.rounding = egui::Rounding::same(8.0);
+            v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, pal.border);
+            v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, pal.muted);
+            v.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, pal.accent);
+        }
+
+        // ---- title band --------------------------------------------------
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Settings").size(15.0));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let w = ui::widgets::icon_button(ui, &self.icons.close, "close settings", 1.0, pal, None);
-                if w.clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            let (r, _) = ui.allocate_exact_size(Vec2::new((full - 26.0).max(1.0), 24.0), Sense::hover());
+            ui.painter().text(
+                egui::pos2(r.left(), r.center().y),
+                egui::Align2::LEFT_CENTER,
+                "Settings",
+                theme::semibold(16.0),
+                pal.text,
+            );
+            let name = ui.painter().layout_job(theme::caps_job("limitcue", 9.0, pal.faint));
+            ui.painter().galley(
+                egui::pos2(r.right() - name.rect.width(), r.center().y - name.rect.height() / 2.0),
+                name,
+                pal.faint,
+            );
+            if w::glyph_button(ui, w::Mark::Cross, true, "close", pal).clicked() {
+                self.settings_open = false;
+            }
+        });
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.settings_open = false;
+        }
+        ui.add_space(12.0);
+
+        // ---- tabs ----------------------------------------------------------
+        let tabs = ["General", "Providers", "Appearance"];
+        let cur = match self.settings_tab {
+            SettingsTab::General => 0,
+            SettingsTab::Providers => 1,
+            SettingsTab::Personalization => 2,
+        };
+        let picked = w::segmented(ui, &tabs, cur, pal);
+        if picked != cur {
+            self.settings_tab = match picked {
+                0 => SettingsTab::General,
+                1 => SettingsTab::Providers,
+                _ => SettingsTab::Personalization,
+            };
+        }
+        ui.add_space(14.0);
+
+        // ---- scrolling body -------------------------------------------------
+        let body_h = (ui.available_height() - SETTINGS_ACTIONS_H).max(80.0);
+        let out = egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .max_height(body_h)
+            .show(ui, |ui| match self.settings_tab {
+                SettingsTab::General => dirty |= self.settings_general(ui, pal),
+                SettingsTab::Providers => dirty |= self.settings_providers(ui, pal),
+                SettingsTab::Personalization => dirty |= self.settings_appearance(ui, pal),
+            });
+        // Feed the measured content height back into next frame's window size.
+        // Content width is fixed, so this settles in one frame rather than
+        // oscillating.
+        let measured = out.content_size.y;
+        if (measured - self.settings_body_h).abs() > 0.5 {
+            self.settings_body_h = measured;
+            ui.ctx().request_repaint();
+        }
+
+        // ---- action bar -----------------------------------------------------
+        ui.add_space(10.0);
+        let (rule_r, _) = ui.allocate_exact_size(Vec2::new(full, 1.0), Sense::hover());
+        ui.painter().rect_filled(rule_r, 0.0_f32, pal.border);
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            let changed = !cfg_eq(&self.cfg, &self.cfg_next);
+            let hint = if changed { "Unsaved changes" } else { "All changes saved" };
+            let (r, _) = ui.allocate_exact_size(Vec2::new((full - 150.0).max(1.0), 28.0), Sense::hover());
+            ui.painter().text(
+                egui::pos2(r.left(), r.center().y),
+                egui::Align2::LEFT_CENTER,
+                hint,
+                theme::sans(10.5),
+                if changed { pal.warn } else { pal.faint },
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if w::pill_button(ui, "Save", true, true, pal).clicked() {
+                    self.cfg = self.cfg_next.clone();
+                    config::Config::save(&self.cfg);
+                    self.pal = theme::palette(&self.cfg.theme);
+                    // Re-apply the global style: tooltips and the scrollbar
+                    // are styled once at startup and would otherwise keep the
+                    // old theme's colors until the next launch.
+                    theme::apply_style(ui.ctx(), &self.pal);
+                    self.restart_poller();
+                    self.settings_open = false;
+                }
+                ui.add_space(8.0);
+                if w::pill_button(ui, "Cancel", false, true, pal).clicked() {
+                    self.cfg_next = self.cfg.clone();
                     self.settings_open = false;
                 }
             });
         });
-        ui.separator();
-        ui.horizontal(|ui| {
-            if ui.selectable_label(self.settings_tab == SettingsTab::General, "General").clicked() {
-                self.settings_tab = SettingsTab::General;
-            }
-            if ui.selectable_label(self.settings_tab == SettingsTab::Personalization, "Personalization").clicked() {
-                self.settings_tab = SettingsTab::Personalization;
-            }
-        });
-        ui.separator();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, true])
-            .show(ui, |ui| {
-                ui.add_space(2.0);
-                if self.settings_tab == SettingsTab::Personalization {
-                    ui.heading(RichText::new("Personalization").size(12.0));
-                    let mut theme_buf = self.cfg_next.theme.clone();
-                    egui::ComboBox::from_id_salt("theme")
-                        .selected_text(if theme_buf.is_empty() { "midnight (default)" } else { &theme_buf })
-                        .show_ui(ui, |ui| {
-                            for t in theme::THEMES {
-                                ui.selectable_value(&mut theme_buf, t.to_string(), *t);
-                            }
-                        });
-                    if theme_buf != self.cfg_next.theme {
-                        self.cfg_next.theme = theme_buf;
-                        dirty = true;
-                    }
-                    let mut mv = self.cfg_next.max_visible_collapsed as i32;
-                    ui.add(egui::Slider::new(&mut mv, 1..=8).text("visible when collapsed"));
-                    self.cfg_next.max_visible_collapsed = mv.max(1) as usize;
-                    let mut hu = self.cfg_next.hide_unconfigured;
-                    if ui.checkbox(&mut hu, "hide unconfigured providers").changed() {
-                        self.cfg_next.hide_unconfigured = hu;
-                        dirty = true;
-                    }
-                    let mut quiet = self.cfg_next.quiet_mode;
-                    if ui.checkbox(&mut quiet, "dim idle surfaces until hover").changed() {
-                        self.cfg_next.quiet_mode = quiet;
-                        dirty = true;
-                    }
-                    let mut show_pct = self.cfg_next.show_rail_percent;
-                    if ui.checkbox(&mut show_pct, "show percentage on notch").changed() {
-                        self.cfg_next.show_rail_percent = show_pct;
-                        dirty = true;
-                    }
-                    ui.label(RichText::new("The notch percentage is hidden by default; detailed values remain available on hover.").color(pal.faint).size(10.5));
-                } else {
-
-                // ---- general ----
-                ui.heading(RichText::new("General").size(12.0));
-                let mut poll = self.cfg_next.poll_interval_secs;
-                ui.add(egui::Slider::new(&mut poll, 30..=900).text("poll interval (s)"));
-                if poll != self.cfg_next.poll_interval_secs {
-                    self.cfg_next.poll_interval_secs = poll;
-                }
-                ui.add_space(6.0);
-
-                // ---- providers ----
-                ui.heading(RichText::new("Providers").size(12.0));
-                let n = self.cfg_next.provider.len();
-                for i in 0..n {
-                    let (enabled, id, name, can_up, can_down, can_del) = {
-                        let p = &self.cfg_next.provider[i];
-                        let en = p.enabled.unwrap_or(true);
-                        let id = p.id.clone();
-                        let name = if p.name.is_empty() { id.clone() } else { p.name.clone() };
-                        (en, id, name, i > 0, i + 1 < n, true)
-                    };
-                    ui.horizontal(|ui| {
-                        let mut en = enabled;
-                        if ui.checkbox(&mut en, "").changed() {
-                            self.cfg_next.provider[i].enabled = Some(en);
-                            dirty = true;
-                        }
-                        let label = if name != id { format!("{name}  ({id})") } else { name };
-                        ui.label(RichText::new(label).size(12.0));
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if can_del && ui.small_button("🗑").clicked() {
-                                self.cfg_next.provider.remove(i);
-                                dirty = true;
-                            }
-                            if can_down && ui.small_button("▾").clicked() {
-                                self.cfg_next.provider.swap(i, i + 1);
-                                dirty = true;
-                            }
-                            if can_up && ui.small_button("▴").clicked() {
-                                self.cfg_next.provider.swap(i - 1, i);
-                                dirty = true;
-                            }
-                        });
-                    });
-                }
-                // built-ins: toggle only (code can't be reordered/removed)
-                for b in ["claude", "codex"] {
-                    let mut dis = self.cfg_next.disabled.contains(&b.to_string());
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut dis, "").changed() {
-                            if dis {
-                                self.cfg_next.disabled.push(b.to_string());
-                            } else {
-                                self.cfg_next.disabled.retain(|d| d != b);
-                            }
-                            dirty = true;
-                        }
-                        let label = match b {
-                            "claude" => "Claude (built-in)",
-                            _ => "Codex (built-in)",
-                        };
-                        ui.label(RichText::new(label).size(12.0));
-                    });
-                }
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("New provider id:").size(11.5));
-                    let resp = ui.add(
-                        egui::TextEdit::singleline(&mut self.new_provider_id)
-                            .desired_width(120.0)
-                            .hint_text("e.g. openrouter"),
-                    );
-                    let dup = self.cfg_next.provider.iter().any(|p| p.id == self.new_provider_id)
-                        || matches!(self.new_provider_id.as_str(), "claude" | "codex")
-                        || self.new_provider_id.is_empty();
-                    let add = ui.add_enabled(!dup, egui::Button::new("Add")).clicked();
-                    if add {
-                        self.cfg_next.provider.push(config::ProviderConfig {
-                            id: self.new_provider_id.trim().to_string(),
-                            name: String::new(),
-                            url: None,
-                            auth_header: None,
-                            key_env: None,
-                            api_key: None,
-                            base_url: None,
-                            windows: vec![],
-                            enabled: Some(true),
-                            billing: false,
-                            priority: None,
-                        });
-                        self.new_provider_id.clear();
-                        dirty = true;
-                    }
-                    if dup && !self.new_provider_id.is_empty() {
-                        resp.on_hover_text("id already exists or is built-in");
-                    }
-                });
-                ui.colored_label(
-                    pal.faint,
-                    "Keys live in config.toml (never stored by this window) — click Edit to open it.",
-                )
-                .on_hover_text("New/edited providers need their api_key or key_env set in config.toml.");
-                if ui.small_button("Edit config.toml").clicked() {
-                    let _ = std::process::Command::new("xdg-open").arg(config::Config::path()).spawn();
-                }
-                ui.add_space(6.0);
-
-                }
-            });
 
         if dirty {
             ui.ctx().request_repaint();
         }
-        ui.separator();
-        ui.horizontal(|ui| {
-            if ui.button("Apply").clicked() {
-                self.cfg = self.cfg_next.clone();
-                config::Config::save(&self.cfg);
-                self.pal = theme::palette(&self.cfg.theme);
-                self.restart_poller();
-                self.settings_open = false;
+    }
+
+    /// General: how often to poll, and what the notch shows at rest.
+    fn settings_general(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
+        use ui::widgets as w;
+        let mut dirty = false;
+        section(ui, "Updates", pal);
+        card(ui, pal, |ui| {
+            setting_row(ui, "Poll interval", "How often each provider is asked for fresh numbers.", pal, |ui| {
+                let mut v = self.cfg_next.poll_interval_secs as i64;
+                if w::slider(ui, &mut v, 30..=900, 30, "s", pal) {
+                    self.cfg_next.poll_interval_secs = v as u64;
+                    dirty = true;
+                }
+            });
+        });
+
+        ui.add_space(16.0);
+        section(ui, "Notch", pal);
+        card(ui, pal, |ui| {
+            dirty |= toggle_row(
+                ui,
+                "Show percentages",
+                "Print the used share under each gauge instead of the ring alone.",
+                &mut self.cfg_next.show_rail_percent,
+                pal,
+            );
+            hairline(ui, pal);
+            dirty |= toggle_row(
+                ui,
+                "Quiet at rest",
+                "Fade the notch until the pointer is over it.",
+                &mut self.cfg_next.quiet_mode,
+                pal,
+            );
+            hairline(ui, pal);
+            dirty |= toggle_row(
+                ui,
+                "Hide unconfigured",
+                "Keep providers you have not set up out of the notch.",
+                &mut self.cfg_next.hide_unconfigured,
+                pal,
+            );
+        });
+
+        ui.add_space(16.0);
+        section(ui, "Config file", pal);
+        card(ui, pal, |ui| {
+            control_row(
+                ui,
+                "config.toml",
+                "API keys live here and are never held by this window.",
+                72.0,
+                pal,
+                |ui| {
+                    if w::pill_button(ui, "Open", false, true, pal).clicked() {
+                        let _ = std::process::Command::new("xdg-open")
+                            .arg(config::Config::path())
+                            .spawn();
+                    }
+                },
+            );
+        });
+        ui.add_space(8.0);
+        dirty
+    }
+
+    /// Providers: order, enable/disable, remove, add.
+    fn settings_providers(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
+        use ui::widgets as w;
+        let mut dirty = false;
+        section(ui, "Tracked providers", pal);
+        card(ui, pal, |ui| {
+            let n = self.cfg_next.provider.len();
+            let mut action: Option<(usize, i32)> = None; // (index, -1 up / 1 down / 0 delete)
+            for i in 0..n {
+                if i > 0 {
+                    hairline(ui, pal);
+                }
+                let (id, name, mut enabled) = {
+                    let p = &self.cfg_next.provider[i];
+                    (
+                        p.id.clone(),
+                        if p.name.is_empty() { p.id.clone() } else { p.name.clone() },
+                        p.enabled.unwrap_or(true),
+                    )
+                };
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    provider_mark(ui, &id, &self.logos, pal, enabled);
+                    ui.add_space(9.0);
+                    let right = 22.0 * 3.0 + 34.0 + 18.0;
+                    let (r, _) = ui.allocate_exact_size(
+                        Vec2::new((ui.available_width() - right).max(1.0), 34.0),
+                        Sense::hover(),
+                    );
+                    let title_col = if enabled { pal.text } else { pal.faint };
+                    let g = w::elide(ui, &name, theme::medium(12.5), title_col, r.width());
+                    ui.painter().galley(egui::pos2(r.left(), r.top() + 3.0), g, title_col);
+                    let g2 = w::elide(ui, &id, theme::sans(10.0), pal.faint, r.width());
+                    ui.painter().galley(egui::pos2(r.left(), r.top() + 18.0), g2, pal.faint);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if w::switch(ui, &mut enabled, pal).changed() {
+                            self.cfg_next.provider[i].enabled = Some(enabled);
+                            dirty = true;
+                        }
+                        ui.add_space(6.0);
+                        if w::glyph_button(ui, w::Mark::Cross, true, "remove provider", pal).clicked() {
+                            action = Some((i, 0));
+                        }
+                        if w::glyph_button(ui, w::Mark::Down, i + 1 < n, "move down", pal).clicked() {
+                            action = Some((i, 1));
+                        }
+                        if w::glyph_button(ui, w::Mark::Up, i > 0, "move up", pal).clicked() {
+                            action = Some((i, -1));
+                        }
+                    });
+                });
+                ui.add_space(4.0);
             }
-            if ui.button("Cancel").clicked() {
-                self.cfg_next = self.cfg.clone();
-                self.settings_open = false;
+            if n == 0 {
+                let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 34.0), Sense::hover());
+                ui.painter().text(
+                    egui::pos2(r.left(), r.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    "No extra providers yet.",
+                    theme::sans(11.0),
+                    pal.faint,
+                );
+            }
+            // Applied after the loop so the list is not mutated mid-iteration.
+            match action {
+                Some((i, 0)) => {
+                    self.cfg_next.provider.remove(i);
+                    dirty = true;
+                }
+                Some((i, 1)) => {
+                    self.cfg_next.provider.swap(i, i + 1);
+                    dirty = true;
+                }
+                Some((i, -1)) => {
+                    self.cfg_next.provider.swap(i - 1, i);
+                    dirty = true;
+                }
+                _ => {}
             }
         });
+
+        ui.add_space(16.0);
+        section(ui, "Built in", pal);
+        card(ui, pal, |ui| {
+            for (idx, (b, label)) in [("claude", "Claude"), ("codex", "Codex")].iter().enumerate() {
+                if idx > 0 {
+                    hairline(ui, pal);
+                }
+                let mut on = !self.cfg_next.disabled.iter().any(|d| d == b);
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    provider_mark(ui, b, &self.logos, pal, on);
+                    ui.add_space(9.0);
+                    let (r, _) = ui.allocate_exact_size(
+                        Vec2::new((ui.available_width() - 52.0).max(1.0), 34.0),
+                        Sense::hover(),
+                    );
+                    let col = if on { pal.text } else { pal.faint };
+                    ui.painter().text(
+                        egui::pos2(r.left(), r.top() + 9.0),
+                        egui::Align2::LEFT_TOP,
+                        *label,
+                        theme::medium(12.5),
+                        col,
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if w::switch(ui, &mut on, pal).changed() {
+                            if on {
+                                self.cfg_next.disabled.retain(|d| d != b);
+                            } else {
+                                self.cfg_next.disabled.push((*b).to_string());
+                            }
+                            dirty = true;
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+            }
+        });
+
+        ui.add_space(16.0);
+        section(ui, "Add a provider", pal);
+        card(ui, pal, |ui| {
+            let taken = self.cfg_next.provider.iter().any(|p| p.id == self.new_provider_id.trim())
+                || matches!(self.new_provider_id.trim(), "claude" | "codex");
+            let id_ok = !self.new_provider_id.trim().is_empty() && !taken;
+            ui.horizontal(|ui| {
+                ui.add_space(2.0);
+                let field_w = (ui.available_width() - 86.0).max(1.0);
+                ui.add_sized(
+                    Vec2::new(field_w, 28.0),
+                    egui::TextEdit::singleline(&mut self.new_provider_id)
+                        .hint_text("provider id, e.g. openrouter")
+                        .margin(egui::Margin::symmetric(8.0, 6.0))
+                        .font(theme::sans(12.0)),
+                );
+                ui.add_space(8.0);
+                if w::pill_button(ui, "Add", true, id_ok, pal).clicked() && id_ok {
+                    self.cfg_next.provider.push(config::ProviderConfig {
+                        id: self.new_provider_id.trim().to_string(),
+                        name: String::new(),
+                        url: None,
+                        auth_header: None,
+                        key_env: None,
+                        api_key: None,
+                        base_url: None,
+                        windows: vec![],
+                        enabled: Some(true),
+                        billing: false,
+                        priority: None,
+                    });
+                    self.new_provider_id.clear();
+                    dirty = true;
+                }
+            });
+            let note = if taken {
+                ("That id is already tracked.", pal.warn)
+            } else {
+                ("Finish it in config.toml — the new entry needs a url and an api_key or key_env.", pal.faint)
+            };
+            ui.add_space(6.0);
+            let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 26.0), Sense::hover());
+            ui.painter().galley(
+                egui::pos2(r.left() + 2.0, r.top()),
+                ui.painter().layout(note.0.to_owned(), theme::sans(10.0), note.1, r.width() - 4.0),
+                note.1,
+            );
+        });
+        ui.add_space(8.0);
+        dirty
+    }
+
+    /// Appearance: theme, and how much of the notch is on show.
+    fn settings_appearance(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
+        use ui::widgets as w;
+        let mut dirty = false;
+        section(ui, "Theme", pal);
+        card(ui, pal, |ui| {
+            ui.add_space(2.0);
+            // Swatches, not a dropdown: a theme is a set of colors, so it
+            // should be chosen by looking at the colors.
+            let current = if self.cfg_next.theme.is_empty() { "midnight" } else { &self.cfg_next.theme };
+            let current = current.to_string();
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+                for t in theme::THEMES {
+                    if w::theme_swatch(ui, t, *t == current, pal).clicked() && *t != current {
+                        self.cfg_next.theme = (*t).to_string();
+                        dirty = true;
+                    }
+                }
+            });
+            ui.add_space(4.0);
+        });
+
+        ui.add_space(16.0);
+        section(ui, "Floating pill", pal);
+        card(ui, pal, |ui| {
+            setting_row(
+                ui,
+                "Providers when collapsed",
+                "The rest fold into a +N chip. Only affects the undocked pill.",
+                pal,
+                |ui| {
+                    let mut v = self.cfg_next.max_visible_collapsed as i64;
+                    if w::slider(ui, &mut v, 1..=8, 1, "", pal) {
+                        self.cfg_next.max_visible_collapsed = v.max(1) as usize;
+                        dirty = true;
+                    }
+                },
+            );
+        });
+        ui.add_space(8.0);
+        dirty
     }
 
     /// Headline percent to draw: mid-tween value if animating, else the snapshot's.
@@ -863,15 +1276,25 @@ impl eframe::App for App {
 
         // Settings follows its content, with only a viewport safety cap.
         if self.settings_open {
-            let settings_ideal_h = 250.0 + self.cfg_next.provider.len() as f32 * 30.0;
-            let settings_h = settings_ideal_h.min((viewport_h - VIEWPORT_H_MARGIN).max(360.0));
+            // Theme changes preview live — picking a swatch that only takes
+            // effect after Save makes the picker feel broken.
+            let pal = theme::palette(&self.cfg_next.theme);
+            let body = self.settings_body_h.max(140.0);
+            let chrome = SETTINGS_PAD * 2.0 + 24.0 + 12.0 + 28.0 + 14.0 + SETTINGS_ACTIONS_H;
+            // Cap against the *monitor*, not the window: capping against its
+            // own height pinned the sheet at the floor it started from and it
+            // could never grow to fit its content.
+            let screen_h = ctx
+                .input(|i| i.viewport().monitor_size.map(|s| s.y))
+                .unwrap_or(900.0);
+            let settings_h = (body + chrome + 10.0).min((screen_h - VIEWPORT_H_MARGIN).max(380.0));
             self.cur_size = Vec2::new(SETTINGS_W, settings_h);
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
             let frame = egui::Frame::none()
                 .fill(pal.bg)
                 .stroke(egui::Stroke::new(1.0_f32, pal.border))
                 .rounding(egui::Rounding::same(17.0))
-                .inner_margin(egui::Margin::same(14.0));
+                .inner_margin(egui::Margin::same(SETTINGS_PAD));
             egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
                 self.settings_ui(ui, &pal);
             });
