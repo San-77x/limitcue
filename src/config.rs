@@ -54,6 +54,9 @@ pub struct Config {
     /// Reduce idle rail/pill opacity until the pointer is over the surface.
     #[serde(default)]
     pub quiet_mode: bool,
+    /// Show used percentage text beneath gauges in the side rail.
+    #[serde(default)]
+    pub show_rail_percent: bool,
 }
 
 fn default_poll() -> u64 { 120 }
@@ -70,6 +73,7 @@ impl Default for Config {
             theme: String::new(),
             max_visible_collapsed: default_max_visible(),
             quiet_mode: false,
+            show_rail_percent: false,
         }
     }
 }
@@ -123,6 +127,7 @@ hide_unconfigured = true
 # theme = "midnight"             # midnight | tokyo-night | catppuccin | gruvbox
 # max_visible_collapsed = 4      # providers on the pill before folding into "+N"
 # quiet_mode = false              # dim idle UI until the pointer is over it
+# show_rail_percent = false       # show used percentages beneath rail gauges
 
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json

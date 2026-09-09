@@ -194,6 +194,12 @@ impl Tween {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SettingsTab {
+    General,
+    Personalization,
+}
+
 struct App {
     snapshots: HashMap<String, Snapshot>,
     tweens: HashMap<String, Tween>,
@@ -212,6 +218,7 @@ struct App {
     last_edge: Edge,
     cfg_next: Config,
     settings_open: bool,
+    settings_tab: SettingsTab,
     new_provider_id: String,
     /// Provider whose inline usage card is open on the rail (left/right dock).
     rail_open: Option<String>,
@@ -257,6 +264,7 @@ impl App {
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
             settings_open,
+            settings_tab: SettingsTab::General,
             new_provider_id: String::new(),
             rail_open,
             rail_last: None,
@@ -316,10 +324,53 @@ impl App {
             });
         });
         ui.separator();
+        ui.horizontal(|ui| {
+            if ui.selectable_label(self.settings_tab == SettingsTab::General, "General").clicked() {
+                self.settings_tab = SettingsTab::General;
+            }
+            if ui.selectable_label(self.settings_tab == SettingsTab::Personalization, "Personalization").clicked() {
+                self.settings_tab = SettingsTab::Personalization;
+            }
+        });
+        ui.separator();
         egui::ScrollArea::vertical()
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.add_space(2.0);
+                if self.settings_tab == SettingsTab::Personalization {
+                    ui.heading(RichText::new("Personalization").size(12.0));
+                    let mut theme_buf = self.cfg_next.theme.clone();
+                    egui::ComboBox::from_id_salt("theme")
+                        .selected_text(if theme_buf.is_empty() { "midnight (default)" } else { &theme_buf })
+                        .show_ui(ui, |ui| {
+                            for t in theme::THEMES {
+                                ui.selectable_value(&mut theme_buf, t.to_string(), *t);
+                            }
+                        });
+                    if theme_buf != self.cfg_next.theme {
+                        self.cfg_next.theme = theme_buf;
+                        dirty = true;
+                    }
+                    let mut mv = self.cfg_next.max_visible_collapsed as i32;
+                    ui.add(egui::Slider::new(&mut mv, 1..=8).text("visible when collapsed"));
+                    self.cfg_next.max_visible_collapsed = mv.max(1) as usize;
+                    let mut hu = self.cfg_next.hide_unconfigured;
+                    if ui.checkbox(&mut hu, "hide unconfigured providers").changed() {
+                        self.cfg_next.hide_unconfigured = hu;
+                        dirty = true;
+                    }
+                    let mut quiet = self.cfg_next.quiet_mode;
+                    if ui.checkbox(&mut quiet, "dim idle surfaces until hover").changed() {
+                        self.cfg_next.quiet_mode = quiet;
+                        dirty = true;
+                    }
+                    let mut show_pct = self.cfg_next.show_rail_percent;
+                    if ui.checkbox(&mut show_pct, "show percentage on notch").changed() {
+                        self.cfg_next.show_rail_percent = show_pct;
+                        dirty = true;
+                    }
+                    ui.label(RichText::new("The notch percentage is hidden by default; detailed values remain available on hover.").color(pal.faint).size(10.5));
+                } else {
 
                 // ---- general ----
                 ui.heading(RichText::new("General").size(12.0));
@@ -327,17 +378,6 @@ impl App {
                 ui.add(egui::Slider::new(&mut poll, 30..=900).text("poll interval (s)"));
                 if poll != self.cfg_next.poll_interval_secs {
                     self.cfg_next.poll_interval_secs = poll;
-                }
-                let mut theme_buf = self.cfg_next.theme.clone();
-                egui::ComboBox::from_id_salt("theme")
-                    .selected_text(if theme_buf.is_empty() { "midnight (default)" } else { &theme_buf })
-                    .show_ui(ui, |ui| {
-                        for t in theme::THEMES {
-                            ui.selectable_value(&mut theme_buf, t.to_string(), *t);
-                        }
-                    });
-                if theme_buf != self.cfg_next.theme {
-                    self.cfg_next.theme = theme_buf;
                 }
                 ui.add_space(6.0);
 
@@ -438,21 +478,7 @@ impl App {
                 }
                 ui.add_space(6.0);
 
-                // ---- display ----
-                ui.heading(RichText::new("Display").size(12.0));
-                let mut mv = self.cfg_next.max_visible_collapsed as i32;
-                ui.add(egui::Slider::new(&mut mv, 1..=8).text("visible when collapsed"));
-                self.cfg_next.max_visible_collapsed = mv.max(1) as usize;
-                let mut hu = self.cfg_next.hide_unconfigured;
-                if ui.checkbox(&mut hu, "hide unconfigured providers").changed() {
-                    self.cfg_next.hide_unconfigured = hu;
                 }
-                let mut quiet = self.cfg_next.quiet_mode;
-                if ui.checkbox(&mut quiet, "dim idle surfaces until hover").changed() {
-                    self.cfg_next.quiet_mode = quiet;
-                    dirty = true;
-                }
-                ui.add_space(10.0);
             });
 
         if dirty {
@@ -1064,8 +1090,9 @@ impl App {
             );
             // percent under the gauge (used %, white; auth/err labels colored)
             let label = match (&s.reading, pct) {
-                (Reading::Ok { .. }, Some(v)) => format!("{:.0}%", 100.0 - v),
-                (Reading::Ok { .. }, None) => "…".into(),
+                (Reading::Ok { .. }, Some(v)) if self.cfg.show_rail_percent => format!("{:.0}%", 100.0 - v),
+                (Reading::Ok { .. }, _) if self.cfg.show_rail_percent => "…".into(),
+                (Reading::Ok { .. }, _) => String::new(),
                 (Reading::NeedsAuth(_), _) => "auth".into(),
                 (Reading::Error(_), _) => "err".into(),
                 _ => "?".into(),

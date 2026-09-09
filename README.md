@@ -103,6 +103,7 @@ disabled = []            # e.g. ["codex"]
 theme = "midnight"       # midnight | tokyo-night | catppuccin | gruvbox
 max_visible_collapsed = 4  # providers on the pill before folding into "+N"
 quiet_mode = false         # dim idle rail/pill surfaces until hover
+show_rail_percent = false  # show used percentages beneath notch gauges
 
 [[provider]]
 id = "minimax"
@@ -179,9 +180,10 @@ The gear icon on the pill (or on the rail) opens an in-app settings panel:
   Built-in adapters (Claude, Codex) can be toggled off.
 - **Poll interval** — seconds between usage polls when healthy (30–900;
   failures back off automatically).
-- **Display** — providers visible on the collapsed pill before the `+N`
-  overflow chip, hide-unconfigured, theme, and optional quiet mode (dim idle
-  surfaces until hover).
+- **Personalization** — theme, collapsed provider count, hide-unconfigured,
+  quiet mode (dim idle surfaces until hover), and an optional notch percentage
+  label. The percentage label is off by default; the hover card always keeps
+  the detailed values available.
 
 *Apply* saves `config.toml` and hot-reloads the poll loop — no restart
 needed. Providers can also carry a `priority = <n>` key in config.toml
