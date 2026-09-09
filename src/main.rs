@@ -228,6 +228,10 @@ struct App {
 
     /// Rail-card fade (0..1): springs toward 1 while hovered, toward 0 after.
     rail_card_f: f32,
+    /// Focus crossfade keeps provider gauges from blinking when switching rows.
+    rail_focus_id: Option<String>,
+    rail_focus_prev: Option<String>,
+    rail_focus_t: f32,
     /// The notch is the primary surface. LIMITCUE_FLOAT=1 restores the pill.
     notch_mode: bool,
     started: Instant,
@@ -270,6 +274,9 @@ impl App {
             rail_open,
             rail_last: None,
             rail_card_f: 0.0,
+            rail_focus_id: None,
+            rail_focus_prev: None,
+            rail_focus_t: 1.0,
             notch_mode,
             started: Instant::now(),
             shot_requested: false,
@@ -1065,8 +1072,19 @@ impl App {
             (index < snaps.len() && within <= rail_row_h).then_some(index)
         });
         let any_row_hovered = pointer_row.is_some();
+        let next_focus = pointer_row.map(|i| snaps[i].provider_id.clone());
+        if next_focus != self.rail_focus_id {
+            self.rail_focus_prev = self.rail_focus_id.clone();
+            self.rail_focus_id = next_focus.clone();
+            self.rail_focus_t = 0.0;
+        }
+        if self.rail_focus_t < 1.0 {
+            self.rail_focus_t = (self.rail_focus_t + (ctx.input(|i| i.stable_dt) / 0.12)).min(1.0);
+            ctx.request_repaint();
+        }
+        let focus_ease = self.rail_focus_t * self.rail_focus_t * (3.0 - 2.0 * self.rail_focus_t);
         let mut next_y = body.top() + RAIL_PAD_TOP;
-        for (row_index, s) in snaps.iter().enumerate() {
+        for s in snaps.iter() {
             let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, rail_row_h));
             next_y = row_rect.bottom() + RAIL_ROW_GAP;
             let pct = self.render_pct(s);
@@ -1084,9 +1102,21 @@ impl App {
             }
             // A hovered gauge is the focus: keep its mark and arc bright while
             // dimming the other gauges without painting a row background.
-            let focused = pointer_row == Some(row_index);
-            let gauge_alpha = if any_row_hovered && !focused { 0.32 } else { 1.0 };
-            let gauge_stroke = if focused { RAIL_RING_STROKE + 0.7 } else { RAIL_RING_STROKE };
+            let is_new_focus = next_focus.as_deref() == Some(s.provider_id.as_str());
+            let is_old_focus = self.rail_focus_prev.as_deref() == Some(s.provider_id.as_str());
+            let focus_mix = if is_new_focus {
+                focus_ease
+            } else if is_old_focus {
+                1.0 - focus_ease
+            } else {
+                0.0
+            };
+            let gauge_alpha = if any_row_hovered {
+                0.32 + 0.68 * focus_mix
+            } else {
+                1.0
+            };
+            let gauge_stroke = RAIL_RING_STROKE + 0.7 * focus_mix;
             // gauge: track ring + heat arc (share used) around the bare mark
             let used01 = pct.map(|v| 1.0 - (v / 100.0) as f32).unwrap_or(0.0);
             let heat = if ok { ui::theme::heat(used01, &pal) } else { ring_col };
