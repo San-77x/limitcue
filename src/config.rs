@@ -57,9 +57,18 @@ pub struct Config {
     /// Show used percentage text beneath gauges in the side rail.
     #[serde(default)]
     pub show_rail_percent: bool,
+    /// Opacity of the notch body, 0..1. The desktop shows through below 1.
+    #[serde(default = "default_notch_opacity")]
+    pub notch_opacity: f32,
+    /// Opacity of the hover usage card, 0..1.
+    #[serde(default = "default_card_opacity")]
+    pub card_opacity: f32,
 }
 
 fn default_poll() -> u64 { 120 }
+/// Defaults reproduce the surfaces' previously hard-coded translucency.
+fn default_notch_opacity() -> f32 { 0.60 }
+fn default_card_opacity() -> f32 { 0.70 }
 fn default_true() -> bool { true }
 fn default_max_visible() -> usize { 4 }
 
@@ -74,6 +83,8 @@ impl Default for Config {
             max_visible_collapsed: default_max_visible(),
             quiet_mode: false,
             show_rail_percent: false,
+            notch_opacity: default_notch_opacity(),
+            card_opacity: default_card_opacity(),
         }
     }
 }
@@ -128,6 +139,8 @@ hide_unconfigured = true
 # max_visible_collapsed = 4      # providers on the pill before folding into "+N"
 # quiet_mode = false              # dim idle UI until the pointer is over it
 # show_rail_percent = false       # show used percentages beneath rail gauges
+# notch_opacity = 0.60            # notch body opacity, 0.15-1.0
+# card_opacity = 0.70             # hover usage card opacity, 0.15-1.0
 
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json

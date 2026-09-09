@@ -217,6 +217,7 @@ pub fn rail_card(
     logos: &HashMap<String, egui::TextureHandle>,
     now: u64,
     list_height: f32,
+    opacity: f32,
 ) {
     let a = alpha.clamp(0.0, 1.0);
     let dim = |c: Color32| c.linear_multiply(a);
@@ -235,7 +236,7 @@ pub fn rail_card(
         }
         .as_shape(rect, egui::Rounding::same(CARD_CORNER)),
     );
-    p.rect_filled(rect, CARD_CORNER, dim(pal.rail_deep));
+    p.rect_filled(rect, CARD_CORNER, dim(theme::at_opacity(pal.rail_deep, opacity)));
     // No outline: the shadow already separates the panel from the desktop, and
     // a hairline ring around a translucent surface reads as a seam. The sheen
     // below is a highlight along the top lip, not a border.

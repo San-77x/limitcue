@@ -67,7 +67,10 @@ answers three questions in reading order:
    header next to the name.
 
 The panel is glass: a translucent body, a specular lip along the top and a
-soft drop shadow — no outline, which on a translucent surface reads as a seam. Long window lists grow with the available
+soft drop shadow — no outline, which on a translucent surface reads as a seam.
+Both the card and the notch body take their opacity from config
+(`card_opacity`, `notch_opacity`), so you can have them anywhere between
+barely-there and fully solid. Long window lists grow with the available
 monitor space and scroll only when the screen cannot fit them. The card takes
 the side of the hovered notch row with more room, flipping above the row when
 the lower side is too short, and is strictly hover-bound: it appears the
@@ -124,6 +127,8 @@ disabled = []            # e.g. ["codex"]
 theme = "midnight"       # midnight | tokyo-night | catppuccin | gruvbox
 max_visible_collapsed = 4  # providers on the pill before folding into "+N"
 quiet_mode = false         # dim idle rail/pill surfaces until hover
+notch_opacity = 0.60       # notch body opacity, 0.15-1.0
+card_opacity = 0.70        # hover usage card opacity, 0.15-1.0
 show_rail_percent = false  # show used percentages beneath notch gauges
 
 [[provider]]
@@ -210,8 +215,9 @@ than stock widgets. Three tabs:
   id creates the entry, and `api_key` / `key_env` go in `config.toml`.
   Built-in adapters (Claude, Codex) can be toggled off.
 - **Appearance** — the theme, picked from swatches that show each palette's
-  own background and heat scale (and previewed live while the sheet is open),
-  plus the collapsed provider count for the undocked pill.
+  own background and heat scale (and previewed live while the sheet is open);
+  notch and card opacity; and the collapsed provider count for the undocked
+  pill.
 
 *Save* writes `config.toml` and hot-reloads the poll loop — no restart
 needed. Providers can also carry a `priority = <n>` key in config.toml

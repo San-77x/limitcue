@@ -231,6 +231,20 @@ pub fn heat(used: f32, pal: &Palette) -> Color32 {
     }
 }
 
+/// Re-express a premultiplied translucent surface at a new opacity, keeping
+/// its hue. Premultiplied components scale linearly with alpha, so all four
+/// channels take the same factor. `opacity` is 0..1; a fully opaque input is
+/// returned unchanged only when `opacity` is 1.
+pub fn at_opacity(c: Color32, opacity: f32) -> Color32 {
+    let a = c.a() as f32;
+    if a <= 0.0 {
+        return c;
+    }
+    let k = (opacity.clamp(0.0, 1.0) * 255.0) / a;
+    let ch = |v: u8| (v as f32 * k).round().clamp(0.0, 255.0) as u8;
+    Color32::from_rgba_premultiplied(ch(c.r()), ch(c.g()), ch(c.b()), ch(c.a()))
+}
+
 /// Linear blend between two colors, `t`=0 → `a`, `t`=1 → `b`.
 pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
     let t = t.clamp(0.0, 1.0);

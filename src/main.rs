@@ -903,6 +903,38 @@ impl App {
         });
 
         ui.add_space(16.0);
+        section(ui, "Surfaces", pal);
+        card(ui, pal, |ui| {
+            setting_row(
+                ui,
+                "Notch opacity",
+                "How much of the desktop shows through the notch body.",
+                pal,
+                |ui| {
+                    let mut v = (self.cfg_next.notch_opacity * 100.0).round() as i64;
+                    if w::slider(ui, &mut v, 15..=100, 5, "%", pal) {
+                        self.cfg_next.notch_opacity = v as f32 / 100.0;
+                        dirty = true;
+                    }
+                },
+            );
+            hairline(ui, pal);
+            setting_row(
+                ui,
+                "Card opacity",
+                "Same, for the usage card that opens beside a hovered gauge.",
+                pal,
+                |ui| {
+                    let mut v = (self.cfg_next.card_opacity * 100.0).round() as i64;
+                    if w::slider(ui, &mut v, 15..=100, 5, "%", pal) {
+                        self.cfg_next.card_opacity = v as f32 / 100.0;
+                        dirty = true;
+                    }
+                },
+            );
+        });
+
+        ui.add_space(16.0);
         section(ui, "Floating pill", pal);
         card(ui, pal, |ui| {
             setting_row(
@@ -1472,12 +1504,16 @@ impl App {
         } else {
             egui::Rounding { nw: r, sw: r, ne: 0.0, se: 0.0 }
         };
-        let rail_alpha = if self.cfg.quiet_mode && !pointer.map(|p| body.contains(p)).unwrap_or(false) {
-            0.72
+        // Surface opacity is the user's setting; quiet mode is a separate
+        // factor on top of it, so setting the notch to 100 % actually yields
+        // an opaque notch rather than the old baked-in 0.92.
+        let quiet = if self.cfg.quiet_mode && !pointer.map(|p| body.contains(p)).unwrap_or(false) {
+            0.78
         } else {
-            0.92
+            1.0
         };
-        ui.painter().rect_filled(body, body_rounding, pal.rail_bg.linear_multiply(rail_alpha));
+        let body_fill = ui::theme::at_opacity(pal.rail_bg, self.cfg.notch_opacity);
+        ui.painter().rect_filled(body, body_rounding, body_fill.linear_multiply(quiet));
 
         // ---- whole-notch drag surface --------------------------------------
         // Any drag on the body (left or middle button) hands off to the
@@ -1634,7 +1670,7 @@ impl App {
         ui.painter().circle_filled(
             orb_rect.center(),
             RAIL_ORB / 2.0,
-            pal.rail_deep,
+            ui::theme::at_opacity(pal.rail_deep, self.cfg.notch_opacity),
         );
         // Neutral three-dot menu mark: this control is navigation/settings,
         // not another quota gauge. The dots brighten together on hover.
@@ -1722,6 +1758,7 @@ impl App {
                 &self.logos,
                 now,
                 card_layout.list_height,
+                self.cfg.card_opacity,
             );
         }
 
