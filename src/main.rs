@@ -740,16 +740,24 @@ impl eframe::App for App {
         let rail_h = RAIL_PAD_TOP + rail_rows * rail_row_h + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
         let card_want = self.rail_open.is_some();
         let card_f_target = if card_want { 1.0 } else { 0.0 };
+        let previous_card_f = self.rail_card_f;
         self.rail_card_f += (card_f_target - self.rail_card_f) * (t_rail_spring(dt, card_want));
         if self.rail_card_f < 0.01 {
             self.rail_card_f = 0.0;
+            self.rail_last = None;
+        }
+        if (self.rail_card_f - previous_card_f).abs() > 0.001 {
+            ctx.request_repaint();
         }
         if card_want {
             self.rail_card_f = self.rail_card_f.max(0.02);
         }
-        let rail_size = match self.rail_open.as_deref().and_then(|id| {
-            snaps.iter().find(|s| s.provider_id == id)
-        }) {
+        let rail_size = match self
+            .rail_open
+            .as_deref()
+            .or(self.rail_last.as_deref())
+            .and_then(|id| snaps.iter().find(|s| s.provider_id == id))
+        {
             Some(snapshot) => {
                 // The transparent host may grow for a tall card, but the
                 // visible notch itself stays exactly rail_h tall. Its body is
@@ -1231,11 +1239,8 @@ impl App {
 
         // ---- the tail-card popup ------------------------------------------
         if self.rail_card_f > 0.0 {
-            let Some(id) = self.rail_open.clone() else {
-                // No active hover: do not paint a fading card from a stale
-                // previous provider.
+            let Some(id) = self.rail_open.clone().or_else(|| self.rail_last.clone()) else {
                 self.rail_card_f = 0.0;
-                self.rail_last = None;
                 return;
             };
             let Some(s) = snaps.iter().find(|s| s.provider_id == id) else {
