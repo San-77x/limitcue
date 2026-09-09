@@ -740,17 +740,29 @@ impl eframe::App for App {
         // Sends the size unconditionally — snapping makes cur==target, which would
         // otherwise never trip the `animating` branch below.
         let snap = std::env::var("LIMITCUE_UI_SNAP").map(|v| v != "0").unwrap_or(false);
-        if snap {
-            self.cur_size = target;
-            ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
-        }
-
-        let t = 1.0 - (-18.0 * dt).exp();
         let prev = self.cur_size;
-        self.cur_size = Vec2::new(prev.x + (target.x - prev.x) * t, prev.y + (target.y - prev.y) * t);
-        let mut animating = (self.cur_size - prev).length() > 0.08 && !snap;
-        if animating {
-            ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
+        let mut animating = false;
+        if rail {
+            // Do not spring the native rail viewport while hovering. A
+            // compositor-docked transparent window moves when its width or
+            // height changes; animating that geometry makes the pointer cross
+            // the moving hover rect and causes a visible vibration. Animate
+            // only the card paint below, keeping the notch stable.
+            if (prev - target).length() > 0.08 || snap {
+                self.cur_size = target;
+                ctx.send_viewport_cmd(ViewportCommand::InnerSize(target));
+            }
+        } else {
+            if snap {
+                self.cur_size = target;
+                ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
+            }
+            let t = 1.0 - (-18.0 * dt).exp();
+            self.cur_size = Vec2::new(prev.x + (target.x - prev.x) * t, prev.y + (target.y - prev.y) * t);
+            animating = (self.cur_size - prev).length() > 0.08 && !snap;
+            if animating {
+                ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
+            }
         }
 
         if !self.tweens.is_empty() {
