@@ -45,16 +45,29 @@ empties, with the used percentage in white underneath. A settings orb sits
 at the bottom (arc at rest, gear on hover). The whole notch is draggable:
 press and drag anywhere on it (left or middle button) and the compositor
 moves the window; on release it snaps back flush to whichever side you
-dropped it nearest. Hovering a cell slides out a bounded glass usage card with a
-speech-bubble tail pointing at it: a provider summary, a scrollable
-per-window list with human reset copy ("Resets in 51 min", "Resets Sat
-04:00 AM"), a 6 px heat bar and "N% Used", separated by hairlines. Long
-provider window lists grow with the available monitor space and scroll only
-when the screen cannot fit them. The card chooses the side of the hovered
-notch row with more room, flipping above the row when the lower side is too
-short. The card is strictly hover-bound:
-it appears the moment you point at a cell and fades as soon as you leave
-the notch.
+dropped it nearest. Hovering a cell slides out a glass usage card that
+answers three questions in reading order:
+
+1. **How much is gone** — a headline `100% used` in the heat colour, with
+   the window it belongs to and its reset time beside it ("Resets in 51
+   min", "Resets Sat 04:00 AM"). One glance is enough; nothing below the
+   headline is required reading.
+2. **Where it went** — one row per quota window: label, share used, a 4 px
+   heat meter, and the reset/count line under it. The window closest to
+   exhaustion is tinted rather than tagged. A provider with a *single*
+   window skips the list entirely and shows just its meter — a one-row
+   breakdown of a headline that already said the same thing is noise.
+3. **How fresh the number is** — the footer carries the reading's age on the
+   left and the provider's own note (a dollar balance, a window count) on the
+   right; provenance (official / derived / manual, or *stale*) sits in the
+   header next to the name.
+
+The panel is glass: a translucent body, a hairline edge, a specular lip along
+the top and a soft drop shadow. Long window lists grow with the available
+monitor space and scroll only when the screen cannot fit them. The card takes
+the side of the hovered notch row with more room, flipping above the row when
+the lower side is too short, and is strictly hover-bound: it appears the
+moment you point at a cell and fades as soon as you leave the notch.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
   `theme` config key. Each theme carries its own gauge heat scale; expanded
   cards show each reading's *fidelity* badge (official / derived / manual)
@@ -176,20 +189,27 @@ never touches D-Bus or files.
 
 ## Settings
 
-The gear icon on the pill (or on the rail) opens an in-app settings panel:
+The gear icon on the pill — or the orb at the foot of the notch — opens the
+settings sheet.
 
-- **Providers** — enable/disable, reorder (display priority), remove, and add
-  new ones. API keys are never typed here; click *Edit config.toml* to set
-  `api_key` / `key_env` for the new provider (the panel only creates the id).
+The sheet is three fixed bands — title, tabs, action bar — around one
+scrolling body, so *Save* and *Cancel* stay reachable however many providers
+you have. Every setting is a row with a plain-language description under its
+title; the controls are hand-painted switches, sliders and swatches rather
+than stock widgets. Three tabs:
+
+- **General** — poll interval (30–900 s; failures back off automatically),
+  what the notch shows at rest (percentage labels, quiet mode,
+  hide-unconfigured), and a shortcut to open `config.toml`.
+- **Providers** — enable/disable, reorder, remove, and add new ones, each row
+  carrying the provider's own mark. API keys are never typed here: adding an
+  id creates the entry, and `api_key` / `key_env` go in `config.toml`.
   Built-in adapters (Claude, Codex) can be toggled off.
-- **Poll interval** — seconds between usage polls when healthy (30–900;
-  failures back off automatically).
-- **Personalization** — theme, collapsed provider count, hide-unconfigured,
-  quiet mode (dim idle surfaces until hover), and an optional notch percentage
-  label. The percentage label is off by default; the hover card always keeps
-  the detailed values available.
+- **Appearance** — the theme, picked from swatches that show each palette's
+  own background and heat scale (and previewed live while the sheet is open),
+  plus the collapsed provider count for the undocked pill.
 
-*Apply* saves `config.toml` and hot-reloads the poll loop — no restart
+*Save* writes `config.toml` and hot-reloads the poll loop — no restart
 needed. Providers can also carry a `priority = <n>` key in config.toml
 (lower = earlier in the pill; file order otherwise).
 
