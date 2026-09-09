@@ -162,17 +162,18 @@ const SPIN_SECS: f32 = 0.55;
 // one ring cell per provider, an orb button below, and a tail-card usage
 // popup beside the hovered cell. The window is STRIP + FLARE wide so the
 // concave bezel fillets fit inside it while the visible spine stays slim.
-const RAIL_STRIP_W: f32 = 40.0; // visible black notch spine
-const RAIL_ROW_H: f32 = 54.0; // one ring cell (ring + percent)
-const RAIL_ROW_GAP: f32 = 10.0;
-const RAIL_COL_GAP: f32 = 8.0; // notch ↔ card gap when the card is open
-const RAIL_CARD_W: f32 = 260.0; // usage card width
-const RAIL_RING_R: f32 = 14.0; // ring radius in a cell
-const RAIL_CORNER: f32 = 11.0; // convex corner radius of the notch body
-const RAIL_FLARE: f32 = 10.0; // concave fillet where the body meets the edge
-const RAIL_ORB: f32 = 20.0; // settings orb diameter
-/// Ring stroke width in a rail cell, scaled for the small radius.
-const RAIL_RING_STROKE: f32 = 1.6;
+const RAIL_STRIP_W: f32 = 56.0; // visible black notch spine
+const RAIL_ROW_H: f32 = 62.0; // one ring cell (gauge + percent)
+const RAIL_ROW_GAP: f32 = 6.0;
+const RAIL_COL_GAP: f32 = 10.0; // notch ↔ card gap when the card is open
+const RAIL_CARD_W: f32 = 264.0; // usage card width
+const RAIL_RING_R: f32 = 16.0; // gauge ring radius in a cell
+const RAIL_CORNER: f32 = 16.0; // convex corner radius of the notch body
+const RAIL_FLARE: f32 = 12.0; // concave fillet where the body meets the edge
+const RAIL_ORB: f32 = 24.0; // settings orb diameter
+const RAIL_PAD_TOP: f32 = 10.0; // breathing room above the first cell
+/// Gauge ring stroke width in a rail cell.
+const RAIL_RING_STROKE: f32 = 3.0;
 /// Card tail width (base at the notch edge, tip on the card).
 const RAIL_TAIL_W: f32 = 12.0;
 /// How long the card stays after the pointer leaves everything (grace for
@@ -666,7 +667,7 @@ impl eframe::App for App {
         // cell per provider — max_visible_collapsed only limits the
         // horizontal pill.
         let rail_rows = snaps.len().max(1) as f32;
-        let rail_h = rail_rows * RAIL_ROW_H + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        let rail_h = RAIL_PAD_TOP + rail_rows * RAIL_ROW_H + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
         let card_want = self.rail_open.is_some();
         let card_f_target = if card_want { 1.0 } else { 0.0 };
         self.rail_card_f += (card_f_target - self.rail_card_f) * (t_rail_spring(dt));
@@ -982,7 +983,7 @@ impl App {
         let cell_w = RAIL_STRIP_W;
         let mut hovered_id: Option<String> = None;
         let mut hover_row_cy: f32 = body.center().y;
-        let mut next_y = body.top();
+        let mut next_y = body.top() + RAIL_PAD_TOP;
         for s in snaps {
             let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, RAIL_ROW_H));
             next_y = row_rect.bottom() + RAIL_ROW_GAP;
@@ -999,24 +1000,31 @@ impl App {
             if hovered {
                 hovered_id = Some(s.provider_id.clone());
                 hover_row_cy = row_rect.center().y;
+                // soft highlight while this socket is hot
+                ui.painter().rect_filled(
+                    row_rect.shrink2(Vec2::new(5.0, 1.0)),
+                    12.0_f32,
+                    Color32::from_white_alpha(8),
+                );
             }
-            // ring + white logo (dark disc), centered in the cell
-            let ring_center = egui::pos2(row_rect.center().x, row_rect.center().y - 8.0);
-            ui::widgets::logo_ring_stroke_on(
+            // gauge: track ring + heat arc (share used) around the bare mark
+            let used01 = pct.map(|v| 1.0 - (v / 100.0) as f32).unwrap_or(0.0);
+            let heat = if ok { ui::theme::heat(used01, &pal) } else { ring_col };
+            let heat = if stale { ui::theme::mix(heat, pal.stale, 0.6) } else { heat };
+            let ring_center = egui::pos2(row_rect.center().x, row_rect.center().y - 9.0);
+            ui::widgets::gauge(
                 ui,
                 ring_center,
                 RAIL_RING_R,
+                RAIL_RING_STROKE,
                 self.logos.get(&s.provider_id),
                 &ui::theme::monogram(&s.provider_id),
-                ui::theme::brand(&s.provider_id, &pal),
-                (pct.unwrap_or(0.0) / 100.0) as f32,
-                ring_col,
-                &pal,
-                1.0,
+                if ok { used01 } else { 0.0 },
+                heat,
                 pal.rail_disc,
-                RAIL_RING_STROKE,
+                1.0,
             );
-            // percent under the ring (used %, white; auth/err labels colored)
+            // percent under the gauge (used %, white; auth/err labels colored)
             let label = match (&s.reading, pct) {
                 (Reading::Ok { .. }, Some(v)) => format!("{:.0}%", 100.0 - v),
                 (Reading::Ok { .. }, None) => "…".into(),
@@ -1031,10 +1039,10 @@ impl App {
                 _ => pal.muted,
             };
             ui.painter().text(
-                egui::pos2(row_rect.center().x, row_rect.bottom() - 10.0),
+                egui::pos2(row_rect.center().x, row_rect.bottom() - 11.0),
                 egui::Align2::CENTER_CENTER,
                 label,
-                egui::FontId::monospace(11.5),
+                ui::theme::medium(12.0),
                 label_col,
             );
         }
@@ -1051,19 +1059,19 @@ impl App {
         ui.painter().circle_filled(
             orb_rect.center(),
             RAIL_ORB / 2.0,
-            if orb_hover { pal.rail_disc } else { pal.rail_deep },
+            if orb_hover { ui::theme::mix(pal.rail_deep, Color32::WHITE, 0.12) } else { pal.rail_deep },
         );
         // arc at rest, gear on hover (the spec's orb behavior)
         if orb_hover {
             let gear_center = orb_rect.center();
             ui.painter().image(
                 self.icons.gear.id(),
-                Rect::from_center_size(gear_center, Vec2::splat(15.0)),
+                Rect::from_center_size(gear_center, Vec2::splat(16.0)),
                 Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                 Color32::WHITE,
             );
         } else {
-            ui::widgets::ring(ui, orb_rect.center(), 6.0, 1.8, 0.75, pal.muted, &pal, 0.9);
+            ui::widgets::ring(ui, orb_rect.center(), 7.5, 2.0, 0.75, pal.muted, &pal, 0.9);
         }
         if orb.clicked() {
             self.settings_open = true;
@@ -1109,7 +1117,6 @@ impl App {
                 self.rail_open = None;
                 return;
             };
-            let pct = self.render_pct(s);
             let stale = self.is_stale(s, now);
             let a = self.rail_card_f.clamp(0.0, 1.0);
             // The usage card is a small floating bubble, not a second rail.
@@ -1151,7 +1158,7 @@ impl App {
                 snaps
                     .iter()
                     .position(|s| s.provider_id == id)
-                    .map(|i| body.top() + (i as f32 + 0.5) * RAIL_ROW_H + i as f32 * RAIL_ROW_GAP)
+                    .map(|i| body.top() + RAIL_PAD_TOP + (i as f32 + 0.5) * RAIL_ROW_H + i as f32 * RAIL_ROW_GAP)
                     .unwrap_or(hover_row_cy)
             } else {
                 hover_row_cy
@@ -1164,15 +1171,18 @@ impl App {
             } else {
                 card_rect.center().y
             };
+            let tip = egui::pos2(tip_x, cy);
+            let base_hi = egui::pos2(tail_base_x, cy - tw);
+            let base_lo = egui::pos2(tail_base_x, cy + tw);
             card_p.add(egui::Shape::convex_polygon(
-                vec![
-                    egui::pos2(tail_base_x, cy - tw),
-                    egui::pos2(tail_base_x, cy + tw),
-                    egui::pos2(tip_x, cy),
-                ],
+                vec![base_hi, base_lo, tip],
                 fill,
                 egui::Stroke::NONE,
             ));
+            // hairline on the slanted edges only (the base hides inside the card)
+            let hair = Color32::from_white_alpha(14).linear_multiply(a);
+            card_p.add(egui::Shape::line(vec![base_hi, tip], egui::Stroke::new(1.0_f32, hair)));
+            card_p.add(egui::Shape::line(vec![base_lo, tip], egui::Stroke::new(1.0_f32, hair)));
             // content (scaled presence via alpha)
             let content_ui = &mut ui.new_child(
                 egui::UiBuilder::new().max_rect(card_rect).layout(egui::Layout::top_down(egui::Align::Min)),
@@ -1180,7 +1190,6 @@ impl App {
             ui::rail_card(
                 content_ui,
                 s,
-                pct,
                 &pal,
                 a,
                 stale,
@@ -1328,7 +1337,7 @@ fn main() -> eframe::Result<()> {
     let init_size = if notch_mode {
         // Resting notch: spine + the transparent zone the bezel fillets
         // live in; height matches the rail's own layout math.
-        let rail_h = 4.0 * RAIL_ROW_H + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        let rail_h = RAIL_PAD_TOP + 4.0 * RAIL_ROW_H + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
         Vec2::new(RAIL_STRIP_W + RAIL_FLARE, rail_h)
     } else if start_expanded {
         Vec2::new(EXPANDED_W, MAX_EXPANDED_H)
