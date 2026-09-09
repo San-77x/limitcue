@@ -161,17 +161,17 @@ const SPIN_SECS: f32 = 0.55;
 // one gauge cell per provider, an orb button below, and a tail-card usage
 // popup beside the hovered cell. The window is exactly the spine wide; the
 // square corners sit on the screen edge, the card-side corners are rounded.
-const RAIL_STRIP_W: f32 = 56.0; // visible black notch spine
-const RAIL_ROW_H: f32 = 62.0; // one ring cell (gauge + percent)
-const RAIL_ROW_GAP: f32 = 6.0;
+const RAIL_STRIP_W: f32 = 48.0; // compact visible notch spine
+const RAIL_ROW_H: f32 = 56.0; // compact gauge cell (gauge + percent)
+const RAIL_ROW_GAP: f32 = 4.0;
 const RAIL_COL_GAP: f32 = 10.0; // notch ↔ card gap when the card is open
 const RAIL_CARD_W: f32 = 264.0; // usage card width
-const RAIL_RING_R: f32 = 16.0; // gauge ring radius in a cell
-const RAIL_CORNER: f32 = 16.0; // convex corner radius of the notch body
-const RAIL_ORB: f32 = 24.0; // settings orb diameter
+const RAIL_RING_R: f32 = 14.0; // compact gauge ring radius
+const RAIL_CORNER: f32 = 14.0; // convex corner radius of the notch body
+const RAIL_ORB: f32 = 20.0; // compact settings orb diameter
 const RAIL_PAD_TOP: f32 = 10.0; // breathing room above the first cell
 /// Gauge ring stroke width in a rail cell.
-const RAIL_RING_STROKE: f32 = 3.0;
+const RAIL_RING_STROKE: f32 = 2.6;
 /// Card tail width (base at the notch edge, tip on the card).
 const RAIL_TAIL_W: f32 = 12.0;
 
