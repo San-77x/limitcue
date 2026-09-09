@@ -61,7 +61,13 @@ answers three questions in reading order:
    exhaustion is tinted rather than tagged. A provider with a *single*
    window skips the list entirely and shows just its meter — a one-row
    breakdown of a headline that already said the same thing is noise.
-3. **How fresh the number is** — the footer carries the reading's age on the
+3. **Whether it will last** — when there is enough history, a line under the
+   headline turns the recent burn rate into the answer you actually want:
+   *Out 1h 40m before the reset*, or *About 40% left at the reset*. Samples
+   live in memory and are never written anywhere; a refill discards the old
+   slope rather than averaging across it. Turn it off with
+   `projections = false`.
+4. **How fresh the number is** — the footer carries the reading's age on the
    left and the provider's own note (a dollar balance, a window count) on the
    right; provenance (official / derived / manual, or *stale*) sits in the
    header next to the name.

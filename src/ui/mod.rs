@@ -133,6 +133,9 @@ const HEAD_H: f32 = 18.0; // provider mark + name + fidelity
 const HEAD_GAP: f32 = 13.0;
 const HERO_H: f32 = 34.0; // headline percentage + which window it refers to
 const HERO_GAP: f32 = 13.0;
+/// The burn-rate line, when there is enough history to draw one.
+const PACE_H: f32 = 15.0;
+const PACE_GAP: f32 = 11.0;
 const RULE_GAP: f32 = 12.0; // rule → first window row
 const ROW_H: f32 = 47.0; // label line + meter + meta line
 const ROW_GAP: f32 = 15.0;
@@ -180,18 +183,17 @@ fn body(s: &Snapshot) -> Body {
 }
 
 /// Height the card wants when nothing constrains it.
-pub fn rail_card_content_height(s: &Snapshot) -> f32 {
-    match body(s) {
+pub fn rail_card_content_height(s: &Snapshot, pace: bool) -> f32 {
+    let extra = if pace { PACE_H + PACE_GAP } else { 0.0 };
+    extra + match body(s) {
         Body::Solo(_) => CARD_TOP_H + SOLO_METER_H + CARD_BOTTOM_H,
-        // +3: an exactly-sized list still reads as overflowing to the scroll
-        // area, which then paints a dormant scrollbar over the values.
         Body::Rows(n) => CARD_FIXED_H + n as f32 * ROW_H + (n as f32 - 1.0) * ROW_GAP + 3.0,
         Body::Status => CARD_FIXED_H + STATUS_BODY_H,
     }
 }
 
-pub fn rail_card_height(s: &Snapshot) -> f32 {
-    rail_card_content_height(s)
+pub fn rail_card_height(s: &Snapshot, pace: bool) -> f32 {
+    rail_card_content_height(s, pace)
 }
 
 /// Index of the window closest to exhaustion — the one the hero reports.
@@ -217,6 +219,7 @@ pub fn rail_card(
     now: u64,
     list_height: f32,
     opacity: f32,
+    pace: Option<&str>,
 ) {
     let a = alpha.clamp(0.0, 1.0);
     let dim = |c: Color32| c.linear_multiply(a);
@@ -377,6 +380,15 @@ pub fn rail_card(
         }
     }
     y = hero.bottom() + HERO_GAP;
+
+    // ---- what the current pace means -------------------------------------
+    // A percentage says how much is left; this says whether it will last, which
+    // is the question actually being asked.
+    if let Some(pace) = pace {
+        let g = widgets::elide(ui, pace, theme::medium(11.0), dim(pal.accent), w);
+        p.galley(egui::pos2(x0, y), g, pal.accent);
+        y += PACE_H + PACE_GAP;
+    }
 
     // ---- single window: one bar, no list ---------------------------------
     if let Body::Solo(used01) = body(s) {
@@ -618,6 +630,7 @@ pub struct RailCardLayout {
 /// band allows.
 pub fn rail_card_layout(
     s: &Snapshot,
+    pace: bool,
     anchor_y: f32,
     host_height: f32,
     card_width: f32,
@@ -626,7 +639,7 @@ pub fn rail_card_layout(
     // Height is never traded for position: the card is always its natural
     // size and only *where* it sits changes. The caller sizes the host to
     // hold it, so the clamp below can always place it whole.
-    let card_h = rail_card_content_height(s);
+    let card_h = rail_card_content_height(s, pace);
     let lowest = (host_height - margin - card_h).max(margin);
     let y = (anchor_y + RAIL_CARD_GAP_Y).clamp(margin, lowest);
     RailCardLayout {

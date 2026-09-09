@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod notify;
 mod dock;
+mod history;
 mod providers;
 mod types;
 mod ui;
@@ -365,6 +366,8 @@ fn provider_mark(
 struct App {
     snapshots: HashMap<String, Snapshot>,
     tweens: HashMap<String, Tween>,
+    /// In-memory burn-rate samples; never written to disk.
+    history: history::History,
     rx: mpsc::Receiver<Vec<Snapshot>>,
     tx_tick: mpsc::Sender<Ctl>,
     cfg: Config,
@@ -446,6 +449,7 @@ impl App {
         Self {
             snapshots,
             tweens: HashMap::new(),
+            history: history::History::default(),
             rx: rx_snap,
             tx_tick,
             cfg,
@@ -493,6 +497,7 @@ impl App {
         }
         let mut changed = false;
         while let Ok(batch) = self.rx.try_recv() {
+            self.history.record(&batch);
             for s in batch {
                 if matches!(s.reading, Reading::Ok { .. }) {
                     if let Some(new) = s.min_remaining() {
@@ -690,6 +695,14 @@ impl App {
                 "Quiet at rest",
                 "Fade the notch until the pointer is over it.",
                 &mut self.cfg_next.quiet_mode,
+                pal,
+            );
+            hairline(ui, pal);
+            dirty |= toggle_row(
+                ui,
+                "Show what the pace means",
+                "Turn recent readings into \"runs out 40m before the reset\". Kept in memory only.",
+                &mut self.cfg_next.projections,
                 pal,
             );
             hairline(ui, pal);
@@ -1432,6 +1445,29 @@ impl App {
         dirty
     }
 
+    /// What the current burn rate means for the window the card headlines.
+    /// `None` until there is enough history, when nothing is draining, or when
+    /// projections are switched off.
+    fn pace_line(&self, s: &Snapshot, now: u64) -> Option<String> {
+        if !self.cfg.projections {
+            return None;
+        }
+        // Screenshot hook: a real projection needs several minutes of samples,
+        // which a capture run does not have.
+        if let Ok(forced) = std::env::var("LIMITCUE_UI_PACE") {
+            return (!forced.is_empty()).then_some(forced);
+        }
+        let Reading::Ok { windows, .. } = &s.reading else { return None };
+        let (i, remaining) = windows
+            .iter()
+            .enumerate()
+            .filter_map(|(i, w)| w.remaining_percent.map(|p| (i, p)))
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())?;
+        let w = &windows[i];
+        let rate = self.history.burn_per_hour(&history::key(&s.provider_id, &w.label))?;
+        history::projection(remaining, rate, w.resets_at.map(|t| t.saturating_sub(now)))
+    }
+
     /// Headline percent to draw: mid-tween value if animating, else the snapshot's.
     fn render_pct(&self, s: &Snapshot) -> Option<f64> {
         self.tweens.get(&s.provider_id).and_then(|t| t.value()).or_else(|| s.min_remaining())
@@ -1535,6 +1571,7 @@ fn rail_row_cy(i: usize, body_top: f32, row_h: f32) -> f32 {
 
 /// Minimal panel layout for provider `id`, placed beside the notch with no
 /// tail. This is the single source of truth for painting and hover hit-testing.
+#[allow(clippy::too_many_arguments)]
 fn rail_card_layout(
     id: &str,
     snaps: &[Snapshot],
@@ -1542,12 +1579,13 @@ fn rail_card_layout(
     on_left: bool,
     body_top: f32,
     row_h: f32,
+    pace: bool,
 ) -> Option<ui::RailCardLayout> {
     let s = snaps.iter().find(|s| s.provider_id == id)?;
     let anchor_cy = snaps.iter().position(|p| p.provider_id == id)
         .map(|i| rail_row_cy(i, body_top, row_h))
         .unwrap_or_else(|| ui_rect.center().y);
-    let mut layout = ui::rail_card_layout(s, anchor_cy, ui_rect.height(), RAIL_CARD_W, 8.0);
+    let mut layout = ui::rail_card_layout(s, pace, anchor_cy, ui_rect.height(), RAIL_CARD_W, 8.0);
     let x0 = if on_left { RAIL_STRIP_W + RAIL_COL_GAP } else { 0.0 };
     layout.rect = layout.rect.translate(egui::vec2(x0, 0.0));
     Some(layout)
@@ -1686,7 +1724,7 @@ impl eframe::App for App {
         }
         let card_max_h = snaps
             .iter()
-            .map(ui::rail_card_height)
+            .map(|s| ui::rail_card_height(s, self.pace_line(s, now).is_some()))
             .fold(0.0_f32, f32::max);
         let band_h = rail_h.max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0);
         let window_y = (self.notch_y).min(monitor_h - band_h).max(0.0);
@@ -2197,10 +2235,14 @@ impl App {
         // important for a transparent, resizable viewport: raw pointer
         // coordinates can survive a resize for a frame and make a card look
         // stuck even after the pointer has left it.
-        let card_rect_now = self
-            .rail_open
-            .as_deref()
-            .and_then(|id| rail_card_layout(id, snaps, ui_rect, on_left, body.top(), rail_row_h).map(|l| l.rect));
+        let card_rect_now = self.rail_open.as_deref().and_then(|id| {
+            let pace = snaps
+                .iter()
+                .find(|s| s.provider_id == id)
+                .and_then(|s| self.pace_line(s, now))
+                .is_some();
+            rail_card_layout(id, snaps, ui_rect, on_left, body.top(), rail_row_h, pace).map(|l| l.rect)
+        });
         let card_hovered = card_rect_now.is_some_and(|rect| {
             ui.interact(rect, ui.id().with(("rail-card", self.rail_open.as_deref())), Sense::hover())
                 .hovered()
@@ -2236,7 +2278,10 @@ impl App {
             };
             let stale = self.is_stale(s, now);
             let a = self.rail_card_f.clamp(0.0, 1.0);
-            let Some(card_layout) = rail_card_layout(&id, snaps, ui_rect, on_left, body.top(), rail_row_h) else {
+            let pace = self.pace_line(s, now);
+            let Some(card_layout) =
+                rail_card_layout(&id, snaps, ui_rect, on_left, body.top(), rail_row_h, pace.is_some())
+            else {
                 return;
             };
             // Slide the card out from the notch while it fades in; reverse
@@ -2258,6 +2303,7 @@ impl App {
                 now,
                 card_layout.list_height,
                 self.cfg.card_opacity,
+                pace.as_deref(),
             );
         }
 

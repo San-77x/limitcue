@@ -125,6 +125,10 @@ pub struct Config {
     /// Shell command run when a window refills.
     #[serde(default)]
     pub cmd_on_reset: String,
+    /// Show what the current burn rate means on the hover card. Samples are
+    /// held in memory only and never written anywhere.
+    #[serde(default = "default_true")]
+    pub projections: bool,
 }
 
 fn default_poll() -> u64 { 120 }
@@ -153,6 +157,7 @@ impl Default for Config {
             notify_on_reset: true,
             cmd_on_low: String::new(),
             cmd_on_reset: String::new(),
+            projections: true,
         }
     }
 }
@@ -214,6 +219,7 @@ hide_unconfigured = true
 # notify_on_reset = true          # and announce when it refills
 # cmd_on_low = "paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
 # cmd_on_reset = ""               # $LIMITCUE_PROVIDER / _WINDOW / _PERCENT
+# projections = true              # "at this pace it runs out 40m before reset"
 
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json
