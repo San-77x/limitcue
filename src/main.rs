@@ -1067,13 +1067,17 @@ impl App {
             let hovered = resp.hovered();
             if hovered {
                 hovered_id = Some(s.provider_id.clone());
-                // soft highlight while this socket is hot
-                ui.painter().rect_filled(
-                    row_rect.shrink2(Vec2::new(5.0, 1.0)),
-                    12.0_f32,
-                    Color32::from_white_alpha(8),
-                );
             }
+            // A hovered gauge is the focus: keep its mark and arc bright while
+            // dimming the other gauges without painting a row background.
+            let any_row_hovered = pointer.is_some_and(|pt| {
+                pt.y >= body.top() + RAIL_PAD_TOP
+                    && pt.y < next_y - RAIL_ROW_GAP
+                    && pt.x >= body.left()
+                    && pt.x <= body.right()
+            });
+            let gauge_alpha = if any_row_hovered && !hovered { 0.32 } else { 1.0 };
+            let gauge_stroke = if hovered { RAIL_RING_STROKE + 0.7 } else { RAIL_RING_STROKE };
             // gauge: track ring + heat arc (share used) around the bare mark
             let used01 = pct.map(|v| 1.0 - (v / 100.0) as f32).unwrap_or(0.0);
             let heat = if ok { ui::theme::heat(used01, &pal) } else { ring_col };
@@ -1083,13 +1087,13 @@ impl App {
                 ui,
                 ring_center,
                 RAIL_RING_R,
-                RAIL_RING_STROKE,
+                gauge_stroke,
                 self.logos.get(&s.provider_id),
                 &ui::theme::monogram(&s.provider_id),
                 if ok { used01 } else { 0.0 },
                 heat,
                 pal.rail_disc,
-                1.0,
+                gauge_alpha,
             );
             // percent under the gauge (used %, white; auth/err labels colored)
             let label = match (&s.reading, pct) {
