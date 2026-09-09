@@ -162,7 +162,8 @@ const SPIN_SECS: f32 = 0.55;
 // popup beside the hovered cell. The window is exactly the spine wide; the
 // square corners sit on the screen edge, the card-side corners are rounded.
 const RAIL_STRIP_W: f32 = 48.0; // compact visible notch spine
-const RAIL_ROW_H: f32 = 56.0; // compact gauge cell (gauge + percent)
+const RAIL_ROW_H: f32 = 56.0; // cell height when the percentage is visible
+const RAIL_ROW_H_COMPACT: f32 = 40.0; // gauge-only cell height
 const RAIL_ROW_GAP: f32 = 4.0;
 const RAIL_COL_GAP: f32 = 10.0; // notch ↔ card gap when the card is open
 const RAIL_CARD_W: f32 = 264.0; // usage card width
@@ -597,8 +598,8 @@ fn t_rail_spring(dt: f32, opening: bool) -> f32 {
 }
 
 /// Vertical center of the cell for the provider at row `i`.
-fn rail_row_cy(i: usize, body_top: f32) -> f32 {
-    body_top + RAIL_PAD_TOP + (i as f32 + 0.5) * RAIL_ROW_H + i as f32 * RAIL_ROW_GAP
+fn rail_row_cy(i: usize, body_top: f32, row_h: f32) -> f32 {
+    body_top + RAIL_PAD_TOP + (i as f32 + 0.5) * row_h + i as f32 * RAIL_ROW_GAP
 }
 
 /// The usage card's rect for provider `id`: vertically centered on that
@@ -610,13 +611,14 @@ fn rail_card_rect(
     ui_rect: Rect,
     on_left: bool,
     body_top: f32,
+    row_h: f32,
 ) -> Option<Rect> {
     let s = snaps.iter().find(|s| s.provider_id == id)?;
     let card_h = ui::rail_card_height(s);
     let anchor_cy = snaps
         .iter()
         .position(|p| p.provider_id == id)
-        .map(|i| rail_row_cy(i, body_top))
+        .map(|i| rail_row_cy(i, body_top, row_h))
         .unwrap_or_else(|| ui_rect.center().y);
     // Center on the provider's row, but the card can be taller than the
     // strip — clamp with min<=max guaranteed (max() before min()).
@@ -728,7 +730,8 @@ impl eframe::App for App {
         // cell per provider — max_visible_collapsed only limits the
         // horizontal pill.
         let rail_rows = snaps.len().max(1) as f32;
-        let rail_h = RAIL_PAD_TOP + rail_rows * RAIL_ROW_H + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        let rail_row_h = if self.cfg.show_rail_percent { RAIL_ROW_H } else { RAIL_ROW_H_COMPACT };
+        let rail_h = RAIL_PAD_TOP + rail_rows * rail_row_h + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
         let card_want = self.rail_open.is_some();
         let card_f_target = if card_want { 1.0 } else { 0.0 };
         self.rail_card_f += (card_f_target - self.rail_card_f) * (t_rail_spring(dt, card_want));
@@ -865,7 +868,7 @@ impl eframe::App for App {
         // row ends up at the bottom (detail grows upward, away from the edge).
         let header = |ui: &mut egui::Ui, this: &mut App| {
             if rail {
-                this.render_rail(ui, ctx, &snaps, rail_h);
+                this.render_rail(ui, ctx, &snaps, rail_h, rail_row_h);
             } else {
                 this.render_header(ui, ctx, &snaps, f, now);
             }
@@ -997,7 +1000,7 @@ impl App {
     /// while the card is open) slides the tail-card usage popup out beside
     /// that cell; it lingers through a short grace period after the pointer
     /// leaves.
-    fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], rail_h: f32) {
+    fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], rail_h: f32, rail_row_h: f32) {
         let pal = self.pal;
         let edge = self.last_edge;
         // While the edge is unknown the window may still be the tiny init
@@ -1050,7 +1053,7 @@ impl App {
         let mut hovered_id: Option<String> = None;
         let mut next_y = body.top() + RAIL_PAD_TOP;
         for s in snaps {
-            let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, RAIL_ROW_H));
+            let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, rail_row_h));
             next_y = row_rect.bottom() + RAIL_ROW_GAP;
             let pct = self.render_pct(s);
             let stale = self.is_stale(s, now);
@@ -1156,7 +1159,7 @@ impl App {
         let card_rect_now = self
             .rail_open
             .as_deref()
-            .and_then(|id| rail_card_rect(id, snaps, ui_rect, on_left, body.top()));
+            .and_then(|id| rail_card_rect(id, snaps, ui_rect, on_left, body.top(), rail_row_h));
         let card_hovered = card_rect_now.is_some_and(|rect| {
             ui.interact(rect, ui.id().with(("rail-card", self.rail_open.as_deref())), Sense::hover())
                 .hovered()
@@ -1192,7 +1195,7 @@ impl App {
             };
             let stale = self.is_stale(s, now);
             let a = self.rail_card_f.clamp(0.0, 1.0);
-            let Some(card_rect) = rail_card_rect(&id, snaps, ui_rect, on_left, body.top()) else {
+            let Some(card_rect) = rail_card_rect(&id, snaps, ui_rect, on_left, body.top(), rail_row_h) else {
                 return;
             };
             // The card paints into its own rect, but the tail must cross the
@@ -1219,7 +1222,7 @@ impl App {
             let row_cy = snaps
                 .iter()
                 .position(|p| p.provider_id == id)
-                .map(|i| rail_row_cy(i, body.top()))
+                .map(|i| rail_row_cy(i, body.top(), rail_row_h))
                 .unwrap_or_else(|| card_rect.center().y);
             let tw = 9.0; // half the tail's vertical extent
             // clamp order matters when the card is shorter than the margins
@@ -1395,7 +1398,7 @@ fn main() -> eframe::Result<()> {
     let init_size = if notch_mode {
         // Resting notch: exactly the spine; height matches the rail's own
         // layout math.
-        let rail_h = RAIL_PAD_TOP + 4.0 * RAIL_ROW_H + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        let rail_h = RAIL_PAD_TOP + 4.0 * RAIL_ROW_H_COMPACT + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
         Vec2::new(RAIL_STRIP_W, rail_h)
     } else if start_expanded {
         Vec2::new(EXPANDED_W, 420.0)
