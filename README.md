@@ -208,6 +208,29 @@ KWin you just don't get snap-to-edge and position persistence, and
 always-on-top falls back to whatever the compositor allows. `--once` mode
 never touches D-Bus or files.
 
+## Alerts
+
+LimitCue can tell you before a quota bites, instead of waiting for you to look:
+
+```toml
+notify = true
+notify_threshold = 15      # percent remaining that trips it
+notify_on_reset = true     # and say when it comes back
+cmd_on_low = "paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
+cmd_on_reset = ""
+```
+
+Each window latches on its own: the warning fires once on the way down and
+re-arms only after a genuine refill, so a quota sitting on the threshold can't
+machine-gun your tray. Alerts are sent from the poll thread, so they arrive
+whether or not the notch is on screen. `limitcue --test-alert` (or *Send test*
+in Settings → General → Alerts) fires one immediately, so you can check they
+reach you before relying on them.
+
+The hooks run through `sh -c`, with the details in the environment
+(`$LIMITCUE_PROVIDER`, `$LIMITCUE_WINDOW`, `$LIMITCUE_PERCENT`) rather than
+interpolated into the command line.
+
 ## Reading it from something other than the window
 
 Everything the notch knows is available as text, so LimitCue can be a source

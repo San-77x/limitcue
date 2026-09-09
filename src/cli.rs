@@ -20,6 +20,8 @@ pub enum Cmd {
     Line,
     /// One waybar `custom/*` JSON object.
     Waybar,
+    /// Send one desktop notification, to check alerts reach the tray.
+    TestAlert,
     Help,
     Version,
 }
@@ -39,6 +41,7 @@ pub fn parse<I: Iterator<Item = String>>(argv: I) -> Args {
             "--json" => cmd = Cmd::Json,
             "--line" | "--stdout" => cmd = Cmd::Line,
             "--waybar" => cmd = Cmd::Waybar,
+            "--test-alert" => cmd = Cmd::TestAlert,
             "--watch" => watch = true,
             "-h" | "--help" => cmd = Cmd::Help,
             "-V" | "--version" => cmd = Cmd::Version,
@@ -59,6 +62,7 @@ USAGE
   limitcue --waybar        print one waybar custom-module object
 
 OPTIONS
+  --test-alert             send one desktop notification and exit
   --watch                  keep printing every poll interval instead of exiting
   -h, --help               show this
   -V, --version            show the version
@@ -87,6 +91,14 @@ fn worst(s: &Snapshot) -> Option<f64> {
 }
 
 pub fn run(cmd: Cmd, cfg: &Config, watch: bool) {
+    if cmd == Cmd::TestAlert {
+        if crate::notify::Notifier::new().test() {
+            println!("sent one notification to the desktop");
+        } else {
+            println!("no session bus — notifications are not available here");
+        }
+        return;
+    }
     loop {
         let snaps = read_all(cfg);
         match cmd {

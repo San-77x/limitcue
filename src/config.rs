@@ -108,12 +108,30 @@ pub struct Config {
     /// Opacity of the hover usage card, 0..1.
     #[serde(default = "default_card_opacity")]
     pub card_opacity: f32,
+    /// Send a desktop notification when a window runs low.
+    #[serde(default)]
+    pub notify: bool,
+    /// Percent remaining at or below which the alert fires.
+    #[serde(default = "default_threshold")]
+    pub notify_threshold: f64,
+    /// Also announce when a window refills.
+    #[serde(default = "default_true")]
+    pub notify_on_reset: bool,
+    /// Shell command run when a window goes low. Details arrive in the
+    /// environment (LIMITCUE_PROVIDER / _WINDOW / _PERCENT), never spliced
+    /// into the command line.
+    #[serde(default)]
+    pub cmd_on_low: String,
+    /// Shell command run when a window refills.
+    #[serde(default)]
+    pub cmd_on_reset: String,
 }
 
 fn default_poll() -> u64 { 120 }
 /// Defaults reproduce the surfaces' previously hard-coded translucency.
 fn default_notch_opacity() -> f32 { 0.60 }
 fn default_card_opacity() -> f32 { 0.70 }
+fn default_threshold() -> f64 { 15.0 }
 fn default_true() -> bool { true }
 fn default_max_visible() -> usize { 4 }
 
@@ -130,6 +148,11 @@ impl Default for Config {
             show_rail_percent: false,
             notch_opacity: default_notch_opacity(),
             card_opacity: default_card_opacity(),
+            notify: false,
+            notify_threshold: default_threshold(),
+            notify_on_reset: true,
+            cmd_on_low: String::new(),
+            cmd_on_reset: String::new(),
         }
     }
 }
@@ -186,6 +209,11 @@ hide_unconfigured = true
 # show_rail_percent = false       # show used percentages beneath rail gauges
 # notch_opacity = 0.60            # notch body opacity, 0.15-1.0
 # card_opacity = 0.70             # hover usage card opacity, 0.15-1.0
+# notify = true                   # desktop alert when a window runs low
+# notify_threshold = 15           # ...at or below this percent remaining
+# notify_on_reset = true          # and announce when it refills
+# cmd_on_low = "paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
+# cmd_on_reset = ""               # $LIMITCUE_PROVIDER / _WINDOW / _PERCENT
 
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json

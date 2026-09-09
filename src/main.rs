@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod notify;
 mod dock;
 mod providers;
 mod types;
@@ -396,6 +397,8 @@ struct App {
     probe_rx: Option<mpsc::Receiver<(bool, String)>>,
     /// Whether the editor is currently showing a key in the clear.
     key_revealed: bool,
+    /// Outcome of the last "send test alert" press.
+    alert_test: Option<bool>,
     /// Measured height of the settings body, used to size the sheet.
     settings_body_h: f32,
     /// Provider whose inline usage card is open on the rail (left/right dock).
@@ -467,6 +470,7 @@ impl App {
             probe: Probe::Idle,
             probe_rx: None,
             key_revealed: false,
+            alert_test: None,
             settings_body_h: 0.0,
             rail_open,
             rail_last: None,
@@ -696,6 +700,86 @@ impl App {
                 &mut self.cfg_next.hide_unconfigured,
                 pal,
             );
+        });
+
+        ui.add_space(16.0);
+        section(ui, "Alerts", pal);
+        card(ui, pal, |ui| {
+            dirty |= toggle_row(
+                ui,
+                "Warn me when a quota runs low",
+                "A desktop notification, once per window, re-armed when it refills.",
+                &mut self.cfg_next.notify,
+                pal,
+            );
+            if self.cfg_next.notify {
+                hairline(ui, pal);
+                hairline(ui, pal);
+                control_row(
+                    ui,
+                    "Check it works",
+                    "Send one notification now, so you know they reach your tray.",
+                    92.0,
+                    pal,
+                    |ui| {
+                        if w::pill_button(ui, "Send test", false, true, pal).clicked() {
+                            self.alert_test = Some(notify::Notifier::new().test());
+                        }
+                    },
+                );
+                if let Some(ok) = self.alert_test {
+                    let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 18.0), Sense::hover());
+                    let (msg, col) = if ok {
+                        ("Sent — it should be on screen now.", pal.ok)
+                    } else {
+                        ("No session bus here, so notifications cannot be delivered.", pal.bad)
+                    };
+                    ui.painter().galley(
+                        egui::pos2(r.left() + 2.0, r.top()),
+                        ui.painter().layout(msg.to_owned(), theme::sans(10.0), col, r.width()),
+                        col,
+                    );
+                }
+                hairline(ui, pal);
+                setting_row(ui, "Warn at", "Percent remaining that trips the alert.", pal, |ui| {
+                    let mut v = self.cfg_next.notify_threshold.round() as i64;
+                    if w::slider(ui, &mut v, 5..=50, 5, "%", pal) {
+                        self.cfg_next.notify_threshold = v as f64;
+                        dirty = true;
+                    }
+                });
+                hairline(ui, pal);
+                dirty |= toggle_row(
+                    ui,
+                    "Say when it comes back",
+                    "Announce the refill too, so you know when to start again.",
+                    &mut self.cfg_next.notify_on_reset,
+                    pal,
+                );
+                hairline(ui, pal);
+                ui.add_space(9.0);
+                let mut low = self.cfg_next.cmd_on_low.clone();
+                if w::field(ui, "Run on low (optional)", "paplay warning.oga", &mut low, pal) {
+                    self.cfg_next.cmd_on_low = low;
+                    dirty = true;
+                }
+                let mut reset = self.cfg_next.cmd_on_reset.clone();
+                if w::field(ui, "Run on refill (optional)", "notify-send \"go\"", &mut reset, pal) {
+                    self.cfg_next.cmd_on_reset = reset;
+                    dirty = true;
+                }
+                let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 28.0), Sense::hover());
+                ui.painter().galley(
+                    egui::pos2(r.left() + 2.0, r.top()),
+                    ui.painter().layout(
+                        "The provider, window and percentage arrive as $LIMITCUE_PROVIDER, $LIMITCUE_WINDOW and $LIMITCUE_PERCENT.".to_owned(),
+                        theme::sans(10.0),
+                        pal.faint,
+                        r.width() - 4.0,
+                    ),
+                    pal.faint,
+                );
+            }
         });
 
         ui.add_space(16.0);
@@ -2238,6 +2322,9 @@ fn spawn_poller(
     thread::spawn(move || {
         let mut backoff = poll_secs;
         let mut failed = false;
+        // Alerts live here rather than in the UI so they still arrive when the
+        // notch is minimised, on another desktop, or simply not being looked at.
+        let mut notifier = notify::Notifier::new();
         loop {
             let mut out = Vec::new();
             for p in &providers {
@@ -2250,6 +2337,7 @@ fn spawn_poller(
                 }
                 out.push(s);
             }
+            notifier.review(&out, &cfg);
             if tx_snap.send(out).is_err() {
                 break;
             }
