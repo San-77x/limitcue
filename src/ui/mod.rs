@@ -134,6 +134,12 @@ pub fn rail_card(
     egui::Frame::none()
         .fill(pal.rail_deep.linear_multiply(alpha))
         .stroke(egui::Stroke::new(1.0_f32, hairline.linear_multiply(alpha)))
+        .shadow(egui::Shadow {
+            offset: egui::vec2(0.0, 6.0),
+            blur: 22.0,
+            spread: 2.0,
+            color: Color32::from_black_alpha(110).linear_multiply(alpha),
+        })
         .rounding(egui::Rounding::same(18.0))
         .inner_margin(egui::Margin::symmetric(16.0, 14.0))
         .show(ui, |ui| {

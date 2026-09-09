@@ -606,6 +606,13 @@ fn debug_shot(ctx: &egui::Context, started: Instant, requested: &mut bool) {
 }
 
 impl eframe::App for App {
+    /// Fully transparent clear. (eframe's default is `rgba(12,12,12,180)` —
+    /// a 70%-opaque grey that fills whatever the UI doesn't paint, which
+    /// shows up as a flat dark slab behind the usage card.)
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0, 0.0, 0.0, 0.0]
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         debug_shot(ctx, self.started, &mut self.shot_requested);
         self.drain(ctx);
