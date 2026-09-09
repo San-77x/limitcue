@@ -228,6 +228,8 @@ struct App {
     rail_card_f: f32,
     /// The notch is the primary surface. LIMITCUE_FLOAT=1 restores the pill.
     notch_mode: bool,
+    started: Instant,
+    shot_requested: bool,
 }
 
 impl App {
@@ -267,6 +269,8 @@ impl App {
             rail_hover_at: None,
             rail_card_f: 0.0,
             notch_mode,
+            started: Instant::now(),
+            shot_requested: false,
         }
     }
 
@@ -567,8 +571,42 @@ fn t_rail_spring(dt: f32) -> f32 {
     1.0 - (-9.0 * dt).exp()
 }
 
+/// Debug hook: `LIMITCUE_UI_SHOT=/path.png` captures the window after the
+/// layout has settled (~1.5 s) and exits. Unlike eframe's `__screenshot`
+/// feature this waits for the notch to size itself and reads the frame
+/// before the buffer swap, so transparent windows capture correctly.
+fn debug_shot(ctx: &egui::Context, started: Instant, requested: &mut bool) {
+    let Ok(path) = std::env::var("LIMITCUE_UI_SHOT") else { return };
+    if path.is_empty() {
+        return;
+    }
+    let shot = ctx.input(|i| {
+        i.events.iter().find_map(|e| match e {
+            egui::Event::Screenshot { image, .. } => Some(image.clone()),
+            _ => None,
+        })
+    });
+    if let Some(img) = shot {
+        let file = std::fs::File::create(&path).expect("screenshot path");
+        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), img.width() as u32, img.height() as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().expect("png header");
+        let bytes: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+        w.write_image_data(&bytes).expect("png data");
+        drop(w);
+        std::process::exit(0);
+    }
+    if !*requested && started.elapsed().as_secs_f32() > 1.5 {
+        *requested = true;
+        ctx.send_viewport_cmd(ViewportCommand::Screenshot);
+    }
+    ctx.request_repaint_after(std::time::Duration::from_millis(50));
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        debug_shot(ctx, self.started, &mut self.shot_requested);
         self.drain(ctx);
         self.tweens.retain(|_, t| t.value().is_some());
         let stored_edge = self.dock.lock().unwrap().edge;
