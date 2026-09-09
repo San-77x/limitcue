@@ -232,6 +232,7 @@ struct App {
     rail_focus_id: Option<String>,
     rail_focus_prev: Option<String>,
     rail_focus_t: f32,
+    rail_dim_t: f32,
     /// The notch is the primary surface. LIMITCUE_FLOAT=1 restores the pill.
     notch_mode: bool,
     started: Instant,
@@ -277,6 +278,7 @@ impl App {
             rail_focus_id: None,
             rail_focus_prev: None,
             rail_focus_t: 1.0,
+            rail_dim_t: 0.0,
             notch_mode,
             started: Instant::now(),
             shot_requested: false,
@@ -1082,8 +1084,15 @@ impl App {
             self.rail_focus_t = (self.rail_focus_t + (ctx.input(|i| i.stable_dt) / 0.32)).min(1.0);
             ctx.request_repaint();
         }
+        let dim_target = if any_row_hovered { 1.0 } else { 0.0 };
+        self.rail_dim_t += (dim_target - self.rail_dim_t) * (1.0 - (-ctx.input(|i| i.stable_dt) / 0.48).exp());
+        if (self.rail_dim_t - dim_target).abs() > 0.005 {
+            ctx.request_repaint();
+        }
         // Smoothstep over 320ms: long enough to perceive as a glide, not a blink.
         let focus_ease = self.rail_focus_t * self.rail_focus_t * (3.0 - 2.0 * self.rail_focus_t);
+        // Ambient dimming settles over roughly 480ms, slower than focus gain.
+        let dim_ease = self.rail_dim_t * self.rail_dim_t * (3.0 - 2.0 * self.rail_dim_t);
         let mut next_y = body.top() + RAIL_PAD_TOP;
         for s in snaps.iter() {
             let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, rail_row_h));
@@ -1112,10 +1121,17 @@ impl App {
             } else {
                 0.0
             };
-            let gauge_alpha = if any_row_hovered {
-                0.32 + 0.68 * focus_mix
+            let ambient_alpha = if any_row_hovered {
+                1.0 - 0.68 * dim_ease
             } else {
                 1.0
+            };
+            let gauge_alpha = if is_new_focus {
+                ambient_alpha + (1.0 - ambient_alpha) * focus_mix
+            } else if is_old_focus {
+                ambient_alpha + (1.0 - ambient_alpha) * (1.0 - focus_mix)
+            } else {
+                ambient_alpha
             };
             let gauge_stroke = RAIL_RING_STROKE + 0.7 * focus_mix;
             // gauge: track ring + heat arc (share used) around the bare mark
