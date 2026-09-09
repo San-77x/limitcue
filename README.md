@@ -41,7 +41,11 @@ provider's white mark (real logo for Claude, Codex/OpenAI, Gemini, Kimi,
 MiniMax and AgentRouter; a monogram letter otherwise) framed by a track
 ring and a heat-colored arc showing the share *used* — green while
 plenty remains, warming through yellow and orange to red as the window
-empties, with the used percentage in white underneath. A settings orb sits
+empties. A provider that needs attention — expired credentials, a failed
+fetch, an id you have not configured — carries a small `!` badge on the rim
+of its gauge, colour-coded by severity, so the notch says something is wrong
+without needing any text. The used percentage is printed under the gauge only
+when `show_rail_percent` is on; the badge is always there. A settings orb sits
 at the bottom (arc at rest, gear on hover). The whole notch is draggable:
 press and drag anywhere on it (left or middle button) and the compositor
 moves the window; on release it snaps back flush to whichever side you

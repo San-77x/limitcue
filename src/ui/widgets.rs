@@ -700,3 +700,25 @@ pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette
     );
     resp
 }
+
+/// Attention badge pinned to the rim of a gauge: a filled disc carrying a
+/// hand-painted exclamation mark, knocked out of the ring beneath it by a dark
+/// rim so it reads cleanly on top of the arc. This is how a rail cell reports
+/// trouble when its percentage label is switched off — the mark is painted
+/// rather than typed so it can never depend on a font's glyph coverage.
+pub fn alert_badge(ui: &egui::Ui, center: Pos2, r: f32, color: Color32, rim: Color32, alpha: f32) {
+    let p = ui.painter();
+    p.circle_filled(center, r + 1.6, rim.linear_multiply(alpha));
+    p.circle_filled(center, r, color.linear_multiply(alpha));
+    let fg = theme::on_brand(color).linear_multiply(alpha);
+    let w = (r * 0.34).max(1.6);
+    p.rect_filled(
+        Rect::from_min_max(
+            egui::pos2(center.x - w / 2.0, center.y - r * 0.58),
+            egui::pos2(center.x + w / 2.0, center.y + r * 0.12),
+        ),
+        w / 2.0,
+        fg,
+    );
+    p.circle_filled(egui::pos2(center.x, center.y + r * 0.46), w / 2.0, fg);
+}

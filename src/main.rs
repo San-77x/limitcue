@@ -173,6 +173,11 @@ const RAIL_ORB: f32 = 20.0; // compact settings orb diameter
 const RAIL_PAD_TOP: f32 = 10.0; // breathing room above the first cell
 /// Gauge ring stroke width in a rail cell.
 const RAIL_RING_STROKE: f32 = 2.6;
+/// Status badge radius, and where it sits on the gauge rim: up and to the
+/// right, the conventional badge corner. Rows overlap their neighbours' slack
+/// rather than their rings, so it has room there even in a compact cell.
+const RAIL_BADGE_R: f32 = 5.5;
+const RAIL_BADGE_ANGLE: f32 = std::f32::consts::PI * 40.0 / 180.0;
 
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
@@ -1572,28 +1577,49 @@ impl App {
                 pal.rail_disc,
                 gauge_alpha,
             );
-            // percent under the gauge (used %, white; auth/err labels colored)
-            let label = match (&s.reading, pct) {
-                (Reading::Ok { .. }, Some(v)) if self.cfg.show_rail_percent => format!("{:.0}%", 100.0 - v),
-                (Reading::Ok { .. }, _) if self.cfg.show_rail_percent => "…".into(),
-                (Reading::Ok { .. }, _) => String::new(),
-                (Reading::NeedsAuth(_), _) => "auth".into(),
-                (Reading::Error(_), _) => "err".into(),
-                _ => "?".into(),
+            // A provider in trouble is marked on the gauge itself, so the
+            // notch still says so when the labels are off — that used to be
+            // the one thing the compact cell could not express, and it fell
+            // back to printing "err" under a gauge that had no percentage
+            // above it.
+            let status = match &s.reading {
+                Reading::Ok { .. } => None,
+                Reading::NeedsAuth(_) => Some(pal.warn),
+                Reading::Error(_) => Some(pal.bad),
+                Reading::NotConfigured => Some(pal.muted),
             };
-            let label_col = match &s.reading {
-                Reading::Ok { .. } => Color32::WHITE,
-                Reading::NeedsAuth(_) => pal.warn,
-                Reading::Error(_) => pal.bad,
-                _ => pal.muted,
-            };
-            ui.painter().text(
-                egui::pos2(row_rect.center().x, row_rect.bottom() - 11.0),
-                egui::Align2::CENTER_CENTER,
-                label,
-                ui::theme::medium(12.0),
-                label_col,
-            );
+            if let Some(status) = status {
+                let (sin, cos) = RAIL_BADGE_ANGLE.sin_cos();
+                ui::widgets::alert_badge(
+                    ui,
+                    egui::pos2(
+                        ring_center.x + RAIL_RING_R * cos,
+                        ring_center.y - RAIL_RING_R * sin,
+                    ),
+                    RAIL_BADGE_R,
+                    status,
+                    pal.bg,
+                    gauge_alpha,
+                );
+            }
+            // The label line is percentages-only now: with them switched off
+            // the badge carries the status on its own.
+            if self.cfg.show_rail_percent {
+                let (label, label_col) = match (&s.reading, pct) {
+                    (Reading::Ok { .. }, Some(v)) => (format!("{:.0}%", 100.0 - v), Color32::WHITE),
+                    (Reading::Ok { .. }, None) => ("…".into(), Color32::WHITE),
+                    (Reading::NeedsAuth(_), _) => ("auth".into(), pal.warn),
+                    (Reading::Error(_), _) => ("err".into(), pal.bad),
+                    _ => ("not set".into(), pal.muted),
+                };
+                ui.painter().text(
+                    egui::pos2(row_rect.center().x, row_rect.bottom() - 11.0),
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    ui::theme::medium(12.0),
+                    label_col,
+                );
+            }
         }
 
         // ---- settings orb --------------------------------------------------
