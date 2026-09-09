@@ -147,6 +147,12 @@ const STATUS_BODY_H: f32 = 34.0;
 const MIN_LIST_H: f32 = 62.0;
 /// Vertical clearance between the hovered row's centre line and the card.
 pub const RAIL_CARD_GAP_Y: f32 = 8.0;
+/// Shortest the card can usefully be: its fixed chrome plus a list worth
+/// scrolling. The host window is never sized below this while a card is open,
+/// even if that pushes its foot past the screen — a card that keeps its
+/// layout and loses a few pixels off the bottom beats one that clips its own
+/// footer.
+pub const CARD_MIN_H: f32 = CARD_FIXED_H + MIN_LIST_H;
 
 /// Chrome above the body: padding, header, hero.
 const CARD_TOP_H: f32 = PAD_TOP + HEAD_H + HEAD_GAP + HERO_H + HERO_GAP;
@@ -602,27 +608,33 @@ pub struct RailCardLayout {
     pub list_height: f32,
 }
 
-/// Choose the side of the hovered row with more room, clamp to the host, and
-/// hand back both the card rect and the list height that exactly fills it.
+/// Place the card beside the hovered row, inside the band the screen actually
+/// allows (`host_height` is the host window, which the caller has already
+/// clamped to the space below the notch's top edge).
+///
+/// The card hangs off its row while there is room under it. When there is not
+/// — a row low on the screen — it slides up until its foot reaches the bottom
+/// of the band, so it opens *upward* from the row instead of running off the
+/// bottom. Only when the whole band is too short does it give up height and
+/// let its window list scroll.
+///
+/// This replaced a binary above/below flip. The flip threw away the space on
+/// the other side of the anchor: a card that needed 20 px more than the room
+/// below jumped entirely above the row, even when sliding up by 20 px would
+/// have done. Sliding is continuous and always keeps the card as tall as the
+/// band allows.
 pub fn rail_card_layout(
     s: &Snapshot,
     anchor_y: f32,
     host_height: f32,
     card_width: f32,
-    top_margin: f32,
+    margin: f32,
 ) -> RailCardLayout {
     let natural_h = rail_card_content_height(s);
-    let available_above = (anchor_y - top_margin).max(0.0);
-    let available_below = (host_height - anchor_y - top_margin).max(0.0);
-    let above = natural_h > available_below && available_above > available_below;
-    let available = if above { available_above } else { available_below };
-    let floor = CARD_FIXED_H + MIN_LIST_H;
-    let card_h = natural_h.min(available.max(floor));
-    let y = if above {
-        (anchor_y - RAIL_CARD_GAP_Y - card_h).max(top_margin)
-    } else {
-        (anchor_y + RAIL_CARD_GAP_Y).min((host_height - card_h - top_margin).max(top_margin))
-    };
+    let band = (host_height - margin * 2.0).max(CARD_MIN_H);
+    let card_h = natural_h.min(band);
+    let lowest = (host_height - margin - card_h).max(margin);
+    let y = (anchor_y + RAIL_CARD_GAP_Y).clamp(margin, lowest);
     RailCardLayout {
         rect: egui::Rect::from_min_size(egui::pos2(0.0, y), Vec2::new(card_width, card_h)),
         list_height: (card_h - CARD_FIXED_H).max(MIN_LIST_H),

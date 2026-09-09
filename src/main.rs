@@ -178,6 +178,8 @@ const RAIL_RING_STROKE: f32 = 2.6;
 /// rather than their rings, so it has room there even in a compact cell.
 const RAIL_BADGE_R: f32 = 5.5;
 const RAIL_BADGE_ANGLE: f32 = std::f32::consts::PI * 40.0 / 180.0;
+/// Clearance kept between the host window's foot and the bottom of the screen.
+const RAIL_SCREEN_MARGIN: f32 = 8.0;
 
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
@@ -1194,7 +1196,26 @@ impl eframe::App for App {
             self.rail_card_f = self.rail_card_f.max(0.02);
         }
         let monitor_h = ctx.input(|i| i.viewport().monitor_size.map(|s| s.y)).unwrap_or(900.0);
-        let host_h_max = (monitor_h - 24.0).max(rail_h);
+        // Where the window's top edge sits on screen. The window grows
+        // *downward* from a fixed top — the KWin script only ever re-clamps x
+        // for a side dock, never y — so its foot is what runs off the bottom,
+        // and the card has to be placed inside what is left below that top.
+        //
+        // Wayland never tells a window its own position, so the dock script's
+        // last report is the source of truth; X11 fills in `outer_rect`. Like
+        // the rest of the dock code this assumes one monitor.
+        let win_top = {
+            let stored = self.dock.lock().unwrap().y as f32;
+            if stored > 0.0 {
+                stored
+            } else {
+                ctx.input(|i| i.viewport().outer_rect.map(|r| r.top()))
+                    .filter(|y| y.is_finite() && *y >= 0.0)
+                    .unwrap_or(0.0)
+            }
+        }
+        .clamp(0.0, monitor_h);
+        let host_h_max = (monitor_h - win_top - RAIL_SCREEN_MARGIN).max(rail_h);
         let rail_size = match self
             .rail_open
             .as_deref()
@@ -1214,9 +1235,13 @@ impl eframe::App for App {
                     .unwrap_or(0);
                 let anchor = rail_row_cy(row, 0.0, rail_row_h);
                 let need = anchor + ui::RAIL_CARD_GAP_Y + card_h + ui::RAIL_CARD_GAP_Y;
+                // The screen cap can be shorter than a card, if the notch sits
+                // very low. Keep the floor so the card still lays out; it slides
+                // up inside whatever band it gets.
+                let cap = host_h_max.max(ui::CARD_MIN_H + ui::RAIL_CARD_GAP_Y * 2.0);
                 Vec2::new(
                     RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                    rail_h.max(need.min(host_h_max)),
+                    rail_h.max(need.min(cap)),
                 )
             }
             None => Vec2::new(RAIL_STRIP_W, rail_h),
