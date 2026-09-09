@@ -1,4 +1,5 @@
 pub mod billing;
+pub mod catalog;
 pub mod claude;
 pub mod codex;
 pub mod custom;
@@ -9,6 +10,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::config::ProviderConfig;
 use crate::types::{Fidelity, Snapshot};
 
 pub trait Provider: Send {
@@ -17,6 +19,27 @@ pub trait Provider: Send {
     /// Cheap check: do credentials/config for this provider exist on disk?
     fn is_present(&self) -> bool;
     fn fidelity(&self) -> Fidelity;
+}
+
+/// The adapter a `[[provider]]` entry describes. One place decides this, so
+/// the poll loop and the settings sheet's Test button can never disagree
+/// about what a given config actually does.
+pub fn adapter_for(cfg: &ProviderConfig) -> Box<dyn Provider> {
+    if cfg.billing {
+        Box::new(billing::Billing::new(cfg.clone()))
+    } else if cfg.id == "minimax" {
+        Box::new(minimax::MiniMax::new(cfg.clone()))
+    } else if cfg.id == "kimi" {
+        Box::new(kimi::Kimi::new(Some(cfg.clone())))
+    } else {
+        Box::new(custom::Custom::new(cfg.clone()))
+    }
+}
+
+/// Take one reading from a config the user is still editing, so the settings
+/// sheet can say whether it works before they save it.
+pub fn probe(cfg: &ProviderConfig) -> Snapshot {
+    adapter_for(cfg).snapshot()
 }
 
 /// GET a URL with headers; returns parsed JSON. Errors carry a readable message.

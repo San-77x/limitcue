@@ -13,10 +13,7 @@ use eframe::egui::{self, Color32, Rect, RichText, Sense, Vec2, ViewportBuilder, 
 
 use config::Config;
 use dock::Edge;
-use providers::{
-    billing::Billing, claude::Claude, codex::Codex, custom::Custom, kimi::Kimi, minimax::MiniMax,
-    Provider,
-};
+use providers::{claude::Claude, codex::Codex, kimi::Kimi, Provider};
 use types::{now_unix, Reading, Snapshot};
 use ui::theme::{self, Palette};
 
@@ -110,15 +107,7 @@ fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
         if p.enabled == Some(false) {
             continue;
         }
-        if p.billing {
-            v.push(Box::new(Billing::new(p.clone())));
-        } else if p.id == "minimax" {
-            v.push(Box::new(MiniMax::new(p.clone())));
-        } else if p.id == "kimi" {
-            v.push(Box::new(Kimi::new(Some(p.clone()))));
-        } else {
-            v.push(Box::new(Custom::new(p.clone())));
-        }
+        v.push(providers::adapter_for(p));
     }
     if !cfg.provider.iter().any(|p| p.id == "kimi" && p.enabled != Some(false)) {
         v.push(Box::new(Kimi::new(None)));
@@ -196,6 +185,21 @@ impl Tween {
         let e = 1.0 - (1.0 - t).powi(3); // ease-out cubic
         Some(self.from + (self.to - self.from) * e as f64)
     }
+}
+
+/// Which face the Providers tab is showing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SettingsView {
+    List,
+    Picker,
+    Editor(usize),
+}
+
+/// Result of the editor's Test button.
+enum Probe {
+    Idle,
+    Running,
+    Done { ok: bool, text: String },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -415,9 +419,13 @@ struct App {
     cfg_next: Config,
     settings_open: bool,
     settings_tab: SettingsTab,
+    settings_view: SettingsView,
+    probe: Probe,
+    probe_rx: Option<mpsc::Receiver<(bool, String)>>,
+    /// Whether the editor is currently showing a key in the clear.
+    key_revealed: bool,
     /// Measured height of the settings body, used to size the sheet.
     settings_body_h: f32,
-    new_provider_id: String,
     /// Provider whose inline usage card is open on the rail (left/right dock).
     rail_open: Option<String>,
     /// Provider whose card is fading out (kept for height budgeting).
@@ -447,9 +455,15 @@ impl App {
         let settings_var = std::env::var("LIMITCUE_UI_SETTINGS").unwrap_or_default();
         let settings_open = !settings_var.is_empty() && settings_var != "0";
         let settings_tab = match settings_var.as_str() {
-            "providers" => SettingsTab::Providers,
+            "providers" | "picker" | "editor" => SettingsTab::Providers,
             "appearance" => SettingsTab::Personalization,
             _ => SettingsTab::General,
+        };
+        // Screenshot hooks for the two sub-views of the Providers tab.
+        let settings_view = match settings_var.as_str() {
+            "picker" => SettingsView::Picker,
+            "editor" => SettingsView::Editor(0),
+            _ => SettingsView::List,
         };
         let rail_open = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
         let notch_mode = std::env::var("LIMITCUE_FLOAT").map(|v| v == "0").unwrap_or(true);
@@ -477,8 +491,11 @@ impl App {
             cfg_next,
             settings_open,
             settings_tab,
+            settings_view,
+            probe: Probe::Idle,
+            probe_rx: None,
+            key_revealed: false,
             settings_body_h: 0.0,
-            new_provider_id: String::new(),
             rail_open,
             rail_last: None,
             rail_card_f: 0.0,
@@ -491,6 +508,13 @@ impl App {
     }
 
     fn drain(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = &self.probe_rx {
+            if let Ok((ok, text)) = rx.try_recv() {
+                self.probe = Probe::Done { ok, text };
+                self.probe_rx = None;
+                ctx.request_repaint();
+            }
+        }
         let mut changed = false;
         while let Ok(batch) = self.rx.try_recv() {
             for s in batch {
@@ -589,6 +613,8 @@ impl App {
         };
         let picked = w::segmented(ui, &tabs, cur, pal);
         if picked != cur {
+            self.settings_view = SettingsView::List;
+            self.probe = Probe::Idle;
             self.settings_tab = match picked {
                 0 => SettingsTab::General,
                 1 => SettingsTab::Providers,
@@ -722,14 +748,29 @@ impl App {
         dirty
     }
 
-    /// Providers: order, enable/disable, remove, add.
+    /// Providers: the tracked list, the built-in adapters, and the flow for
+    /// adding a new one. Three views share the tab — the list, a picker of
+    /// everything the catalogue knows, and a per-provider editor.
     fn settings_providers(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
+        match self.settings_view {
+            SettingsView::Picker => self.settings_picker(ui, pal),
+            SettingsView::Editor(i) if i < self.cfg_next.provider.len() => {
+                self.settings_editor(ui, pal, i)
+            }
+            _ => {
+                self.settings_view = SettingsView::List;
+                self.settings_provider_list(ui, pal)
+            }
+        }
+    }
+
+    fn settings_provider_list(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
         use ui::widgets as w;
         let mut dirty = false;
         section(ui, "Tracked providers", pal);
         card(ui, pal, |ui| {
             let n = self.cfg_next.provider.len();
-            let mut action: Option<(usize, i32)> = None; // (index, -1 up / 1 down / 0 delete)
+            let mut action: Option<(usize, i32)> = None; // -1 up / 1 down / 0 delete / 2 edit
             for i in 0..n {
                 if i > 0 {
                     hairline(ui, pal);
@@ -746,15 +787,25 @@ impl App {
                 ui.horizontal(|ui| {
                     provider_mark(ui, &id, &self.logos, pal, enabled);
                     ui.add_space(9.0);
-                    let right = 22.0 * 3.0 + 34.0 + 18.0;
+                    let right = 22.0 * 4.0 + 34.0 + 18.0;
                     let (r, _) = ui.allocate_exact_size(
                         Vec2::new((ui.available_width() - right).max(1.0), 34.0),
                         Sense::hover(),
                     );
+                    // The row is the way in to the editor, so the whole title
+                    // block is clickable, not just the pencil.
+                    if ui
+                        .interact(r, ui.id().with(("prow", i)), Sense::click())
+                        .on_hover_text("edit this provider")
+                        .clicked()
+                    {
+                        action = Some((i, 2));
+                    }
                     let title_col = if enabled { pal.text } else { pal.faint };
                     let g = w::elide(ui, &name, theme::medium(12.5), title_col, r.width());
                     ui.painter().galley(egui::pos2(r.left(), r.top() + 3.0), g, title_col);
-                    let g2 = w::elide(ui, &id, theme::sans(10.0), pal.faint, r.width());
+                    let sub = self.provider_summary(i);
+                    let g2 = w::elide(ui, &sub, theme::sans(10.0), pal.faint, r.width());
                     ui.painter().galley(egui::pos2(r.left(), r.top() + 18.0), g2, pal.faint);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if w::switch(ui, &mut enabled, pal).changed() {
@@ -771,6 +822,9 @@ impl App {
                         if w::glyph_button(ui, w::Mark::Up, i > 0, "move up", pal).clicked() {
                             action = Some((i, -1));
                         }
+                        if w::glyph_button(ui, w::Mark::Pencil, true, "edit", pal).clicked() {
+                            action = Some((i, 2));
+                        }
                     });
                 });
                 ui.add_space(4.0);
@@ -780,7 +834,7 @@ impl App {
                 ui.painter().text(
                     egui::pos2(r.left(), r.center().y),
                     egui::Align2::LEFT_CENTER,
-                    "No extra providers yet.",
+                    "Nothing added yet — the built-ins below may already cover you.",
                     theme::sans(11.0),
                     pal.faint,
                 );
@@ -799,21 +853,32 @@ impl App {
                     self.cfg_next.provider.swap(i - 1, i);
                     dirty = true;
                 }
+                Some((i, 2)) => {
+                    self.settings_view = SettingsView::Editor(i);
+                    self.probe = Probe::Idle;
+                }
                 _ => {}
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            if w::pill_button(ui, "Add a provider", true, true, pal).clicked() {
+                self.settings_view = SettingsView::Picker;
             }
         });
 
         ui.add_space(16.0);
         section(ui, "Built in", pal);
         card(ui, pal, |ui| {
-            for (idx, (b, label)) in [("claude", "Claude"), ("codex", "Codex")].iter().enumerate() {
+            for (idx, p) in providers::catalog::built_ins().enumerate() {
                 if idx > 0 {
                     hairline(ui, pal);
                 }
-                let mut on = !self.cfg_next.disabled.iter().any(|d| d == b);
+                let mut on = !self.cfg_next.disabled.iter().any(|d| d == p.id);
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    provider_mark(ui, b, &self.logos, pal, on);
+                    provider_mark(ui, p.id, &self.logos, pal, on);
                     ui.add_space(9.0);
                     let (r, _) = ui.allocate_exact_size(
                         Vec2::new((ui.available_width() - 52.0).max(1.0), 34.0),
@@ -821,18 +886,26 @@ impl App {
                     );
                     let col = if on { pal.text } else { pal.faint };
                     ui.painter().text(
-                        egui::pos2(r.left(), r.top() + 9.0),
+                        egui::pos2(r.left(), r.top() + 3.0),
                         egui::Align2::LEFT_TOP,
-                        *label,
+                        p.name,
                         theme::medium(12.5),
                         col,
                     );
+                    // Say which file the adapter borrowed. Transparency about
+                    // whose credentials are being read is the whole trust story.
+                    let source = match p.source {
+                        providers::catalog::Source::Cli(path) => path,
+                        _ => "",
+                    };
+                    let g = w::elide(ui, source, theme::sans(10.0), pal.faint, r.width());
+                    ui.painter().galley(egui::pos2(r.left(), r.top() + 18.0), g, pal.faint);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if w::switch(ui, &mut on, pal).changed() {
                             if on {
-                                self.cfg_next.disabled.retain(|d| d != b);
+                                self.cfg_next.disabled.retain(|d| d != p.id);
                             } else {
-                                self.cfg_next.disabled.push((*b).to_string());
+                                self.cfg_next.disabled.push(p.id.to_string());
                             }
                             dirty = true;
                         }
@@ -841,49 +914,390 @@ impl App {
                 ui.add_space(4.0);
             }
         });
+        ui.add_space(8.0);
+        dirty
+    }
+
+    /// One line describing how a configured provider is set up, shown under
+    /// its name so the list says what is wired without opening anything.
+    fn provider_summary(&self, i: usize) -> String {
+        let p = &self.cfg_next.provider[i];
+        let where_ = if p.billing {
+            p.base_url.clone().unwrap_or_else(|| "no base URL yet".into())
+        } else if let Some(u) = &p.url {
+            u.clone()
+        } else if let Some(b) = &p.base_url {
+            b.clone()
+        } else {
+            "not pointed anywhere yet".into()
+        };
+        let key = match (&p.api_key, &p.key_env) {
+            (Some(k), _) if !k.trim().is_empty() => " · key set".to_string(),
+            (_, Some(e)) if !e.trim().is_empty() => format!(" · ${e}"),
+            _ => " · no key".to_string(),
+        };
+        format!("{}{}", where_.trim_start_matches("https://"), key)
+    }
+
+    /// The picker: everything the catalogue knows how to track.
+    fn settings_picker(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
+        use ui::widgets as w;
+        ui.horizontal(|ui| {
+            if w::pill_button(ui, "‹  Back", false, true, pal).clicked() {
+                self.settings_view = SettingsView::List;
+            }
+        });
+        ui.add_space(12.0);
+        section(ui, "Add a provider", pal);
+        let mut chosen: Option<&'static providers::catalog::Preset> = None;
+        card(ui, pal, |ui| {
+            let list = providers::catalog::addable(&self.cfg_next.provider);
+            for (idx, p) in list.iter().enumerate() {
+                if idx > 0 {
+                    hairline(ui, pal);
+                }
+                ui.add_space(5.0);
+                let row_h = 40.0;
+                ui.horizontal(|ui| {
+                    provider_mark(ui, p.id, &self.logos, pal, true);
+                    ui.add_space(9.0);
+                    let (r, _) = ui.allocate_exact_size(
+                        Vec2::new(avail(ui), row_h),
+                        Sense::click(),
+                    );
+                    if ui.interact(r, ui.id().with(("pick", p.id)), Sense::click()).clicked() {
+                        chosen = Some(p);
+                    }
+                    let tag = match p.fidelity {
+                        types::Fidelity::Official => ("official", pal.ok),
+                        types::Fidelity::Derived => ("derived", pal.warn),
+                        types::Fidelity::Manual => ("manual", pal.muted),
+                    };
+                    let g = ui.painter().layout_job(theme::caps_job(tag.0, 8.5, tag.1));
+                    let tag_w = g.rect.width();
+                    ui.painter().galley(egui::pos2(r.right() - tag_w, r.top() + 3.0), g, tag.1);
+                    let name = w::elide(
+                        ui,
+                        p.name,
+                        theme::medium(12.5),
+                        pal.text,
+                        (r.width() - tag_w - 10.0).max(20.0),
+                    );
+                    ui.painter().galley(egui::pos2(r.left(), r.top() + 2.0), name, pal.text);
+                    ui.painter().galley(
+                        egui::pos2(r.left(), r.top() + 17.0),
+                        ui.painter().layout(p.blurb.to_owned(), theme::sans(10.0), pal.faint, r.width()),
+                        pal.faint,
+                    );
+                });
+                ui.add_space(5.0);
+            }
+        });
+        ui.add_space(8.0);
+        if let Some(p) = chosen {
+            // "gateway" and "custom" are templates, so they can be added more
+            // than once; give each a free id.
+            let mut cfg = p.to_config();
+            if self.cfg_next.provider.iter().any(|e| e.id == cfg.id) {
+                let mut n = 2;
+                while self.cfg_next.provider.iter().any(|e| e.id == format!("{}-{n}", p.id)) {
+                    n += 1;
+                }
+                cfg.id = format!("{}-{n}", p.id);
+            }
+            self.cfg_next.provider.push(cfg);
+            self.settings_view = SettingsView::Editor(self.cfg_next.provider.len() - 1);
+            self.probe = Probe::Idle;
+            return true;
+        }
+        false
+    }
+
+    /// The editor for one provider. Which fields appear follows the entry's
+    /// source: a billing gateway needs a base URL, a JSON endpoint needs paths.
+    fn settings_editor(&mut self, ui: &mut egui::Ui, pal: &Palette, i: usize) -> bool {
+        use ui::widgets as w;
+        let mut dirty = false;
+        let preset_id = self.cfg_next.provider[i].id.split('-').next().unwrap_or("").to_string();
+        let preset = providers::catalog::preset(&preset_id);
+        let source = preset.map(|p| p.source).unwrap_or(providers::catalog::Source::Json);
+        let is_billing = self.cfg_next.provider[i].billing;
+
+        ui.horizontal(|ui| {
+            if w::pill_button(ui, "‹  Back", false, true, pal).clicked() {
+                self.settings_view = SettingsView::List;
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let busy = matches!(self.probe, Probe::Running);
+                if w::pill_button(ui, if busy { "Testing…" } else { "Test" }, false, !busy, pal)
+                    .clicked()
+                {
+                    self.start_probe(i);
+                }
+            });
+        });
+        ui.add_space(12.0);
+
+        section(ui, "Identity", pal);
+        card(ui, pal, |ui| {
+            ui.add_space(6.0);
+            let mut name = self.cfg_next.provider[i].name.clone();
+            if w::field(ui, "Display name", "MiniMax", &mut name, pal) {
+                self.cfg_next.provider[i].name = name;
+                dirty = true;
+            }
+            let mut id = self.cfg_next.provider[i].id.clone();
+            if w::field(ui, "Id", "lowercase, no spaces", &mut id, pal) {
+                self.cfg_next.provider[i].id = id.trim().to_lowercase().replace(' ', "-");
+                dirty = true;
+            }
+        });
 
         ui.add_space(16.0);
-        section(ui, "Add a provider", pal);
+        section(ui, "Endpoint", pal);
         card(ui, pal, |ui| {
-            let taken = self.cfg_next.provider.iter().any(|p| p.id == self.new_provider_id.trim())
-                || matches!(self.new_provider_id.trim(), "claude" | "codex");
-            let id_ok = !self.new_provider_id.trim().is_empty() && !taken;
-            ui.horizontal(|ui| {
-                ui.add_space(2.0);
-                let field_w = (ui.available_width() - 86.0).max(1.0);
-                ui.add_sized(
-                    Vec2::new(field_w, 28.0),
-                    egui::TextEdit::singleline(&mut self.new_provider_id)
-                        .hint_text("provider id, e.g. openrouter")
-                        .margin(egui::Margin::symmetric(8.0, 6.0))
-                        .font(theme::sans(12.0)),
+            ui.add_space(6.0);
+            if is_billing || source == providers::catalog::Source::Keyed {
+                let mut base = self.cfg_next.provider[i].base_url.clone().unwrap_or_default();
+                if w::field(ui, "Base URL", "https://gateway.example.com/v1", &mut base, pal) {
+                    self.cfg_next.provider[i].base_url = (!base.trim().is_empty()).then_some(base);
+                    dirty = true;
+                }
+            } else {
+                let mut url = self.cfg_next.provider[i].url.clone().unwrap_or_default();
+                if w::field(ui, "Usage URL", "https://api.example.com/v1/usage", &mut url, pal) {
+                    self.cfg_next.provider[i].url = (!url.trim().is_empty()).then_some(url);
+                    dirty = true;
+                }
+                let mut auth = self.cfg_next.provider[i].auth_header.clone().unwrap_or_default();
+                if w::field(ui, "Auth header", "Authorization: Bearer {key}", &mut auth, pal) {
+                    self.cfg_next.provider[i].auth_header = (!auth.trim().is_empty()).then_some(auth);
+                    dirty = true;
+                }
+            }
+        });
+
+        ui.add_space(16.0);
+        section(ui, "Key", pal);
+        card(ui, pal, |ui| {
+            ui.add_space(6.0);
+            let mut key = self.cfg_next.provider[i].api_key.clone().unwrap_or_default();
+            let mut shown = self.key_revealed;
+            if w::secret_field(ui, "API key", "paste it here", &mut key, &mut shown, pal) {
+                self.cfg_next.provider[i].api_key = (!key.trim().is_empty()).then_some(key);
+                dirty = true;
+            }
+            self.key_revealed = shown;
+            let mut env = self.cfg_next.provider[i].key_env.clone().unwrap_or_default();
+            if w::field(ui, "…or read from env var", "MINIMAX_API_KEY", &mut env, pal) {
+                self.cfg_next.provider[i].key_env = (!env.trim().is_empty()).then_some(env);
+                dirty = true;
+            }
+            let note = match &self.cfg_next.provider[i].key_hint {
+                Some(h) if !h.is_empty() => format!(
+                    "Get it from {h}. It is written to config.toml, which stays user-only (0600)."
+                ),
+                _ => "The key is written to config.toml, which stays user-only (0600).".to_string(),
+            };
+            let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 30.0), Sense::hover());
+            ui.painter().galley(
+                egui::pos2(r.left() + 2.0, r.top()),
+                ui.painter().layout(note, theme::sans(10.0), pal.faint, r.width() - 4.0),
+                pal.faint,
+            );
+        });
+
+        if !is_billing && source != providers::catalog::Source::Keyed {
+            ui.add_space(16.0);
+            dirty |= self.settings_windows(ui, pal, i);
+        }
+
+        // ---- test result ---------------------------------------------------
+        ui.add_space(16.0);
+        if let Probe::Done { ok, ref text } = self.probe {
+            let col = if ok { pal.ok } else { pal.bad };
+            section(ui, if ok { "It works" } else { "No reading" }, pal);
+            card(ui, pal, |ui| {
+                ui.add_space(6.0);
+                let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 34.0), Sense::hover());
+                ui.painter().galley(
+                    egui::pos2(r.left(), r.top()),
+                    ui.painter().layout(text.clone(), theme::sans(11.0), col, r.width()),
+                    col,
                 );
+                ui.add_space(6.0);
+            });
+        }
+        ui.add_space(8.0);
+        dirty
+    }
+
+    /// The window mapping editor: which fields of the response hold the
+    /// numbers. Each window picks between a ready-made percentage and a
+    /// count-of-total, which is the only choice that changes what to fill in.
+    fn settings_windows(&mut self, ui: &mut egui::Ui, pal: &Palette, i: usize) -> bool {
+        use ui::widgets as w;
+        let mut dirty = false;
+        section(ui, "Quota windows", pal);
+        card(ui, pal, |ui| {
+            let n = self.cfg_next.provider[i].windows.len();
+            let mut remove: Option<usize> = None;
+            for j in 0..n {
+                if j > 0 {
+                    hairline(ui, pal);
+                }
                 ui.add_space(8.0);
-                if w::pill_button(ui, "Add", true, id_ok, pal).clicked() && id_ok {
-                    self.cfg_next.provider.push(config::ProviderConfig {
-                        id: self.new_provider_id.trim().to_string(),
-                        enabled: Some(true),
+                ui.horizontal(|ui| {
+                    let (r, _) = ui.allocate_exact_size(
+                        Vec2::new((ui.available_width() - 28.0).max(1.0), 16.0),
+                        Sense::hover(),
+                    );
+                    let col = theme::mix(pal.faint, pal.muted, 0.55);
+                    let g = ui
+                        .painter()
+                        .layout_job(theme::caps_job(&format!("window {}", j + 1), 9.0, col));
+                    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if w::glyph_button(ui, w::Mark::Cross, true, "remove window", pal).clicked() {
+                            remove = Some(j);
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                let mut label = self.cfg_next.provider[i].windows[j].label.clone();
+                if w::field(ui, "Label", "5h · weekly · credits", &mut label, pal) {
+                    self.cfg_next.provider[i].windows[j].label = label;
+                    dirty = true;
+                }
+                // Percentage or count-of-total. Anything else the mapping
+                // supports is a variation on one of these two.
+                let counted = self.cfg_next.provider[i].windows[j].remaining_count_path.is_some()
+                    || self.cfg_next.provider[i].windows[j].total_const.is_some();
+                let pick = w::segmented(ui, &["Percentage", "N of total"], usize::from(counted), pal);
+                if pick != usize::from(counted) {
+                    let win = &mut self.cfg_next.provider[i].windows[j];
+                    if pick == 0 {
+                        win.remaining_count_path = None;
+                        win.total_count_path = None;
+                        win.total_const = None;
+                    } else {
+                        win.remaining_path = None;
+                    }
+                    dirty = true;
+                }
+                ui.add_space(10.0);
+                if pick == 0 {
+                    let mut p = self.cfg_next.provider[i].windows[j].remaining_path.clone().unwrap_or_default();
+                    if w::field(ui, "Percent remaining", "usage.percent_left", &mut p, pal) {
+                        self.cfg_next.provider[i].windows[j].remaining_path =
+                            (!p.trim().is_empty()).then_some(p);
+                        dirty = true;
+                    }
+                } else {
+                    let mut r = self.cfg_next.provider[i].windows[j]
+                        .remaining_count_path
+                        .clone()
+                        .unwrap_or_default();
+                    if w::field(ui, "Remaining", "data.limit_remaining", &mut r, pal) {
+                        self.cfg_next.provider[i].windows[j].remaining_count_path =
+                            (!r.trim().is_empty()).then_some(r);
+                        dirty = true;
+                    }
+                    // One field for the ceiling: a number is a ceiling you
+                    // know, anything else is a path to one the API reports.
+                    let win = &self.cfg_next.provider[i].windows[j];
+                    let mut total = win
+                        .total_const
+                        .map(|v| format!("{v}"))
+                        .or_else(|| win.total_count_path.clone())
+                        .unwrap_or_default();
+                    if w::field(ui, "Total (a path, or a number you know)", "data.limit  ·  50", &mut total, pal) {
+                        let win = &mut self.cfg_next.provider[i].windows[j];
+                        let t = total.trim();
+                        match (t.is_empty(), t.parse::<f64>()) {
+                            (true, _) => {
+                                win.total_const = None;
+                                win.total_count_path = None;
+                            }
+                            (_, Ok(v)) => {
+                                win.total_const = Some(v);
+                                win.total_count_path = None;
+                            }
+                            _ => {
+                                win.total_const = None;
+                                win.total_count_path = Some(total.clone());
+                            }
+                        }
+                        dirty = true;
+                    }
+                }
+                let mut rs = self.cfg_next.provider[i].windows[j].resets_at_path.clone().unwrap_or_default();
+                if w::field(ui, "Resets at (optional)", "usage.reset_at", &mut rs, pal) {
+                    self.cfg_next.provider[i].windows[j].resets_at_path =
+                        (!rs.trim().is_empty()).then_some(rs);
+                    dirty = true;
+                }
+            }
+            if n == 0 {
+                let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 30.0), Sense::hover());
+                ui.painter().galley(
+                    egui::pos2(r.left(), r.top()),
+                    ui.painter().layout(
+                        "Add one window per quota the endpoint reports.".to_owned(),
+                        theme::sans(11.0),
+                        pal.faint,
+                        r.width(),
+                    ),
+                    pal.faint,
+                );
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if w::pill_button(ui, "Add window", false, true, pal).clicked() {
+                    self.cfg_next.provider[i].windows.push(config::WindowConfig {
+                        label: "quota".into(),
                         ..Default::default()
                     });
-                    self.new_provider_id.clear();
                     dirty = true;
                 }
             });
-            let note = if taken {
-                ("That id is already tracked.", pal.warn)
-            } else {
-                ("Finish it in config.toml — the new entry needs a url and an api_key or key_env.", pal.faint)
-            };
-            ui.add_space(6.0);
-            let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 26.0), Sense::hover());
-            ui.painter().galley(
-                egui::pos2(r.left() + 2.0, r.top()),
-                ui.painter().layout(note.0.to_owned(), theme::sans(10.0), note.1, r.width() - 4.0),
-                note.1,
-            );
+            ui.add_space(4.0);
+            if let Some(j) = remove {
+                self.cfg_next.provider[i].windows.remove(j);
+                dirty = true;
+            }
         });
-        ui.add_space(8.0);
         dirty
+    }
+
+    /// Take one live reading in the background so the sheet can say whether a
+    /// half-filled provider actually works, before anything is saved.
+    fn start_probe(&mut self, i: usize) {
+        let cfg = self.cfg_next.provider[i].clone();
+        let (tx, rx) = mpsc::channel();
+        self.probe_rx = Some(rx);
+        self.probe = Probe::Running;
+        thread::spawn(move || {
+            let snap = providers::probe(&cfg);
+            let msg = match &snap.reading {
+                Reading::Ok { windows, .. } => {
+                    let parts: Vec<String> = windows
+                        .iter()
+                        .map(|w| match w.remaining_percent {
+                            Some(p) => format!("{} {:.0}% left", w.label, p),
+                            None => w.label.clone(),
+                        })
+                        .collect();
+                    (true, format!("Read {} window(s): {}", windows.len(), parts.join(" · ")))
+                }
+                Reading::NeedsAuth(m) => (false, format!("The key was not accepted — {m}")),
+                Reading::Error(m) => (false, format!("No reading — {m}")),
+                Reading::NotConfigured => {
+                    (false, "Still missing something — check the URL and key above.".to_string())
+                }
+            };
+            let _ = tx.send(msg);
+        });
     }
 
     /// Appearance: theme, and how much of the notch is on show.

@@ -222,10 +222,20 @@ than stock widgets. Three tabs:
 - **General** — poll interval (30–900 s; failures back off automatically),
   what the notch shows at rest (percentage labels, quiet mode,
   hide-unconfigured), and a shortcut to open `config.toml`.
-- **Providers** — enable/disable, reorder, remove, and add new ones, each row
-  carrying the provider's own mark. API keys are never typed here: adding an
-  id creates the entry, and `api_key` / `key_env` go in `config.toml`.
-  Built-in adapters (Claude, Codex) can be toggled off.
+- **Providers** — the whole provider lifecycle, without touching a file.
+  *Add a provider* opens a catalogue of everything LimitCue knows how to
+  track, each entry labelled with the provenance of its numbers; picking one
+  fills in its endpoint and quota mapping and leaves you a key to paste. Any
+  provider can then be edited in place, reordered, disabled or removed, and a
+  **Test** button takes one live reading and tells you what it found before
+  you save. Keys are masked until you ask to see them. The built-in adapters
+  (Claude, Codex, Kimi) are toggles, and each shows which credential file it
+  borrows from — nothing is read that isn't named on screen.
+
+  Not in the catalogue? *Anything with a JSON endpoint* gives you the same
+  editor with the field mapping exposed: point it at a URL, say which fields
+  hold the numbers, and it derives the rest. See `config.toml` for the full
+  list of mapping keys.
 - **Appearance** — the theme, picked from swatches that show each palette's
   own background and heat scale (and previewed live while the sheet is open);
   notch and card opacity; and the collapsed provider count for the undocked

@@ -607,6 +607,7 @@ pub enum Mark {
     Up,
     Down,
     Cross,
+    Pencil,
 }
 
 pub fn glyph_button(
@@ -649,6 +650,12 @@ pub fn glyph_button(
         Mark::Cross => {
             p.line_segment([egui::pos2(c.x - 3.5, c.y - 3.5), egui::pos2(c.x + 3.5, c.y + 3.5)], s);
             p.line_segment([egui::pos2(c.x + 3.5, c.y - 3.5), egui::pos2(c.x - 3.5, c.y + 3.5)], s);
+        }
+        Mark::Pencil => {
+            // nib on a shaft, drawn on the diagonal
+            p.line_segment([egui::pos2(c.x - 4.0, c.y + 4.0), egui::pos2(c.x + 3.0, c.y - 3.0)], s);
+            p.line_segment([egui::pos2(c.x + 2.0, c.y - 4.5), egui::pos2(c.x + 4.5, c.y - 2.0)], s);
+            p.circle_filled(egui::pos2(c.x - 4.0, c.y + 4.0), 1.1, col);
         }
     }
     if enabled {
@@ -721,4 +728,98 @@ pub fn alert_badge(ui: &egui::Ui, center: Pos2, r: f32, color: Color32, rim: Col
         fg,
     );
     p.circle_filled(egui::pos2(center.x, center.y + r * 0.46), w / 2.0, fg);
+}
+
+/// Placeholder text takes its colour from the *base* text colour, while a
+/// field's value is coloured explicitly — so dimming the base for the duration
+/// of the widget separates a hint from a real value. Without this they render
+/// at almost the same brightness and a hint reads as a filled-in path.
+fn with_dim_hint<R>(ui: &mut egui::Ui, pal: &Palette, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let prev = ui.style().visuals.override_text_color;
+    ui.style_mut().visuals.override_text_color = Some(pal.faint);
+    let out = add(ui);
+    ui.style_mut().visuals.override_text_color = prev;
+    out
+}
+
+/// Single-line text field styled like the rest of the sheet. Returns true
+/// while the value changed this frame.
+pub fn text_field(ui: &mut egui::Ui, value: &mut String, hint: &str, pal: &Palette) -> bool {
+    let h = 28.0;
+    let w = ui.available_width().max(1.0);
+    with_dim_hint(ui, pal, |ui| {
+        ui.add_sized(
+            Vec2::new(w, h),
+            egui::TextEdit::singleline(value)
+                .hint_text(hint)
+                .margin(egui::Margin::symmetric(9.0, 6.0))
+                .font(theme::sans(11.5))
+                .text_color(pal.text),
+        )
+        .changed()
+    })
+}
+
+/// A labelled field whose value is masked until asked for. Anything secret
+/// should be unreadable over a shoulder by default; the toggle is right where
+/// the eye already is, on the label line.
+pub fn secret_field(
+    ui: &mut egui::Ui,
+    label: &str,
+    hint: &str,
+    value: &mut String,
+    revealed: &mut bool,
+    pal: &Palette,
+) -> bool {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(1.0), 14.0), Sense::hover());
+    let col = theme::mix(pal.faint, pal.muted, 0.55);
+    let g = ui.painter().layout_job(theme::caps_job(label, 9.0, col));
+    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+    if !value.is_empty() {
+        let word = if *revealed { "hide" } else { "show" };
+        let g = ui.painter().layout_job(theme::caps_job(word, 9.0, pal.accent));
+        let w = g.rect.width();
+        let hit = Rect::from_min_size(egui::pos2(r.right() - w - 6.0, r.top() - 3.0), Vec2::new(w + 12.0, 18.0));
+        if ui.interact(hit, ui.id().with(("reveal", label)), Sense::click()).clicked() {
+            *revealed = !*revealed;
+        }
+        ui.painter().galley(egui::pos2(r.right() - w, r.top()), g, pal.accent);
+    }
+    ui.add_space(4.0);
+    let h = 28.0;
+    let full = ui.available_width().max(1.0);
+    let changed = with_dim_hint(ui, pal, |ui| {
+        ui.add_sized(
+            Vec2::new(full, h),
+            egui::TextEdit::singleline(value)
+                .hint_text(hint)
+                .password(!*revealed)
+                .margin(egui::Margin::symmetric(9.0, 6.0))
+                .font(theme::sans(11.5))
+                .text_color(pal.text),
+        )
+        .changed()
+    });
+    ui.add_space(10.0);
+    changed
+}
+
+/// A labelled field: caps label over an input. The label is what makes a form
+/// scannable at a glance; the hint inside the box says what a good value looks
+/// like.
+pub fn field(
+    ui: &mut egui::Ui,
+    label: &str,
+    hint: &str,
+    value: &mut String,
+    pal: &Palette,
+) -> bool {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(1.0), 13.0), Sense::hover());
+    let col = theme::mix(pal.faint, pal.muted, 0.55);
+    let g = ui.painter().layout_job(theme::caps_job(label, 9.0, col));
+    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+    ui.add_space(4.0);
+    let changed = text_field(ui, value, hint, pal);
+    ui.add_space(10.0);
+    changed
 }

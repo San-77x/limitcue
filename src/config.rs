@@ -208,17 +208,31 @@ billing = true
 # api_key = "sk-..."
 key_env = "AGENTROUTER_API_KEY"
 
-# User-defined providers: point at any JSON usage endpoint.
+# Any JSON usage endpoint can be a provider. Settings → Providers → Add does
+# all of this for you, including a Test button; this is the same thing by hand.
+#
 # [[provider]]
-# id = "kimi"
-# name = "Kimi"
-# url = "https://api.kimi.com/coding/v1/usage"
+# id = "openrouter"
+# name = "OpenRouter"
+# url = "https://openrouter.ai/api/v1/auth/key"
 # auth_header = "Authorization: Bearer {key}"
-# key_env = "KIMI_API_KEY"
-# windows = [
-#   { label = "5h",     remaining_path = "usage.limit_remaining" },
-#   { label = "weekly", remaining_path = "usage.week_remaining", resets_at_path = "usage.week_reset_at" },
-# ]
+# key_env = "OPENROUTER_API_KEY"
+# [[provider.windows]]
+# label = "credits"
+# remaining_count_path = "data.limit_remaining"   # units left
+# total_count_path     = "data.limit"             # ...of this many
+#
+# A window takes whichever pair of values the endpoint reports and derives the
+# rest. Pick one of:
+#   remaining_path            a percentage, 0-100
+#   remaining_fraction_path   a fraction, 0-1
+#   remaining_count_path  + total_count_path    "12 of 30 left"
+#   used_count_path       + total_count_path    "18 of 30 used"
+#   remaining_count_path  + total_const = 50    a balance against a cap you know
+# and optionally one of:
+#   resets_at_path            unix seconds, unix millis, or an RFC3339 string
+#   resets_in_path            seconds from now
+# Values may be JSON numbers or strings. Paths are dot-paths with [n] indices.
 "#;
         let _ = std::fs::write(&p, example);
         // Keep provider config user-only (0600) in case users add inline API keys.
