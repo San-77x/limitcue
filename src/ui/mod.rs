@@ -129,6 +129,7 @@ pub fn rail_card(
     logos: &HashMap<String, egui::TextureHandle>,
     now: u64,
     width: f32,
+    list_height: f32,
 ) {
     let hairline = Color32::from_white_alpha(14);
     egui::Frame::none()
@@ -188,7 +189,7 @@ pub fn rail_card(
                         .map(|(i, _)| i);
                     egui::ScrollArea::vertical()
                         .id_salt(("rail-windows", &s.provider_id))
-                        .max_height(270.0)
+                        .max_height(list_height)
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                     for (i, w) in windows.iter().enumerate() {
@@ -280,27 +281,57 @@ pub fn rail_card(
 /// Height of the [`rail_card`] layout for one provider (frame margins +
 /// header + one block per window with hairline separators, or the
 /// error/auth row).
-pub const RAIL_CARD_MAX_H: f32 = 420.0;
 const RAIL_CARD_HEADER_H: f32 = 18.0;
 const RAIL_CARD_SUMMARY_H: f32 = 16.0;
 const RAIL_CARD_ROW_H: f32 = 48.0;
 const RAIL_CARD_ROW_GAP: f32 = 21.0;
 const RAIL_CARD_FOOTER_H: f32 = 18.0;
+const RAIL_CARD_GAP_Y: f32 = 8.0;
 
-pub fn rail_card_height(s: &Snapshot) -> f32 {
+pub fn rail_card_content_height(s: &Snapshot) -> f32 {
     let rows = match &s.reading {
         Reading::Ok { windows, .. } => windows.len().max(1) as f32,
         _ => 1.0,
     };
-    let content_h = 28.0
-        + RAIL_CARD_HEADER_H
-        + 10.0
-        + RAIL_CARD_SUMMARY_H
-        + 8.0
-        + 270.0_f32.min(rows * RAIL_CARD_ROW_H + (rows - 1.0).max(0.0) * RAIL_CARD_ROW_GAP)
-        + 10.0
-        + RAIL_CARD_FOOTER_H;
-    content_h.min(RAIL_CARD_MAX_H)
+    let list_h = rows * RAIL_CARD_ROW_H + (rows - 1.0).max(0.0) * RAIL_CARD_ROW_GAP + 6.0;
+    28.0 + RAIL_CARD_HEADER_H + 10.0 + RAIL_CARD_SUMMARY_H + 8.0
+        + list_h + 10.0 + RAIL_CARD_FOOTER_H
+}
+
+pub fn rail_card_height(s: &Snapshot) -> f32 {
+    rail_card_content_height(s)
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RailCardLayout {
+    pub rect: egui::Rect,
+    pub list_height: f32,
+}
+
+pub fn rail_card_layout(
+    s: &Snapshot,
+    anchor_y: f32,
+    host_height: f32,
+    card_width: f32,
+    top_margin: f32,
+) -> RailCardLayout {
+    let natural_h = rail_card_content_height(s);
+    let available_above = (anchor_y - top_margin).max(0.0);
+    let available_below = (host_height - anchor_y - top_margin).max(0.0);
+    let above = natural_h > available_below && available_above > available_below;
+    let available = if above { available_above } else { available_below };
+    let card_h = natural_h.min(available.max(160.0));
+    let y = if above {
+        (anchor_y - RAIL_CARD_GAP_Y - card_h).max(top_margin)
+    } else {
+        (anchor_y + RAIL_CARD_GAP_Y).min((host_height - card_h - top_margin).max(top_margin))
+    };
+    let fixed_h = 28.0 + RAIL_CARD_HEADER_H + 10.0 + RAIL_CARD_SUMMARY_H + 8.0 + 10.0 + RAIL_CARD_FOOTER_H;
+    let list_height = (card_h - fixed_h).max(80.0);
+    RailCardLayout {
+        rect: egui::Rect::from_min_size(egui::pos2(0.0, y), Vec2::new(card_width, card_h)),
+        list_height,
+    }
 }
 
 /// Hover tooltip with the full per-window breakdown for one provider.

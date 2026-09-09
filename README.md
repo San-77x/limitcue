@@ -49,8 +49,10 @@ dropped it nearest. Hovering a cell slides out a bounded glass usage card with a
 speech-bubble tail pointing at it: a provider summary, a scrollable
 per-window list with human reset copy ("Resets in 51 min", "Resets Sat
 04:00 AM"), a 6 px heat bar and "N% Used", separated by hairlines. Long
-provider window lists scroll inside the card instead of overflowing. The card
-is strictly hover-bound:
+provider window lists grow with the available monitor space and scroll only
+when the screen cannot fit them. The card chooses the side of the hovered
+notch row with more room, flipping above the row when the lower side is too
+short. The card is strictly hover-bound:
 it appears the moment you point at a cell and fades as soon as you leave
 the notch.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the

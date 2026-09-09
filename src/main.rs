@@ -611,28 +611,22 @@ fn rail_row_cy(i: usize, body_top: f32, row_h: f32) -> f32 {
 /// The usage card's rect for provider `id`: vertically centered on that
 /// provider's own cell (clamped into the window), beside the notch. Single
 /// source of truth for drawing AND for the hover keep-zone.
-fn rail_card_rect(
+fn rail_card_layout(
     id: &str,
     snaps: &[Snapshot],
     ui_rect: Rect,
     on_left: bool,
     body_top: f32,
     row_h: f32,
-) -> Option<Rect> {
+) -> Option<ui::RailCardLayout> {
     let s = snaps.iter().find(|s| s.provider_id == id)?;
-    let card_h = ui::rail_card_height(s);
-    let anchor_cy = snaps
-        .iter()
-        .position(|p| p.provider_id == id)
+    let anchor_cy = snaps.iter().position(|p| p.provider_id == id)
         .map(|i| rail_row_cy(i, body_top, row_h))
         .unwrap_or_else(|| ui_rect.center().y);
-    // Center on the provider's row, but the card can be taller than the
-    // strip — clamp with min<=max guaranteed (max() before min()).
-    let card_y = (anchor_cy - card_h / 2.0)
-        .max(ui_rect.top() + 8.0)
-        .min((ui_rect.bottom() - card_h - 8.0).max(ui_rect.top() + 8.0));
+    let mut layout = ui::rail_card_layout(s, anchor_cy, ui_rect.height(), RAIL_CARD_W, 8.0);
     let x0 = if on_left { RAIL_STRIP_W + RAIL_COL_GAP } else { 0.0 };
-    Some(Rect::from_min_size(egui::pos2(x0, card_y), Vec2::new(RAIL_CARD_W, card_h)))
+    layout.rect = layout.rect.translate(egui::vec2(x0, 0.0));
+    Some(layout)
 }
 
 /// Debug hook: `LIMITCUE_UI_SHOT=/path.png` captures the window after the
@@ -752,6 +746,8 @@ impl eframe::App for App {
         if card_want {
             self.rail_card_f = self.rail_card_f.max(0.02);
         }
+        let monitor_h = ctx.input(|i| i.viewport().monitor_size.map(|s| s.y)).unwrap_or(900.0);
+        let host_h_max = (monitor_h - 24.0).max(rail_h);
         let rail_size = match self
             .rail_open
             .as_deref()
@@ -759,14 +755,13 @@ impl eframe::App for App {
             .and_then(|id| snaps.iter().find(|s| s.provider_id == id))
         {
             Some(snapshot) => {
-                // The transparent host may grow for a tall card, but the
-                // visible notch itself stays exactly rail_h tall. Its body is
-                // laid out separately below, so opening a multi-window card
-                // cannot make the pill appear to stretch.
+                // Grow with content until the monitor cannot accommodate more;
+                // the card layout then uses the available side and scrolls only
+                // its window list. The painted notch remains exactly rail_h.
                 let card_h = ui::rail_card_height(snapshot);
                 Vec2::new(
                     RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                    rail_h.max(card_h + 4.0),
+                    rail_h.max((card_h + 4.0).min(host_h_max)),
                 )
             }
             None => Vec2::new(RAIL_STRIP_W, rail_h),
@@ -1216,7 +1211,7 @@ impl App {
         let card_rect_now = self
             .rail_open
             .as_deref()
-            .and_then(|id| rail_card_rect(id, snaps, ui_rect, on_left, body.top(), rail_row_h));
+            .and_then(|id| rail_card_layout(id, snaps, ui_rect, on_left, body.top(), rail_row_h).map(|l| l.rect));
         let card_hovered = card_rect_now.is_some_and(|rect| {
             ui.interact(rect, ui.id().with(("rail-card", self.rail_open.as_deref())), Sense::hover())
                 .hovered()
@@ -1249,9 +1244,10 @@ impl App {
             };
             let stale = self.is_stale(s, now);
             let a = self.rail_card_f.clamp(0.0, 1.0);
-            let Some(card_rect) = rail_card_rect(&id, snaps, ui_rect, on_left, body.top(), rail_row_h) else {
+            let Some(card_layout) = rail_card_layout(&id, snaps, ui_rect, on_left, body.top(), rail_row_h) else {
                 return;
             };
+            let card_rect = card_layout.rect;
             // The card paints into its own rect, but the tail must cross the
             // gap between card and strip — draw through the ui painter so the
             // tip isn't clipped at the card boundary.
@@ -1311,6 +1307,7 @@ impl App {
                 &self.logos,
                 now,
                 RAIL_CARD_W,
+                card_layout.list_height,
             );
         }
 
