@@ -106,6 +106,19 @@ impl DockIface {
         save_dock(&st);
         *self.state.lock().unwrap() = st;
     }
+
+    /// Same, but tagged with the window's pid. Only one instance can own the
+    /// well-known bus name, so with two running — routine while developing —
+    /// every report lands in the same process regardless of whose window moved.
+    /// The app now paints the notch relative to its own window position, so a
+    /// stray report would visibly shift somebody's notch. Reports that are not
+    /// about this process are dropped.
+    fn store_position_for_pid(&mut self, x: i32, y: i32, edge: i32, pid: u32) {
+        if pid != std::process::id() {
+            return;
+        }
+        self.store_position(x, y, edge);
+    }
 }
 
 /// Serve `io.limitcue.Dock` on the session bus.
@@ -152,11 +165,25 @@ pub fn request_geometry(y: i32, height: i32) {
 // window's midpoint is nearer, take the app's requested y and height, clamp
 // the result into the output, and report the side edge back so the app
 // persists it.
+//
+// The window is found by pid first: matching on resourceClass alone would
+// grab whichever limitcue instance KWin happened to list first, so a second
+// instance (or a developer's test run) moved someone else's notch.
 const W = "limitcue";
+const PID = {pid};
 const WANT_Y = {y};
 const WANT_H = {height};
+let target = null;
 for (const w of workspace.windowList()) {{
-    if ((w.resourceClass + "").indexOf(W) < 0) continue;
+    if (w.pid === PID) {{ target = w; break; }}
+}}
+if (!target) {{
+    for (const w of workspace.windowList()) {{
+        if ((w.resourceClass + "").indexOf(W) >= 0) {{ target = w; break; }}
+    }}
+}}
+if (target) {{
+    let w = target;
     w.keepAbove = true;
     let a = w.output ? w.output.geometry : workspace.virtualScreenGeometry;
     let g = w.frameGeometry;
@@ -168,11 +195,11 @@ for (const w of workspace.windowList()) {{
     ny = Math.min(Math.max(ny, a.y), a.y + a.height - nh);
     w.frameGeometry = {{ x: nx, y: ny, width: g.width, height: nh }};
     callDBus("io.limitcue", "/io/limitcue/dock", "io.limitcue.Dock",
-             "StorePosition", Math.round(nx), Math.round(ny), edge);
-    print("LC-PLACE edge=" + edge + " " + nx + "," + ny + " h=" + nh);
-    break;
+             "StorePositionForPid", Math.round(nx), Math.round(ny), edge, PID);
+    print("LC-PLACE pid=" + w.pid + " edge=" + edge + " " + nx + "," + ny + " h=" + nh);
 }}
-"#
+"#,
+        pid = std::process::id(),
     );
     if std::fs::write(&path, js).is_err() {
         return;
