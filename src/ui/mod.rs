@@ -143,16 +143,13 @@ const FOOT_H: f32 = 13.0;
 const SOLO_METER_H: f32 = 6.0;
 /// A status message stands in for the window list on non-Ok readings.
 const STATUS_BODY_H: f32 = 34.0;
-/// The list never collapses below this before the card starts scrolling.
-const MIN_LIST_H: f32 = 62.0;
 /// Vertical clearance between the hovered row's centre line and the card.
 pub const RAIL_CARD_GAP_Y: f32 = 8.0;
-/// Shortest the card can usefully be: its fixed chrome plus a list worth
-/// scrolling. The host window is never sized below this while a card is open,
-/// even if that pushes its foot past the screen — a card that keeps its
-/// layout and loses a few pixels off the bottom beats one that clips its own
-/// footer.
-pub const CARD_MIN_H: f32 = CARD_FIXED_H + MIN_LIST_H;
+/// Smallest host that can show a card whole once it is slid to the top of the
+/// window. The host is never sized below this while a card is open.
+pub fn card_host_min(s: &Snapshot, margin: f32) -> f32 {
+    rail_card_content_height(s) + margin * 2.0
+}
 
 /// Chrome above the body: padding, header, hero.
 const CARD_TOP_H: f32 = PAD_TOP + HEAD_H + HEAD_GAP + HERO_H + HERO_GAP;
@@ -405,7 +402,7 @@ pub fn rail_card(
     y += 1.0 + RULE_GAP;
 
     // ---- window list (scrolls only when the screen cannot fit it) --------
-    let list_h = list_height.max(MIN_LIST_H);
+    let list_h = list_height.max(0.0);
     let list_rect = egui::Rect::from_min_size(egui::pos2(x0, y), Vec2::new(w, list_h));
     let mut list_ui = ui.new_child(
         egui::UiBuilder::new()
@@ -630,14 +627,15 @@ pub fn rail_card_layout(
     card_width: f32,
     margin: f32,
 ) -> RailCardLayout {
-    let natural_h = rail_card_content_height(s);
-    let band = (host_height - margin * 2.0).max(CARD_MIN_H);
-    let card_h = natural_h.min(band);
+    // Height is never traded for position: the card is always its natural
+    // size and only *where* it sits changes. The caller sizes the host to
+    // hold it, so the clamp below can always place it whole.
+    let card_h = rail_card_content_height(s);
     let lowest = (host_height - margin - card_h).max(margin);
     let y = (anchor_y + RAIL_CARD_GAP_Y).clamp(margin, lowest);
     RailCardLayout {
         rect: egui::Rect::from_min_size(egui::pos2(0.0, y), Vec2::new(card_width, card_h)),
-        list_height: (card_h - CARD_FIXED_H).max(MIN_LIST_H),
+        list_height: card_h - CARD_FIXED_H,
     }
 }
 

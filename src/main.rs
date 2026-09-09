@@ -1205,7 +1205,11 @@ impl eframe::App for App {
         // last report is the source of truth; X11 fills in `outer_rect`. Like
         // the rest of the dock code this assumes one monitor.
         let win_top = {
-            let stored = self.dock.lock().unwrap().y as f32;
+            // Debug hook: pretend the notch is parked at this screen y, so the
+            // placement can be exercised without dragging the real window (the
+            // dock script overwrites any seeded dock.json at startup).
+            let forced = std::env::var("LIMITCUE_UI_TOP").ok().and_then(|v| v.parse::<f32>().ok());
+            let stored = forced.unwrap_or_else(|| self.dock.lock().unwrap().y as f32);
             if stored > 0.0 {
                 stored
             } else {
@@ -1234,14 +1238,16 @@ impl eframe::App for App {
                     .position(|s| s.provider_id == snapshot.provider_id)
                     .unwrap_or(0);
                 let anchor = rail_row_cy(row, 0.0, rail_row_h);
-                let need = anchor + ui::RAIL_CARD_GAP_Y + card_h + ui::RAIL_CARD_GAP_Y;
-                // The screen cap can be shorter than a card, if the notch sits
-                // very low. Keep the floor so the card still lays out; it slides
-                // up inside whatever band it gets.
-                let cap = host_h_max.max(ui::CARD_MIN_H + ui::RAIL_CARD_GAP_Y * 2.0);
+                // Three sizes, in order of preference. Hanging the card off
+                // its row is best; failing that the host shrinks to the screen
+                // and the card slides up inside it. What the host may never do
+                // is drop below the card itself — the card keeps its natural
+                // height whatever happens, so the window has to hold it.
+                let hang = anchor + ui::RAIL_CARD_GAP_Y + card_h + ui::RAIL_CARD_GAP_Y;
+                let slid = ui::card_host_min(snapshot, ui::RAIL_CARD_GAP_Y);
                 Vec2::new(
                     RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                    rail_h.max(need.min(cap)),
+                    rail_h.max(hang.min(host_h_max.max(slid))),
                 )
             }
             None => Vec2::new(RAIL_STRIP_W, rail_h),
