@@ -19,6 +19,6 @@ npm run lint   # TypeScript check
 npm run build  # Static production export
 ```
 
-The primary download CTA currently points at the GitHub Releases page. Update
-`RELEASES` in `app/page.tsx` when a specific release artifact URL is available.
+The primary preview CTA currently points at the configured testing-build URL.
+Update `RELEASES` in `app/page.tsx` when the private distribution URL is ready.
 The page has no analytics, remote images, or runtime services.
