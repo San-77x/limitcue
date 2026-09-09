@@ -566,6 +566,37 @@ fn t_rail_spring(dt: f32, opening: bool) -> f32 {
     1.0 - (-(if opening { 12.0 } else { 18.0 }) * dt).exp()
 }
 
+/// Vertical center of the cell for the provider at row `i`.
+fn rail_row_cy(i: usize, body_top: f32) -> f32 {
+    body_top + RAIL_PAD_TOP + (i as f32 + 0.5) * RAIL_ROW_H + i as f32 * RAIL_ROW_GAP
+}
+
+/// The usage card's rect for provider `id`: vertically centered on that
+/// provider's own cell (clamped into the window), beside the notch. Single
+/// source of truth for drawing AND for the hover keep-zone.
+fn rail_card_rect(
+    id: &str,
+    snaps: &[Snapshot],
+    ui_rect: Rect,
+    on_left: bool,
+    body_top: f32,
+) -> Option<Rect> {
+    let s = snaps.iter().find(|s| s.provider_id == id)?;
+    let card_h = ui::rail_card_height(Some(s));
+    let anchor_cy = snaps
+        .iter()
+        .position(|p| p.provider_id == id)
+        .map(|i| rail_row_cy(i, body_top))
+        .unwrap_or_else(|| ui_rect.center().y);
+    // Center on the provider's row, but the card can be taller than the
+    // strip — clamp with min<=max guaranteed (max() before min()).
+    let card_y = (anchor_cy - card_h / 2.0)
+        .max(ui_rect.top() + 8.0)
+        .min((ui_rect.bottom() - card_h - 8.0).max(ui_rect.top() + 8.0));
+    let x0 = if on_left { RAIL_STRIP_W + RAIL_COL_GAP } else { 0.0 };
+    Some(Rect::from_min_size(egui::pos2(x0, card_y), Vec2::new(RAIL_CARD_W, card_h)))
+}
+
 /// Debug hook: `LIMITCUE_UI_SHOT=/path.png` captures the window after the
 /// layout has settled (~1.5 s) and exits. Unlike eframe's `__screenshot`
 /// feature this waits for the notch to size itself and reads the frame
@@ -932,18 +963,6 @@ impl App {
         let ui_rect = ui.max_rect();
         let pointer = ctx.input(|i| i.pointer.hover_pos());
 
-        // ---- hover bookkeeping: does the card stay open? -----------------
-        let over_card = self.rail_card_f > 0.0 && pointer.is_some_and(|pt| {
-            // Card column plus the gap toward the strip, so crossing the gap
-            // (or sitting anywhere on the card) doesn't count as "out".
-            let (x0, x1) = if on_left {
-                (RAIL_STRIP_W - 4.0, RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W)
-            } else {
-                (-4.0, RAIL_COL_GAP + RAIL_STRIP_W)
-            };
-            pt.x >= x0 && pt.x <= x1 && pt.y >= ui_rect.top() && pt.y <= ui_rect.bottom()
-        });
-
         // ---- the notch body ----------------------------------------------
         // The strip hugs the docked edge: window-left for a left dock,
         // window-right for a right dock (the card then fills the remainder).
@@ -972,7 +991,6 @@ impl App {
         // ---- ring cells ---------------------------------------------------
         let cell_w = RAIL_STRIP_W;
         let mut hovered_id: Option<String> = None;
-        let mut hover_row_cy: f32 = body.center().y;
         let mut next_y = body.top() + RAIL_PAD_TOP;
         for s in snaps {
             let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, RAIL_ROW_H));
@@ -989,7 +1007,6 @@ impl App {
             let hovered = resp.hovered();
             if hovered {
                 hovered_id = Some(s.provider_id.clone());
-                hover_row_cy = row_rect.center().y;
                 // soft highlight while this socket is hot
                 ui.painter().rect_filled(
                     row_rect.shrink2(Vec2::new(5.0, 1.0)),
@@ -1075,11 +1092,32 @@ impl App {
 
         // ---- hover state machine ------------------------------------------
         // The card is hover-only: open while a provider row is hovered (or
-        // the pointer sits on the card/gap so it doesn't flicker mid-crossing)
-        // and closed as soon as the pointer leaves. Debug runs seeded with
-        // LIMITCUE_UI_RAIL keep that card open without a pointer (screenshot
-        // automation); any hover releases the pin.
-        let over_card = over_card && self.rail_open.is_some();
+        // the pointer sits on the card itself, or crosses the gap toward it)
+        // and closed as soon as the pointer leaves — the keep-zone is the
+        // card's REAL rect plus only the gap corridor, nothing else.
+        // Debug runs seeded with LIMITCUE_UI_RAIL keep that card open without
+        // a pointer (screenshot automation); any hover releases the pin.
+        let card_rect_now = self
+            .rail_open
+            .as_deref()
+            .or(self.rail_last.as_deref())
+            .and_then(|id| rail_card_rect(id, snaps, ui_rect, on_left, body.top()));
+        let keep_zone = card_rect_now.map(|cr| {
+            if on_left {
+                Rect::from_min_max(
+                    egui::pos2(cr.left() - RAIL_COL_GAP - 4.0, cr.top() - 4.0),
+                    egui::pos2(cr.right() + 4.0, cr.bottom() + 4.0),
+                )
+            } else {
+                Rect::from_min_max(
+                    egui::pos2(cr.left() - 4.0, cr.top() - 4.0),
+                    egui::pos2(cr.right() + RAIL_COL_GAP + 4.0, cr.bottom() + 4.0),
+                )
+            }
+        });
+        let over_card = self.rail_card_f > 0.0
+            && self.rail_open.is_some()
+            && pointer.is_some_and(|pt| keep_zone.is_some_and(|z| z.contains(pt)));
         let seeded = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
         let pinned = pointer.is_none()
             && self.rail_open.is_some()
@@ -1103,26 +1141,9 @@ impl App {
             };
             let stale = self.is_stale(s, now);
             let a = self.rail_card_f.clamp(0.0, 1.0);
-            // The usage card is a small floating bubble, not a second rail.
-            // Keep it vertically attached to the hovered socket so the
-            // pointer can cross the tail without the card jumping.
-            let card_h = ui::rail_card_height(Some(s));
-            // Center on the hovered row, but the card can be taller than the
-            // strip — clamp with min<=max guaranteed (max() before min()).
-            let card_y = (hover_row_cy - card_h / 2.0)
-                .max(ui_rect.top() + 8.0)
-                .min((ui_rect.bottom() - card_h - 8.0).max(ui_rect.top() + 8.0));
-            let card_rect = Rect::from_min_size(
-                egui::pos2(
-                    if on_left {
-                        RAIL_STRIP_W + RAIL_COL_GAP
-                    } else {
-                        0.0
-                    },
-                    card_y,
-                ),
-                Vec2::new(RAIL_CARD_W, card_h),
-            );
+            let Some(card_rect) = rail_card_rect(&id, snaps, ui_rect, on_left, body.top()) else {
+                return;
+            };
             // The card paints into its own rect, but the tail must cross the
             // gap between card and strip — draw through the ui painter so the
             // tip isn't clipped at the card boundary.
@@ -1136,17 +1157,13 @@ impl App {
             } else {
                 card_rect.right() + RAIL_TAIL_W
             };
-            // Pinned (debug-seeded) cards: point the tail at that provider's
-            // row so screenshots don't depend on pointer placement.
-            let row_cy = if pinned {
-                snaps
-                    .iter()
-                    .position(|s| s.provider_id == id)
-                    .map(|i| body.top() + RAIL_PAD_TOP + (i as f32 + 0.5) * RAIL_ROW_H + i as f32 * RAIL_ROW_GAP)
-                    .unwrap_or(hover_row_cy)
-            } else {
-                hover_row_cy
-            };
+            // The tail always points at the card provider's own cell (works
+            // for hover and for the debug-seeded pin alike).
+            let row_cy = snaps
+                .iter()
+                .position(|p| p.provider_id == id)
+                .map(|i| rail_row_cy(i, body.top()))
+                .unwrap_or_else(|| card_rect.center().y);
             let tw = 9.0; // half the tail's vertical extent
             // clamp order matters when the card is shorter than the margins
             let (lo, hi) = (card_rect.top() + 24.0, card_rect.bottom() - 24.0);
