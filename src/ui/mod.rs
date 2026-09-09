@@ -62,7 +62,7 @@ pub fn chip_text_w(ctx: &egui::Context, s: &Snapshot, pct: Option<f64>, pal: &Pa
 }
 
 /// Total width of a collapsed chip: hover padding + ring + gap + text.
-pub const CHIP_RING_D: f32 = 19.0; // ring diameter on the collapsed pill
+pub const CHIP_RING_D: f32 = 17.0; // compact ring diameter on the collapsed pill
 
 pub fn chip_width(text_w: f32) -> f32 {
     10.0 + CHIP_RING_D + 5.0 + text_w + 6.0
@@ -89,7 +89,7 @@ pub fn draw_chip(
         p.rect_filled(rect, 8.0_f32, pal.card_hover);
     }
     let cy = rect.center().y;
-    let frac = (pct.unwrap_or(0.0) / 100.0) as f32;
+    let frac = (1.0 - pct.unwrap_or(100.0) / 100.0) as f32;
     let ring_col = if stale { theme::mix(pct_color(pct, ok, pal), pal.stale, 0.6) } else { pct_color(pct, ok, pal) };
     logo_ring(
         ui,
@@ -177,6 +177,12 @@ pub fn rail_card(
             ui.add_space(10.0);
             match &s.reading {
                 Reading::Ok { windows, .. } => {
+                    let tightest = windows
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, w)| w.remaining_percent.map(|p| (i, p)))
+                        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                        .map(|(i, _)| i);
                     for (i, w) in windows.iter().enumerate() {
                         if i > 0 {
                             // hairline separator between windows
@@ -195,9 +201,9 @@ pub fn rail_card(
                         ui.painter().text(
                             egui::pos2(r.left(), r.center().y),
                             egui::Align2::LEFT_CENTER,
-                            &w.label,
-                            theme::medium(12.0),
-                            pal.text.linear_multiply(alpha),
+                            if tightest == Some(i) { format!("{}  ·  Most used", w.label) } else { w.label.clone() },
+                            if tightest == Some(i) { theme::semibold(12.0) } else { theme::medium(12.0) },
+                            if tightest == Some(i) { heat.linear_multiply(alpha) } else { pal.text.linear_multiply(alpha) },
                         );
                         if let Some(t) = w.resets_at {
                             ui.painter().text(
@@ -227,17 +233,20 @@ pub fn rail_card(
                     }
                 }
                 Reading::NeedsAuth(m) | Reading::Error(m) => {
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
+                    let (title, col) = if matches!(&s.reading, Reading::NeedsAuth(_)) {
+                        ("Connect provider", pal.warn)
+                    } else {
+                        ("Update failed", pal.bad)
+                    };
                     ui.horizontal(|ui| {
-                        let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), egui::Sense::hover());
-                        let (col, tip) = match &s.reading {
-                            Reading::NeedsAuth(_) => (pal.warn, "credentials need attention"),
-                            _ => (pal.bad, "last fetch failed"),
-                        };
+                        let (r, _) = ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
                         dot(ui, r.center(), col, alpha);
-                        ui.label(RichText::new(m.clone()).color(pal.muted.linear_multiply(alpha)).size(11.0))
-                            .on_hover_text(tip);
+                        ui.label(RichText::new(title).color(col.linear_multiply(alpha)).size(12.0).strong());
                     });
+                    ui.add_space(3.0);
+                    ui.label(RichText::new(m.clone()).color(pal.muted.linear_multiply(alpha)).size(10.5));
+                    ui.label(RichText::new("No current usage reading").color(pal.faint.linear_multiply(alpha)).size(10.0));
                 }
                 Reading::NotConfigured => {
                     ui.add_space(2.0);
@@ -362,7 +371,7 @@ pub fn provider_card(
         .show(ui, |ui| {
             let now = now_unix();
             let ok = matches!(s.reading, Reading::Ok { .. });
-            let frac = (pct.unwrap_or(0.0) / 100.0) as f32;
+            let frac = (1.0 - pct.unwrap_or(100.0) / 100.0) as f32;
             let ring_col = if stale {
                 theme::mix(pct_color(pct, ok, pal), pal.stale, 0.6)
             } else {
@@ -426,7 +435,7 @@ pub fn provider_card(
                             bar(
                                 ui,
                                 bar_rect,
-                                (w.remaining_percent.unwrap_or(0.0) / 100.0) as f32,
+                                (w.remaining_percent.map(|p| 1.0 - p / 100.0).unwrap_or(0.0)) as f32,
                                 pct_color(w.remaining_percent, true, pal),
                                 pal,
                                 alpha,
@@ -442,17 +451,20 @@ pub fn provider_card(
                     }
                 }
                 Reading::NeedsAuth(m) | Reading::Error(m) => {
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
+                    let (title, col) = if matches!(&s.reading, Reading::NeedsAuth(_)) {
+                        ("Connect provider", pal.warn)
+                    } else {
+                        ("Update failed", pal.bad)
+                    };
                     ui.horizontal(|ui| {
-                        let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), egui::Sense::hover());
-                        let (col, tip) = match &s.reading {
-                            Reading::NeedsAuth(_) => (pal.warn, "credentials need attention"),
-                            _ => (pal.bad, "last fetch failed"),
-                        };
+                        let (r, _) = ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
                         dot(ui, r.center(), col, alpha);
-                        ui.label(RichText::new(m.clone()).color(pal.muted.linear_multiply(alpha)).size(11.5))
-                            .on_hover_text(tip);
+                        ui.label(RichText::new(title).color(col.linear_multiply(alpha)).size(12.0).strong());
                     });
+                    ui.add_space(3.0);
+                    ui.label(RichText::new(m.clone()).color(pal.muted.linear_multiply(alpha)).size(10.5));
+                    ui.label(RichText::new("No current usage reading").color(pal.faint.linear_multiply(alpha)).size(10.0));
                 }
                 Reading::NotConfigured => {
                     ui.add_space(2.0);

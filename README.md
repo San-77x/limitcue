@@ -16,13 +16,13 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
 
 ## What it does
 
-- **One pill, many plans.** A colour-coded ring gauge per provider — drawn
-  around a brand-tinted monogram — with the remaining quota in tabular digits
-  (green > 50%, amber > 15%, red, grey = stale/error). More providers than
+- **One pill, many plans.** A compact heat-colored ring gauge per provider —
+  green while plenty remains, warming through yellow and orange to red as the
+  quota is used — with the percentage in tabular digits. More providers than
   `max_visible_collapsed` (default 4)? The overflow folds into a `+N` chip;
-  expanding lists everything in a scrollable detail area with a max height so
-  it never eats your screen. Stale readings fade toward grey instead of
-  pretending to be fresh.
+  expanding lists everything in a content-sized detail area that only becomes
+  scrollable when it reaches the available screen height. Stale readings fade
+  toward grey instead of pretending to be fresh.
 - **Drag it anywhere** — grab it anywhere (compositor-native grab;
   Wayland + X11). No grip icon needed: press-and-drag the pill itself, or
   the notch when it's docked to a side. Borderless, always-on-top, eased
@@ -102,6 +102,7 @@ hide_unconfigured = true
 disabled = []            # e.g. ["codex"]
 theme = "midnight"       # midnight | tokyo-night | catppuccin | gruvbox
 max_visible_collapsed = 4  # providers on the pill before folding into "+N"
+quiet_mode = false         # dim idle rail/pill surfaces until hover
 
 [[provider]]
 id = "minimax"
@@ -179,7 +180,8 @@ The gear icon on the pill (or on the rail) opens an in-app settings panel:
 - **Poll interval** — seconds between usage polls when healthy (30–900;
   failures back off automatically).
 - **Display** — providers visible on the collapsed pill before the `+N`
-  overflow chip, hide-unconfigured, and the theme.
+  overflow chip, hide-unconfigured, theme, and optional quiet mode (dim idle
+  surfaces until hover).
 
 *Apply* saves `config.toml` and hot-reloads the poll loop — no restart
 needed. Providers can also carry a `priority = <n>` key in config.toml

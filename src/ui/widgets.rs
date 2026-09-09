@@ -5,17 +5,14 @@ use eframe::egui::{self, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2
 
 use super::theme::{self, Palette};
 
-/// Percent → semantic color (`ok` = the reading is usable at all).
+/// Shared semantic color for a remaining percentage. All surfaces use the
+/// same used-based heat scale so a quota never changes meaning by location.
 pub fn pct_color(pct: Option<f64>, ok: bool, pal: &Palette) -> Color32 {
     if !ok {
         return pal.stale;
     }
-    match pct {
-        None => pal.muted,
-        Some(p) if p > 50.0 => pal.ok,
-        Some(p) if p > 15.0 => pal.warn,
-        Some(_) => pal.bad,
-    }
+    pct.map(|remaining| theme::heat((1.0 - remaining / 100.0) as f32, pal))
+        .unwrap_or(pal.muted)
 }
 
 /// Track circle + progress arc with rounded caps, starting at 12 o'clock.

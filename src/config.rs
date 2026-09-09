@@ -51,6 +51,9 @@ pub struct Config {
     /// Providers shown on the collapsed pill before the rest folds into "+N".
     #[serde(default = "default_max_visible")]
     pub max_visible_collapsed: usize,
+    /// Reduce idle rail/pill opacity until the pointer is over the surface.
+    #[serde(default)]
+    pub quiet_mode: bool,
 }
 
 fn default_poll() -> u64 { 120 }
@@ -66,6 +69,7 @@ impl Default for Config {
             provider: vec![],
             theme: String::new(),
             max_visible_collapsed: default_max_visible(),
+            quiet_mode: false,
         }
     }
 }
@@ -118,6 +122,7 @@ hide_unconfigured = true
 # disabled = ["codex"]
 # theme = "midnight"             # midnight | tokyo-night | catppuccin | gruvbox
 # max_visible_collapsed = 4      # providers on the pill before folding into "+N"
+# quiet_mode = false              # dim idle UI until the pointer is over it
 
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json

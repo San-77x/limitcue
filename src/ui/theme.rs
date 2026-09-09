@@ -23,11 +23,11 @@ pub struct Palette {
     /// Unfilled track behind rings and bars.
     pub track: Color32,
     pub accent: Color32,
-    /// Fill of the docked side-rail body (pure black notch look).
+    /// Translucent fill of the docked side-rail body.
     pub rail_bg: Color32,
     /// Disc fill behind a provider logo on the rail.
     pub rail_disc: Color32,
-    /// Deeper shade for the same rail (hover fill / card body).
+    /// Translucent glass surface for the rail card.
     pub rail_deep: Color32,
     /// Gauge heat scale keyed on percent *used*: calm → caution → hot → out.
     pub gauge: [Color32; 4],
@@ -49,9 +49,9 @@ pub const MIDNIGHT: Palette = Palette {
     stale: Color32::from_rgb(116, 121, 125),
     track: Color32::from_rgb(47, 50, 54),
     accent: Color32::from_rgb(139, 187, 255),
-    rail_bg: Color32::BLACK,
+    rail_bg: Color32::from_rgba_premultiplied(8, 10, 14, 232),
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
-    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    rail_deep: Color32::from_rgba_premultiplied(18, 21, 28, 232),
     gauge: [Color32::from_rgb(52, 211, 97), Color32::from_rgb(255, 214, 10), Color32::from_rgb(255, 149, 0), Color32::from_rgb(255, 69, 58)],
 };
 
@@ -69,9 +69,9 @@ pub const TOKYO_NIGHT: Palette = Palette {
     stale: Color32::from_rgb(107, 115, 159),
     track: Color32::from_rgb(42, 46, 66),
     accent: Color32::from_rgb(122, 162, 247),
-    rail_bg: Color32::BLACK,
+    rail_bg: Color32::from_rgba_premultiplied(8, 10, 14, 232),
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
-    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    rail_deep: Color32::from_rgba_premultiplied(18, 21, 28, 232),
     gauge: [Color32::from_rgb(158, 206, 106), Color32::from_rgb(224, 175, 104), Color32::from_rgb(255, 158, 100), Color32::from_rgb(247, 118, 142)],
 };
 
@@ -89,9 +89,9 @@ pub const CATPPUCCIN: Palette = Palette {
     stale: Color32::from_rgb(127, 132, 156),
     track: Color32::from_rgb(49, 50, 68),
     accent: Color32::from_rgb(137, 180, 250),
-    rail_bg: Color32::BLACK,
+    rail_bg: Color32::from_rgba_premultiplied(8, 10, 14, 232),
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
-    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    rail_deep: Color32::from_rgba_premultiplied(18, 21, 28, 232),
     gauge: [Color32::from_rgb(166, 227, 161), Color32::from_rgb(249, 226, 175), Color32::from_rgb(250, 179, 135), Color32::from_rgb(243, 139, 168)],
 };
 
@@ -109,9 +109,9 @@ pub const GRUVBOX: Palette = Palette {
     stale: Color32::from_rgb(146, 131, 116),
     track: Color32::from_rgb(60, 56, 54),
     accent: Color32::from_rgb(131, 165, 152),
-    rail_bg: Color32::BLACK,
+    rail_bg: Color32::from_rgba_premultiplied(8, 10, 14, 232),
     rail_disc: Color32::from_rgb(0x2A, 0x2A, 0x2A),
-    rail_deep: Color32::from_rgb(0x0A, 0x0A, 0x0A),
+    rail_deep: Color32::from_rgba_premultiplied(18, 21, 28, 232),
     gauge: [Color32::from_rgb(184, 187, 38), Color32::from_rgb(250, 189, 47), Color32::from_rgb(254, 128, 25), Color32::from_rgb(251, 73, 52)],
 };
 

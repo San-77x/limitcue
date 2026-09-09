@@ -152,9 +152,8 @@ const HEADER_ROW_SPACING: f32 = 10.0; // chip/chip and chips/buttons gap
 const COLLAPSED_H: f32 = 38.0;
 const HEADER_H: f32 = 26.0;
 const EXPANDED_W: f32 = 380.0;
-const MAX_EXPANDED_H: f32 = 400.0;
 const SETTINGS_W: f32 = 380.0;
-const SETTINGS_H: f32 = 420.0;
+const VIEWPORT_H_MARGIN: f32 = 48.0;
 const TWEEN_SECS: f32 = 0.45;
 const SPIN_SECS: f32 = 0.55;
 
@@ -448,6 +447,11 @@ impl App {
                 if ui.checkbox(&mut hu, "hide unconfigured providers").changed() {
                     self.cfg_next.hide_unconfigured = hu;
                 }
+                let mut quiet = self.cfg_next.quiet_mode;
+                if ui.checkbox(&mut quiet, "dim idle surfaces until hover").changed() {
+                    self.cfg_next.quiet_mode = quiet;
+                    dirty = true;
+                }
                 ui.add_space(10.0);
             });
 
@@ -673,20 +677,19 @@ impl eframe::App for App {
             self.expanded = false;
         }
 
-        // Expanded height grows with content, capped by MAX_EXPANDED_H (then scrolls).
-        let ideal_h = HEADER_H + 16.0
-            + snaps
-                .iter()
-                .map(|s| {
-                    let rows_h = match &s.reading {
-                        Reading::Ok { windows, .. } => windows.len().max(1) as f32 * 19.0,
-                        _ => 22.0,
-                    };
-                    34.0 + rows_h
-                })
-                .sum::<f32>()
-            + snaps.len() as f32 * 6.0;
-        let expanded_size = Vec2::new(EXPANDED_W, (ideal_h + 10.0).min(MAX_EXPANDED_H));
+        // Expanded height follows content. Only clamp to the available
+        // screen height so a long provider list scrolls instead of clipping.
+        let ideal_h = HEADER_H + 42.0
+            + snaps.iter().map(|s| {
+                let rows_h = match &s.reading {
+                    Reading::Ok { windows, .. } => windows.len().max(1) as f32 * 24.0,
+                    _ => 56.0,
+                };
+                38.0 + rows_h
+            }).sum::<f32>();
+        let viewport_h = ctx.input(|i| i.viewport().inner_rect.map(|r| r.height()))
+            .unwrap_or(720.0);
+        let expanded_size = Vec2::new(EXPANDED_W, (ideal_h + 10.0).min((viewport_h - VIEWPORT_H_MARGIN).max(220.0)));
         if self.expanded {
             self.last_expanded_h = expanded_size.y;
         }
@@ -801,9 +804,11 @@ impl eframe::App for App {
                 .inner_margin(egui::Margin::symmetric(11.0, if self.expanded { 8.0 } else { 5.0 }))
         };
 
-        // Settings replaces the whole layout (pill grows to a panel).
+        // Settings follows its content, with only a viewport safety cap.
         if self.settings_open {
-            self.cur_size = Vec2::new(SETTINGS_W, SETTINGS_H);
+            let settings_ideal_h = 250.0 + self.cfg_next.provider.len() as f32 * 30.0;
+            let settings_h = settings_ideal_h.min((viewport_h - VIEWPORT_H_MARGIN).max(360.0));
+            self.cur_size = Vec2::new(SETTINGS_W, settings_h);
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
             let frame = egui::Frame::none()
                 .fill(pal.bg)
@@ -895,7 +900,8 @@ impl App {
                     let text_w = ui::chip_text_w(ctx, s, pct, &pal, 1.0);
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui::chip_width(text_w), HEADER_H), Sense::hover());
                     let resp = ui.interact(rect, ui.id().with(("chip", &s.provider_id)), Sense::hover());
-                    ui::draw_chip(ui, rect, s, pct, &pal, 1.0, stale, resp.hovered(), &self.logos);
+                    let chip_alpha = if self.cfg.quiet_mode && !resp.hovered() { 0.58 } else { 1.0 };
+                    ui::draw_chip(ui, rect, s, pct, &pal, chip_alpha, stale, resp.hovered(), &self.logos);
                     resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
                 }
                 if snaps.len() > max_vis
@@ -976,7 +982,12 @@ impl App {
         } else {
             egui::Rounding { nw: r, sw: r, ne: 0.0, se: 0.0 }
         };
-        ui.painter().rect_filled(body, body_rounding, pal.rail_bg);
+        let rail_alpha = if self.cfg.quiet_mode && !pointer.map(|p| body.contains(p)).unwrap_or(false) {
+            0.72
+        } else {
+            0.92
+        };
+        ui.painter().rect_filled(body, body_rounding, pal.rail_bg.linear_multiply(rail_alpha));
 
         // ---- whole-notch drag surface --------------------------------------
         // Any drag on the body (left or middle button) hands off to the
@@ -1142,6 +1153,13 @@ impl App {
             // gap between card and strip — draw through the ui painter so the
             // tip isn't clipped at the card boundary.
             let card_p = ui.painter();
+            // Slide the card out from the notch while it fades in; reverse on exit.
+            let slide = (1.0 - a) * 10.0;
+            let card_rect = if on_left {
+                card_rect.translate(Vec2::new(-slide, 0.0))
+            } else {
+                card_rect.translate(Vec2::new(slide, 0.0))
+            };
             let fill = pal.rail_deep.linear_multiply(a);
             card_p.rect_filled(card_rect, 16.0_f32, fill);
             // tail triangle from the card edge toward the hovered cell
@@ -1334,7 +1352,7 @@ fn main() -> eframe::Result<()> {
         let rail_h = RAIL_PAD_TOP + 4.0 * RAIL_ROW_H + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
         Vec2::new(RAIL_STRIP_W, rail_h)
     } else if start_expanded {
-        Vec2::new(EXPANDED_W, MAX_EXPANDED_H)
+        Vec2::new(EXPANDED_W, 420.0)
     } else {
         Vec2::new(260.0, 30.0)
     };
