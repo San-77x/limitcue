@@ -177,12 +177,20 @@ pub fn rail_card(
             ui.add_space(10.0);
             match &s.reading {
                 Reading::Ok { windows, .. } => {
+                    let used = windows.iter().filter_map(|w| w.remaining_percent.map(|p| 100.0 - p)).fold(0.0, f64::max);
+                    ui.label(RichText::new(format!("{used:.0}% used  ·  {} windows", windows.len())).color(pal.muted.linear_multiply(alpha)).size(10.5));
+                    ui.add_space(8.0);
                     let tightest = windows
                         .iter()
                         .enumerate()
                         .filter_map(|(i, w)| w.remaining_percent.map(|p| (i, p)))
                         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
                         .map(|(i, _)| i);
+                    egui::ScrollArea::vertical()
+                        .id_salt(("rail-windows", &s.provider_id))
+                        .max_height(270.0)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
                     for (i, w) in windows.iter().enumerate() {
                         if i > 0 {
                             // hairline separator between windows
@@ -231,6 +239,8 @@ pub fn rail_card(
                             heat.linear_multiply(alpha),
                         );
                     }
+                    ui.add_space(6.0);
+                        });
                 }
                 Reading::NeedsAuth(m) | Reading::Error(m) => {
                     ui.add_space(4.0);
@@ -253,6 +263,10 @@ pub fn rail_card(
                     ui.label(RichText::new("not configured").color(pal.faint.linear_multiply(alpha)).size(11.0));
                 }
             }
+            if let Reading::Ok { detail: Some(detail), .. } = &s.reading {
+                ui.add_space(4.0);
+                ui.label(RichText::new(detail.clone()).color(pal.muted.linear_multiply(alpha)).size(10.0));
+            }
             ui.add_space(10.0);
             let age = now.saturating_sub(s.fetched_at);
             let mut age_line = format!("Updated {} ago", fmt_countdown(age));
@@ -266,13 +280,27 @@ pub fn rail_card(
 /// Height of the [`rail_card`] layout for one provider (frame margins +
 /// header + one block per window with hairline separators, or the
 /// error/auth row).
+pub const RAIL_CARD_MAX_H: f32 = 420.0;
+const RAIL_CARD_HEADER_H: f32 = 18.0;
+const RAIL_CARD_SUMMARY_H: f32 = 16.0;
+const RAIL_CARD_ROW_H: f32 = 48.0;
+const RAIL_CARD_ROW_GAP: f32 = 21.0;
+const RAIL_CARD_FOOTER_H: f32 = 18.0;
+
 pub fn rail_card_height(s: &Snapshot) -> f32 {
     let rows = match &s.reading {
         Reading::Ok { windows, .. } => windows.len().max(1) as f32,
         _ => 1.0,
     };
-    // margins 28 + header 18 + 10 + rows*(16+6+6+5+15) + (rows-1)*21 + 10 + footer 14
-    28.0 + 18.0 + 10.0 + rows * 48.0 + (rows - 1.0) * 21.0 + 10.0 + 14.0
+    let content_h = 28.0
+        + RAIL_CARD_HEADER_H
+        + 10.0
+        + RAIL_CARD_SUMMARY_H
+        + 8.0
+        + 270.0_f32.min(rows * RAIL_CARD_ROW_H + (rows - 1.0).max(0.0) * RAIL_CARD_ROW_GAP)
+        + 10.0
+        + RAIL_CARD_FOOTER_H;
+    content_h.min(RAIL_CARD_MAX_H)
 }
 
 /// Hover tooltip with the full per-window breakdown for one provider.
