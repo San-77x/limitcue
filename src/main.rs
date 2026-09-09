@@ -752,13 +752,21 @@ impl eframe::App for App {
             .and_then(|id| snaps.iter().find(|s| s.provider_id == id))
         {
             Some(snapshot) => {
-                // Grow with content until the monitor cannot accommodate more;
-                // the card layout then uses the available side and scrolls only
-                // its window list. The painted notch remains exactly rail_h.
+                // The card hangs off the hovered row, so the host has to span
+                // *anchor + card*, not just the card. Sizing it to the card
+                // alone made the two chase each other: the window shrank to the
+                // card, the card re-fit into what was left below the anchor,
+                // and the list collapsed to a single row.
                 let card_h = ui::rail_card_height(snapshot);
+                let row = snaps
+                    .iter()
+                    .position(|s| s.provider_id == snapshot.provider_id)
+                    .unwrap_or(0);
+                let anchor = rail_row_cy(row, 0.0, rail_row_h);
+                let need = anchor + ui::RAIL_CARD_GAP_Y + card_h + ui::RAIL_CARD_GAP_Y;
                 Vec2::new(
                     RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                    rail_h.max((card_h + 4.0).min(host_h_max)),
+                    rail_h.max(need.min(host_h_max)),
                 )
             }
             None => Vec2::new(RAIL_STRIP_W, rail_h),
@@ -1216,9 +1224,12 @@ impl App {
         // Screenshot hook: pin only when there is no pointer at all. Normal
         // desktop interaction never uses this path.
         let seeded = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
-        let pinned = pointer.is_none()
-            && self.rail_open.is_some()
-            && seeded.as_deref() == self.rail_open.as_deref();
+        // Pin while there is no pointer at all, and unconditionally when a
+        // screenshot is being captured (the capture window is long enough for
+        // a stray pointer to drift over the notch and dismiss the card).
+        let pinned = self.rail_open.is_some()
+            && seeded.as_deref() == self.rail_open.as_deref()
+            && (pointer.is_none() || std::env::var_os("LIMITCUE_UI_SHOT").is_some());
         // Strict hover-only behavior: a row or the visible card itself must
         // be hovered. There is no broad transparent keep-zone around it.
         if let Some(id) = hovered_id {
@@ -1244,38 +1255,23 @@ impl App {
             let Some(card_layout) = rail_card_layout(&id, snaps, ui_rect, on_left, body.top(), rail_row_h) else {
                 return;
             };
-            let card_rect = card_layout.rect;
-            // Paint the panel directly in its exact hover rectangle.
-            let card_p = ui.painter();
-            // Slide the card out from the notch while it fades in; reverse on exit.
+            // Slide the card out from the notch while it fades in; reverse
+            // on exit. `rail_card` owns the whole panel — glass, content and
+            // shadow — so the rect it is handed is the rect it fills.
             let slide = (1.0 - a) * 10.0;
-            let card_rect = if on_left {
-                card_rect.translate(Vec2::new(-slide, 0.0))
-            } else {
-                card_rect.translate(Vec2::new(slide, 0.0))
-            };
-            let fill = pal.rail_deep.linear_multiply(a);
-            card_p.rect_filled(card_rect, 16.0_f32, fill);
-            card_p.rect_stroke(
-                card_rect,
-                16.0_f32,
-                egui::Stroke::new(1.0_f32, Color32::from_white_alpha(18).linear_multiply(a)),
-            );
-            // Minimal panel: no speech-bubble tail or pointer-facing arrow.
-            // The rounded card floats beside the notch with its own shadow.
-            // content (scaled presence via alpha)
-            let content_ui = &mut ui.new_child(
-                egui::UiBuilder::new().max_rect(card_rect).layout(egui::Layout::top_down(egui::Align::Min)),
-            );
+            let card_rect = card_layout.rect.translate(Vec2::new(
+                if on_left { -slide } else { slide },
+                0.0,
+            ));
             ui::rail_card(
-                content_ui,
+                ui,
+                card_rect,
                 s,
                 &pal,
                 a,
                 stale,
                 &self.logos,
                 now,
-                RAIL_CARD_W,
                 card_layout.list_height,
             );
         }

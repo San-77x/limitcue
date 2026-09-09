@@ -354,3 +354,74 @@ pub fn icon_button(
         resp
     }
 }
+
+// ===========================================================================
+// Text + surface primitives shared by the usage card and the settings sheet.
+// ===========================================================================
+
+/// Single-line galley elided with `…` at `max_w`. Use for any label that
+/// shares a row with a right-aligned value — it is what keeps the two
+/// columns from ever painting over each other.
+pub fn elide(
+    ui: &egui::Ui,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_w: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::single_section(
+        text.to_owned(),
+        egui::text::TextFormat::simple(font, color),
+    );
+    job.wrap = egui::text::TextWrapping {
+        max_width: max_w.max(8.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    ui.painter().layout_job(job)
+}
+
+/// Hairline rule, one physical-ish pixel tall, inset to `x0..x1`.
+pub fn rule(painter: &egui::Painter, y: f32, x0: f32, x1: f32, color: Color32) {
+    painter.rect_filled(
+        Rect::from_min_max(egui::pos2(x0, y), egui::pos2(x1, y + 1.0)),
+        0.0_f32,
+        color,
+    );
+}
+
+/// Specular lip along the top edge of a glass panel: a hairline that is
+/// brightest at the centre and fades out before the corners. This is the
+/// single cheapest cue that a surface is glass rather than flat paint.
+pub fn sheen(painter: &egui::Painter, rect: Rect, corner: f32, color: Color32) {
+    let (x0, x1) = (rect.left() + corner, rect.right() - corner);
+    if x1 - x0 < 8.0 {
+        return;
+    }
+    let y = rect.top() + 1.0;
+    let clear = Color32::from_rgba_premultiplied(0, 0, 0, 0);
+    let mut mesh = egui::Mesh::default();
+    for (x, c) in [(x0, clear), (rect.center().x, color), (x1, clear)] {
+        mesh.colored_vertex(egui::pos2(x, y), c);
+        mesh.colored_vertex(egui::pos2(x, y + 1.0), c);
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(1, 2, 3);
+    mesh.add_triangle(2, 3, 4);
+    mesh.add_triangle(3, 4, 5);
+    painter.add(Shape::mesh(mesh));
+}
+
+/// Slim quota meter: rounded track with a rounded fill. Unlike [`bar`] the
+/// fill can be genuinely empty (no minimum stub), so 0 % reads as 0 %.
+pub fn meter(painter: &egui::Painter, rect: Rect, frac: f32, color: Color32, track: Color32) {
+    let r = rect.height() / 2.0;
+    painter.rect_filled(rect, r, track);
+    let frac = frac.clamp(0.0, 1.0);
+    if frac <= 0.0005 {
+        return;
+    }
+    let w = (rect.width() * frac).max(rect.height());
+    painter.rect_filled(Rect::from_min_size(rect.min, Vec2::new(w, rect.height())), r, color);
+}

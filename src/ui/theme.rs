@@ -29,6 +29,10 @@ pub struct Palette {
     pub rail_disc: Color32,
     /// Translucent glass surface for the rail card.
     pub rail_deep: Color32,
+    /// Hairline rule drawn *inside* a glass surface (already translucent).
+    pub hairline: Color32,
+    /// Specular highlight along the top lip of a glass surface.
+    pub sheen: Color32,
     /// Gauge heat scale keyed on percent *used*: calm → caution → hot → out.
     pub gauge: [Color32; 4],
 }
@@ -52,6 +56,8 @@ pub const MIDNIGHT: Palette = Palette {
     rail_bg: Color32::from_rgba_premultiplied(4, 6, 10, 168),
     rail_disc: Color32::from_rgb(0x24, 0x26, 0x2C),
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
+    hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
+    sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
     gauge: [Color32::from_rgb(52, 211, 97), Color32::from_rgb(255, 214, 10), Color32::from_rgb(255, 149, 0), Color32::from_rgb(255, 69, 58)],
 };
 
@@ -72,6 +78,8 @@ pub const TOKYO_NIGHT: Palette = Palette {
     rail_bg: Color32::from_rgba_premultiplied(4, 6, 10, 168),
     rail_disc: Color32::from_rgb(0x24, 0x26, 0x2C),
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
+    hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
+    sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
     gauge: [Color32::from_rgb(158, 206, 106), Color32::from_rgb(224, 175, 104), Color32::from_rgb(255, 158, 100), Color32::from_rgb(247, 118, 142)],
 };
 
@@ -92,6 +100,8 @@ pub const CATPPUCCIN: Palette = Palette {
     rail_bg: Color32::from_rgba_premultiplied(4, 6, 10, 168),
     rail_disc: Color32::from_rgb(0x24, 0x26, 0x2C),
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
+    hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
+    sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
     gauge: [Color32::from_rgb(166, 227, 161), Color32::from_rgb(249, 226, 175), Color32::from_rgb(250, 179, 135), Color32::from_rgb(243, 139, 168)],
 };
 
@@ -112,6 +122,8 @@ pub const GRUVBOX: Palette = Palette {
     rail_bg: Color32::from_rgba_premultiplied(4, 6, 10, 168),
     rail_disc: Color32::from_rgb(0x24, 0x26, 0x2C),
     rail_deep: Color32::from_rgba_premultiplied(12, 15, 21, 174),
+    hairline: Color32::from_rgba_premultiplied(16, 16, 16, 16),
+    sheen: Color32::from_rgba_premultiplied(30, 30, 30, 30),
     gauge: [Color32::from_rgb(184, 187, 38), Color32::from_rgb(250, 189, 47), Color32::from_rgb(254, 128, 25), Color32::from_rgb(251, 73, 52)],
 };
 
@@ -255,4 +267,21 @@ pub fn apply_style(ctx: &egui::Context, pal: &Palette) {
         s
     };
     ctx.set_style(style);
+}
+
+/// Micro caps label — uppercase, letter-tracked, used for section headers,
+/// units and status words. Tracking is what makes 9–10 px uppercase legible.
+pub fn caps_job(text: &str, size: f32, color: Color32) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        &text.to_uppercase(),
+        0.0,
+        egui::text::TextFormat {
+            font_id: medium(size),
+            extra_letter_spacing: (size * 0.09).round().max(1.0),
+            color,
+            ..Default::default()
+        },
+    );
+    job
 }
