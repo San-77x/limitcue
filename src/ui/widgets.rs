@@ -302,43 +302,6 @@ pub fn dot(ui: &egui::Ui, center: Pos2, color: Color32, alpha: f32) {
     ui.painter().circle_filled(center, 3.0, color.linear_multiply(alpha));
 }
 
-/// Concave fillet where the rail body meets a screen edge: a filled corner
-/// whose hypotenuse curves inward (quarter-circle of radius `r`), so the pill
-/// reads as flaring out of the bezel. `alpha` tweens it in/out with the size
-/// animation. `along` and `away` are signed unit directions: `along` points
-/// from the corner along the screen edge into the pill, `away` points from
-/// the corner into the pill (perpendicular to the edge).
-pub fn edge_flare(ui: &egui::Ui, corner: Pos2, along: f32, away: f32, r: f32, color: Color32, alpha: f32) {
-    if alpha <= 0.02 || r <= 0.5 {
-        return;
-    }
-    let col = color.linear_multiply(alpha);
-    let p = ui.painter();
-    // Quarter circle: center at corner + along*r + away*r, radius r. The arc
-    // runs from the point r·along off the center to the point r·away off it,
-    // bulging toward the corner; sample angles between those two endpoints
-    // through the quadrant that keeps the arc on the corner side.
-    let cx = corner.x + along * r;
-    let cy = corner.y + away * r;
-    let ang_a = if along > 0.0 { 0.0 } else { std::f32::consts::PI };
-    let ang_b = if away > 0.0 { std::f32::consts::FRAC_PI_2 } else { -std::f32::consts::FRAC_PI_2 };
-    let mut d = ang_b - ang_a;
-    while d > std::f32::consts::PI {
-        d -= std::f32::consts::TAU;
-    }
-    while d < -std::f32::consts::PI {
-        d += std::f32::consts::TAU;
-    }
-    let steps = 8;
-    let mut pts = Vec::with_capacity(steps + 2);
-    for i in 0..=steps {
-        let ang = ang_a + d * (i as f32 / steps as f32);
-        pts.push(egui::pos2(cx + r * ang.cos(), cy + r * ang.sin()));
-    }
-    pts.push(corner);
-    p.add(Shape::convex_polygon(pts, col, Stroke::NONE));
-}
-
 /// Icon button drawn from a texture; `angle` optionally spins the glyph
 /// (manual mesh rotation — egui 0.29 has no painter transform).
 pub fn icon_button(

@@ -159,9 +159,9 @@ const TWEEN_SECS: f32 = 0.45;
 const SPIN_SECS: f32 = 0.55;
 
 // Side-dock rail (left/right): a black notch hugging the screen edge —
-// one ring cell per provider, an orb button below, and a tail-card usage
-// popup beside the hovered cell. The window is STRIP + FLARE wide so the
-// concave bezel fillets fit inside it while the visible spine stays slim.
+// one gauge cell per provider, an orb button below, and a tail-card usage
+// popup beside the hovered cell. The window is exactly the spine wide; the
+// square corners sit on the screen edge, the card-side corners are rounded.
 const RAIL_STRIP_W: f32 = 56.0; // visible black notch spine
 const RAIL_ROW_H: f32 = 62.0; // one ring cell (gauge + percent)
 const RAIL_ROW_GAP: f32 = 6.0;
@@ -169,16 +169,12 @@ const RAIL_COL_GAP: f32 = 10.0; // notch ↔ card gap when the card is open
 const RAIL_CARD_W: f32 = 264.0; // usage card width
 const RAIL_RING_R: f32 = 16.0; // gauge ring radius in a cell
 const RAIL_CORNER: f32 = 16.0; // convex corner radius of the notch body
-const RAIL_FLARE: f32 = 12.0; // concave fillet where the body meets the edge
 const RAIL_ORB: f32 = 24.0; // settings orb diameter
 const RAIL_PAD_TOP: f32 = 10.0; // breathing room above the first cell
 /// Gauge ring stroke width in a rail cell.
 const RAIL_RING_STROKE: f32 = 3.0;
 /// Card tail width (base at the notch edge, tip on the card).
 const RAIL_TAIL_W: f32 = 12.0;
-/// How long the card stays after the pointer leaves everything (grace for
-/// crossing the gap between notch and card).
-const RAIL_HOVER_OUT_SECS: f32 = 0.35;
 
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
@@ -222,9 +218,7 @@ struct App {
     rail_open: Option<String>,
     /// Provider whose card is fading out (kept for height budgeting).
     rail_last: Option<String>,
-    /// Last instant the pointer was over the rail/card — drives the card's
-    /// hover-out grace period.
-    rail_hover_at: Option<Instant>,
+
     /// Rail-card fade (0..1): springs toward 1 while hovered, toward 0 after.
     rail_card_f: f32,
     /// The notch is the primary surface. LIMITCUE_FLOAT=1 restores the pill.
@@ -267,7 +261,6 @@ impl App {
             new_provider_id: String::new(),
             rail_open,
             rail_last: None,
-            rail_hover_at: None,
             rail_card_f: 0.0,
             notch_mode,
             started: Instant::now(),
@@ -567,9 +560,10 @@ impl App {
     }
 }
 
-/// Rail-card spring rate for the fade in/out (per-second exponential).
-fn t_rail_spring(dt: f32) -> f32 {
-    1.0 - (-9.0 * dt).exp()
+/// Rail-card fade rates (per-second exponential): quick in, snappier out so
+/// the card feels strictly hover-bound.
+fn t_rail_spring(dt: f32, opening: bool) -> f32 {
+    1.0 - (-(if opening { 12.0 } else { 18.0 }) * dt).exp()
 }
 
 /// Debug hook: `LIMITCUE_UI_SHOT=/path.png` captures the window after the
@@ -677,7 +671,7 @@ impl eframe::App for App {
         let rail_h = RAIL_PAD_TOP + rail_rows * RAIL_ROW_H + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
         let card_want = self.rail_open.is_some();
         let card_f_target = if card_want { 1.0 } else { 0.0 };
-        self.rail_card_f += (card_f_target - self.rail_card_f) * (t_rail_spring(dt));
+        self.rail_card_f += (card_f_target - self.rail_card_f) * (t_rail_spring(dt, card_want));
         if self.rail_card_f < 0.01 {
             self.rail_card_f = 0.0;
         }
@@ -692,12 +686,10 @@ impl eframe::App for App {
             let card_h = ui::rail_card_height(id.as_deref().and_then(|i| snaps.iter().find(|s| s.provider_id == *i)));
             Vec2::new(
                 RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                (rail_h + RAIL_FLARE).max(card_h + 4.0),
+                rail_h.max(card_h + 4.0),
             )
         } else {
-            // Spine plus a transparent zone so the bezel fillets fit inside
-            // the window instead of being clipped at rest.
-            Vec2::new(RAIL_STRIP_W + RAIL_FLARE, rail_h)
+            Vec2::new(RAIL_STRIP_W, rail_h)
         };
 
         let target = if rail {
@@ -942,12 +934,12 @@ impl App {
 
         // ---- hover bookkeeping: does the card stay open? -----------------
         let over_card = self.rail_card_f > 0.0 && pointer.is_some_and(|pt| {
-            // Card x-range plus the gap toward the strip, so crossing the
-            // gap (or sitting anywhere on the card) doesn't count as "out".
+            // Card column plus the gap toward the strip, so crossing the gap
+            // (or sitting anywhere on the card) doesn't count as "out".
             let (x0, x1) = if on_left {
-                (RAIL_STRIP_W - 2.0, ui_rect.right())
+                (RAIL_STRIP_W - 4.0, RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W)
             } else {
-                (-2.0, RAIL_COL_GAP + 2.0)
+                (-4.0, RAIL_COL_GAP + RAIL_STRIP_W)
             };
             pt.x >= x0 && pt.x <= x1 && pt.y >= ui_rect.top() && pt.y <= ui_rect.bottom()
         });
@@ -957,11 +949,6 @@ impl App {
         // window-right for a right dock (the card then fills the remainder).
         let body_x = if on_left { ui_rect.left() } else { ui_rect.right() - RAIL_STRIP_W };
         let body = Rect::from_min_size(egui::pos2(body_x, ui_rect.top()), Vec2::new(RAIL_STRIP_W, ui_rect.height()));
-        let (c0, c1) = if on_left {
-            (egui::pos2(body.right(), body.top()), egui::pos2(body.right(), body.bottom()))
-        } else {
-            (egui::pos2(body.left(), body.top()), egui::pos2(body.left(), body.bottom()))
-        };
         let r = RAIL_CORNER.min(body.height() / 2.0);
         // body with two square edge-corners and two 15px rounded corners
         let body_rounding = if on_left {
@@ -970,10 +957,6 @@ impl App {
             egui::Rounding { nw: r, sw: r, ne: 0.0, se: 0.0 }
         };
         ui.painter().rect_filled(body, body_rounding, pal.rail_bg);
-        // concave fillets at the two square corners (into the bezel)
-        let (along, away) = if on_left { (1.0, 1.0) } else { (-1.0, -1.0) };
-        ui::widgets::edge_flare(ui, c0, along, away, RAIL_FLARE, pal.rail_bg, 1.0);
-        ui::widgets::edge_flare(ui, c1, along, -away, RAIL_FLARE, pal.rail_bg, 1.0);
 
         // ---- whole-notch drag surface --------------------------------------
         // Any drag on the body (left or middle button) hands off to the
@@ -1091,25 +1074,19 @@ impl App {
         orb.on_hover_text("settings · drag the notch to move it");
 
         // ---- hover state machine ------------------------------------------
-        // (Debug runs seeded with LIMITCUE_UI_RAIL pin the card open so
-        // screenshots don't depend on pointer placement.)
-        let over_body = pointer.is_some_and(|pt| body.contains(pt));
-        if over_body || over_card {
-            self.rail_hover_at = Some(Instant::now());
-        }
-        let in_grace = self
-            .rail_hover_at
-            .map(|t0| t0.elapsed().as_secs_f32() < RAIL_HOVER_OUT_SECS)
-            .unwrap_or(false);
-        // Debug runs seeded with LIMITCUE_UI_RAIL keep that card open without
-        // a pointer on it (screenshot automation); any hover releases the pin.
+        // The card is hover-only: open while a provider row is hovered (or
+        // the pointer sits on the card/gap so it doesn't flicker mid-crossing)
+        // and closed as soon as the pointer leaves. Debug runs seeded with
+        // LIMITCUE_UI_RAIL keep that card open without a pointer (screenshot
+        // automation); any hover releases the pin.
+        let over_card = over_card && self.rail_open.is_some();
         let seeded = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
-        let pinned = self.rail_hover_at.is_none()
+        let pinned = pointer.is_none()
             && self.rail_open.is_some()
             && seeded.as_deref() == self.rail_open.as_deref();
         if let Some(id) = hovered_id.clone() {
             self.rail_open = Some(id);
-        } else if !pinned && !in_grace && !over_card {
+        } else if !pinned && !over_card {
             if let Some(prev) = self.rail_open.take() {
                 self.rail_last = Some(prev);
             }
@@ -1342,10 +1319,10 @@ fn main() -> eframe::Result<()> {
     let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
     let notch_mode = std::env::var("LIMITCUE_FLOAT").map(|v| v == "0").unwrap_or(true);
     let init_size = if notch_mode {
-        // Resting notch: spine + the transparent zone the bezel fillets
-        // live in; height matches the rail's own layout math.
+        // Resting notch: exactly the spine; height matches the rail's own
+        // layout math.
         let rail_h = RAIL_PAD_TOP + 4.0 * RAIL_ROW_H + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
-        Vec2::new(RAIL_STRIP_W + RAIL_FLARE, rail_h)
+        Vec2::new(RAIL_STRIP_W, rail_h)
     } else if start_expanded {
         Vec2::new(EXPANDED_W, MAX_EXPANDED_H)
     } else {

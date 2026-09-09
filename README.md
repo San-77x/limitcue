@@ -35,9 +35,8 @@ Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no 
 ### The vertical rail (left/right dock)
 
 Docked left or right, the pill becomes a black notch welded to the screen
-edge: a pure-`#000` strip with **concave fillets** where it meets the bezel,
-so it reads as flaring out of the display hardware rather than floating on
-it. Each tracked provider gets its own cell — a clean **gauge**: the
+edge: a pure-`#000` strip, square where it meets the bezel and rounded on
+the card side. Each tracked provider gets its own cell — a clean **gauge**: the
 provider's white mark (real logo for Claude, Codex/OpenAI, Gemini, Kimi,
 MiniMax and AgentRouter; a monogram letter otherwise) framed by a track
 ring and a heat-colored arc showing the share *used* — green while
@@ -49,9 +48,9 @@ moves the window; on release it snaps back flush to whichever side you
 dropped it nearest. Hovering a cell slides out a black usage card with a
 speech-bubble tail pointing at it: per-window label, human reset copy
 ("Resets in 51 min", "Resets Sat 04:00 AM"), a 6 px heat bar and
-"N% Used", separated by hairlines. The card lingers through a
-short grace period after the pointer leaves so you can read it, then
-fades out.
+"N% Used", separated by hairlines. The card is strictly hover-bound:
+it appears the moment you point at a cell and fades as soon as you leave
+the notch.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
   `theme` config key. Each theme carries its own gauge heat scale; expanded
   cards show each reading's *fidelity* badge (official / derived / manual)
