@@ -1,3 +1,4 @@
+mod cli;
 mod config;
 mod dock;
 mod providers;
@@ -13,7 +14,7 @@ use eframe::egui::{self, Color32, Rect, RichText, Sense, Vec2, ViewportBuilder, 
 
 use config::Config;
 use dock::Edge;
-use providers::{claude::Claude, codex::Codex, kimi::Kimi, Provider};
+use providers::build_all;
 use types::{now_unix, Reading, Snapshot};
 use ui::theme::{self, Palette};
 
@@ -99,35 +100,6 @@ fn save_state(snaps: &HashMap<String, Snapshot>) {
 
 fn load_state() -> HashMap<String, Snapshot> {
     serde_json::from_str(&std::fs::read_to_string(state_path()).unwrap_or_default()).unwrap_or_default()
-}
-
-fn build_providers(cfg: &Config) -> Vec<Box<dyn Provider>> {
-    let mut v: Vec<Box<dyn Provider>> = vec![Box::new(Claude), Box::new(Codex)];
-    for p in &cfg.provider {
-        if p.enabled == Some(false) {
-            continue;
-        }
-        v.push(providers::adapter_for(p));
-    }
-    if !cfg.provider.iter().any(|p| p.id == "kimi" && p.enabled != Some(false)) {
-        v.push(Box::new(Kimi::new(None)));
-    }
-    v.retain(|p| !cfg.disabled.contains(&p.id()));
-    // `priority` (lower = earlier) wins over file order; None sorts last.
-    let rank = |id: &str| {
-        cfg.provider
-            .iter()
-            .find(|p| p.id == id)
-            .and_then(|p| p.priority)
-            .unwrap_or(u32::MAX)
-    };
-    let mut keyed: Vec<(u32, usize, Box<dyn Provider>)> = v
-        .into_iter()
-        .enumerate()
-        .map(|(i, p)| (rank(&p.id().to_string()), i, p))
-        .collect();
-    keyed.sort_by_key(|(rank, i, _)| (*rank, *i));
-    keyed.into_iter().map(|(_, _, p)| p).collect()
 }
 
 // Header-row geometry, shared by the collapsed pill (whose window width is
@@ -2261,7 +2233,7 @@ fn spawn_poller(
     tx_snap: mpsc::Sender<Vec<Snapshot>>,
     rx_tick: mpsc::Receiver<Ctl>,
 ) {
-    let providers = build_providers(&cfg);
+    let providers = build_all(&cfg);
     let poll_secs = cfg.poll_interval_secs;
     thread::spawn(move || {
         let mut backoff = poll_secs;
@@ -2291,29 +2263,6 @@ fn spawn_poller(
     });
 }
 
-fn run_once(cfg: &Config) {
-    for p in build_providers(cfg) {
-        if !p.is_present() {
-            println!("{:<8} not configured", p.id());
-            continue;
-        }
-        let s = p.snapshot();
-        match &s.reading {
-            Reading::Ok { windows, .. } => {
-                let parts: Vec<String> = windows
-                    .iter()
-                    .map(|w| match w.remaining_percent {
-                        Some(p) => format!("{} {p:.0}%", w.label),
-                        None => w.label.clone(),
-                    })
-                    .collect();
-                println!("{:<8} {}", s.provider_id, parts.join(" | "));
-            }
-            other => println!("{:<8} {:?}", s.provider_id, other),
-        }
-    }
-}
-
 fn main() -> eframe::Result<()> {
     Config::write_example_if_missing();
     let cfg = Config::load();
@@ -2325,9 +2274,21 @@ fn main() -> eframe::Result<()> {
         );
     }
     let pal = theme::palette(&cfg.theme);
-    if std::env::args().any(|a| a == "--once") {
-        run_once(&cfg);
-        return Ok(());
+    let args = cli::parse(std::env::args());
+    match args.cmd {
+        cli::Cmd::Gui => {}
+        cli::Cmd::Help => {
+            print!("{}", cli::HELP);
+            return Ok(());
+        }
+        cli::Cmd::Version => {
+            println!("limitcue {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        other => {
+            cli::run(other, &cfg, args.watch);
+            return Ok(());
+        }
     }
     // D-Bus service must exist before the window so the KWin dock script can
     // restore the position at window-add time. Bus-less environments just

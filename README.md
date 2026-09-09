@@ -208,6 +208,34 @@ KWin you just don't get snap-to-edge and position persistence, and
 always-on-top falls back to whatever the compositor allows. `--once` mode
 never touches D-Bus or files.
 
+## Reading it from something other than the window
+
+Everything the notch knows is available as text, so LimitCue can be a source
+other tools read from:
+
+```sh
+limitcue --once     # one line per provider
+limitcue --json     # a flat, stable JSON document
+limitcue --line     # one status-bar line with pango markup
+limitcue --waybar   # a waybar custom-module object
+limitcue --watch    # with any of the above: keep printing every poll interval
+```
+
+`--waybar` fills in waybar's own contract (`text`, `tooltip`, `class`,
+`percentage`), where `class` is `ok` / `warning` / `critical` / `unknown` for
+the provider closest to empty, so a bar can style itself:
+
+```jsonc
+"custom/limitcue": {
+  "exec": "limitcue --waybar --watch",
+  "return-type": "json",
+  "markup": "pango"
+}
+```
+
+The exit status is always 0 — a status bar should not grow an error box
+because one provider needs re-authenticating.
+
 ## Settings
 
 The gear icon on the pill — or the orb at the foot of the notch — opens the

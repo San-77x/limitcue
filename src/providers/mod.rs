@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::config::ProviderConfig;
+use crate::config::{Config, ProviderConfig};
 use crate::types::{Fidelity, Snapshot};
 
 pub trait Provider: Send {
@@ -19,6 +19,39 @@ pub trait Provider: Send {
     /// Cheap check: do credentials/config for this provider exist on disk?
     fn is_present(&self) -> bool;
     fn fidelity(&self) -> Fidelity;
+}
+
+/// Every adapter a config asks for, in display order. Built-ins come first,
+/// then user entries, then `priority` decides.
+/// Every adapter the config asks for, in display order: the compiled-in ones
+/// first, then user entries, with `priority` overriding file order.
+pub fn build_all(cfg: &Config) -> Vec<Box<dyn Provider>> {
+    let mut v: Vec<Box<dyn Provider>> = vec![Box::new(claude::Claude), Box::new(codex::Codex)];
+    for p in &cfg.provider {
+        if p.enabled == Some(false) {
+            continue;
+        }
+        v.push(adapter_for(p));
+    }
+    if !cfg.provider.iter().any(|p| p.id == "kimi" && p.enabled != Some(false)) {
+        v.push(Box::new(kimi::Kimi::new(None)));
+    }
+    v.retain(|p| !cfg.disabled.contains(&p.id()));
+    // `priority` (lower = earlier) wins over file order; None sorts last.
+    let rank = |id: &str| {
+        cfg.provider
+            .iter()
+            .find(|p| p.id == id)
+            .and_then(|p| p.priority)
+            .unwrap_or(u32::MAX)
+    };
+    let mut keyed: Vec<(u32, usize, Box<dyn Provider>)> = v
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| (rank(&p.id().to_string()), i, p))
+        .collect();
+    keyed.sort_by_key(|(rank, i, _)| (*rank, *i));
+    keyed.into_iter().map(|(_, _, p)| p).collect()
 }
 
 /// The adapter a `[[provider]]` entry describes. One place decides this, so
