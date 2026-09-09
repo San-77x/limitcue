@@ -257,8 +257,7 @@ pub fn rail_card(
 /// Height of the [`rail_card`] layout for one provider (frame margins +
 /// header + one block per window with hairline separators, or the
 /// error/auth row).
-pub fn rail_card_height(s: Option<&Snapshot>) -> f32 {
-    let Some(s) = s else { return 120.0 };
+pub fn rail_card_height(s: &Snapshot) -> f32 {
     let rows = match &s.reading {
         Reading::Ok { windows, .. } => windows.len().max(1) as f32,
         _ => 1.0,

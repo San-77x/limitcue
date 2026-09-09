@@ -582,7 +582,7 @@ fn rail_card_rect(
     body_top: f32,
 ) -> Option<Rect> {
     let s = snaps.iter().find(|s| s.provider_id == id)?;
-    let card_h = ui::rail_card_height(Some(s));
+    let card_h = ui::rail_card_height(s);
     let anchor_cy = snaps
         .iter()
         .position(|p| p.provider_id == id)
@@ -709,18 +709,19 @@ impl eframe::App for App {
         if card_want {
             self.rail_card_f = self.rail_card_f.max(0.02);
         }
-        let rail_size = if self.rail_card_f > 0.0 {
-            let id = self.rail_open.clone().or_else(|| {
-                // fading out: keep sizing for the card that just closed
-                self.rail_last.clone()
-            });
-            let card_h = ui::rail_card_height(id.as_deref().and_then(|i| snaps.iter().find(|s| s.provider_id == *i)));
-            Vec2::new(
-                RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                rail_h.max(card_h + 4.0),
-            )
-        } else {
-            Vec2::new(RAIL_STRIP_W, rail_h)
+        let rail_size = match self.rail_open.as_deref().and_then(|id| {
+            snaps.iter().find(|s| s.provider_id == id)
+        }) {
+            Some(snapshot) => {
+                // The card height is derived from the provider's actual
+                // windows; no fixed-height fallback is reserved.
+                let card_h = ui::rail_card_height(snapshot);
+                Vec2::new(
+                    RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
+                    rail_h.max(card_h + 4.0),
+                )
+            }
+            None => Vec2::new(RAIL_STRIP_W, rail_h),
         };
 
         let target = if rail {
@@ -1121,7 +1122,11 @@ impl App {
 
         // ---- the tail-card popup ------------------------------------------
         if self.rail_card_f > 0.0 {
-            let Some(id) = self.rail_open.clone().or_else(|| self.rail_last.clone()) else {
+            let Some(id) = self.rail_open.clone() else {
+                // No active hover: do not paint a fading card from a stale
+                // previous provider.
+                self.rail_card_f = 0.0;
+                self.rail_last = None;
                 return;
             };
             let Some(s) = snaps.iter().find(|s| s.provider_id == id) else {
