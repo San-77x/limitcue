@@ -99,7 +99,7 @@ struct DockIface {
 
 #[zbus::interface(name = "io.limitcue.Dock")]
 impl DockIface {
-    /// Called by the KWin script after the user finishes a drag.
+    /// Called by the persistent KWin script after the user finishes a drag.
     /// (`callDBus` can only marshal plain ints — no u8s, no structs.)
     fn store_position(&mut self, x: i32, y: i32, edge: i32) {
         let st = DockState { edge: Edge::from_u8(edge.clamp(0, 4) as u8), x, y };
@@ -124,23 +124,38 @@ pub fn start_service(state: SharedDock) -> Result<(), zbus::Error> {
     Ok(())
 }
 
-/// Ask KWin (via its Scripting D-Bus interface) to dock our window to the
-/// nearer screen side. The generated one-shot ignores the stored edge — the
-/// notch is side-only — and reports the settled edge back over D-Bus so the
-/// app persists it. Best-effort: failures just mean no restore this launch.
-pub fn request_restore(_state: &DockState) {
+/// Ask KWin (via its Scripting D-Bus interface) to place our window.
+///
+/// `y` and `height` are baked into a generated one-shot script; `x` is left to
+/// the script, which snaps to whichever side the window's midpoint is nearer
+/// and reports the settled edge back over D-Bus so the app persists it.
+///
+/// This is how the notch gets *headroom*. The window's top edge is pinned once
+/// mapped — winit cannot position a Wayland window, and the persistent dock
+/// script only re-clamps `x` for a side dock — so a hover card can never be
+/// drawn above the window's top. Instead the app asks for a window taller than
+/// the notch, positioned so the notch still lands where the user put it, and
+/// paints the notch at an offset inside it. The space above the notch is then
+/// the card's to use.
+///
+/// Best-effort: on a compositor without the script, nothing moves and the card
+/// falls back to the space below the notch.
+pub fn request_geometry(y: i32, height: i32) {
     let dir = cache_dir();
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
     let path = dir.join("apply.js");
-    let js = r#"// generated one-shot by limitcue: restore dock position
-// The notch docks to the left/right sides only. Stored top/bottom/free
-// positions are coerced: snap to whichever side the window's midpoint is
-// nearer, keep the window's own y, and report the side edge back so the
-// app persists it.
+    let js = format!(
+        r#"// generated one-shot by limitcue: place the notch window
+// The notch docks to the left/right sides only: snap to whichever side the
+// window's midpoint is nearer, take the app's requested y and height, clamp
+// the result into the output, and report the side edge back so the app
+// persists it.
 const W = "limitcue";
-for (const w of workspace.windowList()) {
+const WANT_Y = {y};
+const WANT_H = {height};
+for (const w of workspace.windowList()) {{
     if ((w.resourceClass + "").indexOf(W) < 0) continue;
     w.keepAbove = true;
     let a = w.output ? w.output.geometry : workspace.virtualScreenGeometry;
@@ -148,14 +163,17 @@ for (const w of workspace.windowList()) {
     let mid = g.x + g.width / 2;
     let edge = (mid < a.x + a.width / 2) ? 3 : 4;
     let nx = (edge === 3) ? a.x : a.x + a.width - g.width;
-    let ny = Math.min(Math.max(g.y, a.y), a.y + a.height - g.height);
-    w.frameGeometry = { x: nx, y: ny, width: g.width, height: g.height };
+    let nh = WANT_H > 0 ? WANT_H : g.height;
+    let ny = WANT_Y >= 0 ? WANT_Y : g.y;
+    ny = Math.min(Math.max(ny, a.y), a.y + a.height - nh);
+    w.frameGeometry = {{ x: nx, y: ny, width: g.width, height: nh }};
     callDBus("io.limitcue", "/io/limitcue/dock", "io.limitcue.Dock",
              "StorePosition", Math.round(nx), Math.round(ny), edge);
-    print("LC-RESTORE applied edge=" + edge + " " + nx + "," + ny);
+    print("LC-PLACE edge=" + edge + " " + nx + "," + ny + " h=" + nh);
     break;
-}
-"#;
+}}
+"#
+    );
     if std::fs::write(&path, js).is_err() {
         return;
     }
@@ -177,7 +195,7 @@ for (const w of workspace.windowList()) {
         Ok(())
     })();
     if let Err(e) = ok {
-        eprintln!("limitcue: dock restore not applied ({e})");
+        eprintln!("limitcue: window placement not applied ({e})");
     }
 }
 

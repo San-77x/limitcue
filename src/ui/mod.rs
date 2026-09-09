@@ -145,11 +145,7 @@ const SOLO_METER_H: f32 = 6.0;
 const STATUS_BODY_H: f32 = 34.0;
 /// Vertical clearance between the hovered row's centre line and the card.
 pub const RAIL_CARD_GAP_Y: f32 = 8.0;
-/// Smallest host that can show a card whole once it is slid to the top of the
-/// window. The host is never sized below this while a card is open.
-pub fn card_host_min(s: &Snapshot, margin: f32) -> f32 {
-    rail_card_content_height(s) + margin * 2.0
-}
+
 
 /// Chrome above the body: padding, header, hero.
 const CARD_TOP_H: f32 = PAD_TOP + HEAD_H + HEAD_GAP + HERO_H + HERO_GAP;

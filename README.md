@@ -72,14 +72,21 @@ Both the card and the notch body take their opacity from config
 (`card_opacity`, `notch_opacity`), so you can have them anywhere between
 barely-there and fully solid.
 
-The card is placed against the screen, not just the window, and its height
-never changes with position — it is always the size its content needs, and
-only *where* it sits is negotiated. It hangs off the hovered row while there
-is room under it; when there is not — a row low on the display — it slides up
-until it fits, opening *upward* from the row instead of running off the
-bottom. Nothing is compressed and nothing scrolls. It is strictly hover-bound:
-it appears the moment you point at a cell and fades as soon as you leave the
-notch.
+The card's height never changes with position — it is always the size its
+content needs, and only *where* it sits is negotiated. It hangs off the
+hovered row while there is room under it, and otherwise opens **upward**,
+past the top of the notch if that is what it takes. Nothing is compressed and
+nothing scrolls. It is strictly hover-bound: it appears the moment you point
+at a cell and fades as soon as you leave the notch.
+
+That upward room exists because the notch's window is deliberately taller than
+the notch. A window's top edge is pinned once the compositor has mapped it —
+a Wayland client cannot move itself — so the app asks KWin for a band tall
+enough for the widest card any provider can show, positioned so the notch
+still lands exactly where you put it, and paints the notch at an offset inside
+it. The band's height never changes on hover (only its width does), so opening
+a card can't disturb the notch. Without the KWin script the band is simply
+never granted and cards fall back to the room below the notch.
 - **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
   `theme` config key. Each theme carries its own gauge heat scale; expanded
   cards show each reading's *fidelity* badge (official / derived / manual)

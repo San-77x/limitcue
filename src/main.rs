@@ -178,8 +178,6 @@ const RAIL_RING_STROKE: f32 = 2.6;
 /// rather than their rings, so it has room there even in a compact cell.
 const RAIL_BADGE_R: f32 = 5.5;
 const RAIL_BADGE_ANGLE: f32 = std::f32::consts::PI * 40.0 / 180.0;
-/// Clearance kept between the host window's foot and the bottom of the screen.
-const RAIL_SCREEN_MARGIN: f32 = 8.0;
 
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
@@ -402,6 +400,17 @@ struct App {
     logos: HashMap<String, egui::TextureHandle>,
     dock: dock::SharedDock,
     restore_sent: u32,
+    /// Screen y the notch should be painted at — the position the user chose.
+    /// The host window is taller than the notch and sits *above* this, so the
+    /// window's own y (what the dock script reports) is `notch_y - headroom`.
+    notch_y: f32,
+    /// How far down inside the window the notch is painted. This is the room
+    /// a card gets to open upward.
+    headroom: f32,
+    /// Last (y, height) handed to the compositor, so it is asked only on change.
+    placed: Option<(i32, i32)>,
+    /// Last window y the dock script reported, to spot a genuine move.
+    reported_y: f32,
     last_edge: Edge,
     cfg_next: Config,
     settings_open: bool,
@@ -458,6 +467,10 @@ impl App {
             refresh_at: None,
             icons,
             logos,
+            notch_y: dock.lock().map(|d| d.y as f32).unwrap_or(0.0),
+            headroom: 0.0,
+            placed: None,
+            reported_y: f32::NAN,
             dock,
             restore_sent: 0,
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
@@ -1130,17 +1143,6 @@ impl eframe::App for App {
             ctx.request_repaint();
         }
 
-        // Ask KWin to apply the persisted dock position once, after the
-        // window exists. Retries during the first seconds: KWin only sees
-        // the window after it maps, and the app settles its own size during
-        // the first frames (pill width animation).
-        if self.restore_sent < 20 {
-            self.restore_sent += 1;
-            let st = *self.dock.lock().unwrap();
-            if (st.edge != Edge::Free || st.x != 0 || st.y != 0) && self.restore_sent.is_multiple_of(5) {
-                dock::request_restore(&st);
-            }
-        }
 
         let pal = self.pal;
         let now = now_unix();
@@ -1196,62 +1198,64 @@ impl eframe::App for App {
             self.rail_card_f = self.rail_card_f.max(0.02);
         }
         let monitor_h = ctx.input(|i| i.viewport().monitor_size.map(|s| s.y)).unwrap_or(900.0);
-        // Where the window's top edge sits on screen. The window grows
-        // *downward* from a fixed top — the KWin script only ever re-clamps x
-        // for a side dock, never y — so its foot is what runs off the bottom,
-        // and the card has to be placed inside what is left below that top.
+        // ---- the notch's vertical band -----------------------------------
         //
-        // Wayland never tells a window its own position, so the dock script's
-        // last report is the source of truth; X11 fills in `outer_rect`. Like
-        // the rest of the dock code this assumes one monitor.
-        let win_top = {
-            // Debug hook: pretend the notch is parked at this screen y, so the
-            // placement can be exercised without dragging the real window (the
-            // dock script overwrites any seeded dock.json at startup).
-            let forced = std::env::var("LIMITCUE_UI_TOP").ok().and_then(|v| v.parse::<f32>().ok());
-            let stored = forced.unwrap_or_else(|| self.dock.lock().unwrap().y as f32);
-            if stored > 0.0 {
-                stored
-            } else {
-                ctx.input(|i| i.viewport().outer_rect.map(|r| r.top()))
-                    .filter(|y| y.is_finite() && *y >= 0.0)
-                    .unwrap_or(0.0)
+        // The window's top edge is pinned once mapped, so a card can never be
+        // painted above it. Rather than fight that, the window is made a fixed
+        // band that *contains* the notch: tall enough for the widest card any
+        // provider can show, positioned so the notch still lands where the
+        // user put it, with the notch painted `headroom` down from the top.
+        // The space above the notch is then the card's to open into.
+        //
+        // The band's height does not change on hover — only its width does —
+        // so opening a card can no longer disturb the notch's position.
+        if self.notch_mode || matches!(edge, Edge::Left | Edge::Right) {
+            // The script reports the *window's* top; the notch is `headroom`
+            // below it. Debug hook: LIMITCUE_UI_TOP parks the notch at a given
+            // screen y without dragging the real window.
+            let reported = std::env::var("LIMITCUE_UI_TOP")
+                .ok()
+                .and_then(|v| v.parse::<f32>().ok())
+                .unwrap_or_else(|| self.dock.lock().unwrap().y as f32);
+            if !self.reported_y.is_finite() || (reported - self.reported_y).abs() > 0.5 {
+                self.reported_y = reported;
+                self.notch_y = (reported + self.headroom).clamp(0.0, monitor_h);
             }
         }
-        .clamp(0.0, monitor_h);
-        let host_h_max = (monitor_h - win_top - RAIL_SCREEN_MARGIN).max(rail_h);
-        let rail_size = match self
-            .rail_open
-            .as_deref()
-            .or(self.rail_last.as_deref())
-            .and_then(|id| snaps.iter().find(|s| s.provider_id == id))
-        {
-            Some(snapshot) => {
-                // The card hangs off the hovered row, so the host has to span
-                // *anchor + card*, not just the card. Sizing it to the card
-                // alone made the two chase each other: the window shrank to the
-                // card, the card re-fit into what was left below the anchor,
-                // and the list collapsed to a single row.
-                let card_h = ui::rail_card_height(snapshot);
-                let row = snaps
-                    .iter()
-                    .position(|s| s.provider_id == snapshot.provider_id)
-                    .unwrap_or(0);
-                let anchor = rail_row_cy(row, 0.0, rail_row_h);
-                // Three sizes, in order of preference. Hanging the card off
-                // its row is best; failing that the host shrinks to the screen
-                // and the card slides up inside it. What the host may never do
-                // is drop below the card itself — the card keeps its natural
-                // height whatever happens, so the window has to hold it.
-                let hang = anchor + ui::RAIL_CARD_GAP_Y + card_h + ui::RAIL_CARD_GAP_Y;
-                let slid = ui::card_host_min(snapshot, ui::RAIL_CARD_GAP_Y);
-                Vec2::new(
-                    RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W,
-                    rail_h.max(hang.min(host_h_max.max(slid))),
-                )
-            }
-            None => Vec2::new(RAIL_STRIP_W, rail_h),
+        let card_max_h = snaps
+            .iter()
+            .map(ui::rail_card_height)
+            .fold(0.0_f32, f32::max);
+        let band_h = rail_h.max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0);
+        let window_y = (self.notch_y).min(monitor_h - band_h).max(0.0);
+        self.headroom = (self.notch_y - window_y).max(0.0);
+        let rail_size = match self.rail_open.is_some() || self.rail_last.is_some() {
+            true => Vec2::new(RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W, band_h),
+            false => Vec2::new(RAIL_STRIP_W, band_h),
         };
+
+        // Hand the band to the compositor: once the window has mapped (KWin
+        // cannot see it before that, hence the early retries), and thereafter
+        // only when the band or the notch's position actually changes.
+        if rail {
+            if self.restore_sent < 30 {
+                self.restore_sent += 1;
+            }
+            let want = (window_y.round() as i32, band_h.round() as i32);
+            let settling = self.restore_sent < 30 && self.restore_sent.is_multiple_of(6);
+            // Screenshot runs must not touch the compositor: the script picks
+            // the first limitcue window it finds, which would be whatever
+            // instance the user already has open.
+            let capturing = std::env::var_os("LIMITCUE_UI_SHOT").is_some();
+            // Never re-place while a card is open: the notch would hold still
+            // (headroom absorbs the move) but the card under the pointer would
+            // not, and losing the hover mid-read is worse than a stale band.
+            let busy = self.rail_open.is_some() || self.rail_card_f > 0.0;
+            if !capturing && !busy && (settling || self.placed != Some(want)) {
+                self.placed = Some(want);
+                dock::request_geometry(want.0, want.1);
+            }
+        }
 
         let target = if rail {
             rail_size
@@ -1522,10 +1526,12 @@ impl App {
         // The strip hugs the docked edge: window-left for a left dock,
         // window-right for a right dock (the card then fills the remainder).
         let body_x = if on_left { ui_rect.left() } else { ui_rect.right() - RAIL_STRIP_W };
-        // Keep the visible notch at its normal fixed height even when the
-        // transparent host is taller to accommodate the adjacent card.
+        // The host is a band taller than the notch, positioned so that painting
+        // the notch `headroom` below the window's top lands it exactly where
+        // the user parked it. Everything above that offset is room for a card
+        // to open upward into.
         let body = Rect::from_min_size(
-            egui::pos2(body_x, ui_rect.top()),
+            egui::pos2(body_x, ui_rect.top() + self.headroom),
             Vec2::new(RAIL_STRIP_W, rail_h),
         );
         let r = RAIL_CORNER.min(body.height() / 2.0);
