@@ -228,10 +228,9 @@ struct App {
 
     /// Rail-card fade (0..1): springs toward 1 while hovered, toward 0 after.
     rail_card_f: f32,
-    /// Focus crossfade keeps provider gauges from blinking when switching rows.
-    rail_focus_id: Option<String>,
-    rail_focus_prev: Option<String>,
-    rail_focus_t: f32,
+    /// Per-provider focus weights keep rapid A → B → C switches smooth.
+    rail_focus_weights: HashMap<String, f32>,
+    /// Shared ambient dim weight, eased independently from provider focus.
     rail_dim_t: f32,
     /// The notch is the primary surface. LIMITCUE_FLOAT=1 restores the pill.
     notch_mode: bool,
@@ -275,9 +274,7 @@ impl App {
             rail_open,
             rail_last: None,
             rail_card_f: 0.0,
-            rail_focus_id: None,
-            rail_focus_prev: None,
-            rail_focus_t: 1.0,
+            rail_focus_weights: HashMap::new(),
             rail_dim_t: 0.0,
             notch_mode,
             started: Instant::now(),
@@ -1074,25 +1071,32 @@ impl App {
             (index < snaps.len() && within <= rail_row_h).then_some(index)
         });
         let any_row_hovered = pointer_row.is_some();
-        let next_focus = pointer_row.map(|i| snaps[i].provider_id.clone());
-        if next_focus != self.rail_focus_id {
-            self.rail_focus_prev = self.rail_focus_id.clone();
-            self.rail_focus_id = next_focus.clone();
-            self.rail_focus_t = 0.0;
+        let focused_id = pointer_row.map(|i| snaps[i].provider_id.as_str());
+        let dt_focus = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
+        let mut focus_animating = false;
+        for s in snaps {
+            let target = if Some(s.provider_id.as_str()) == focused_id { 1.0 } else { 0.0 };
+            let weight = self.rail_focus_weights.entry(s.provider_id.clone()).or_insert(0.0);
+            let step = 1.0 - (-dt_focus / 0.32).exp();
+            *weight += (target - *weight) * step;
+            if (*weight - target).abs() > 0.005 {
+                focus_animating = true;
+            }
         }
-        if self.rail_focus_t < 1.0 {
-            self.rail_focus_t = (self.rail_focus_t + (ctx.input(|i| i.stable_dt) / 0.32)).min(1.0);
+        self.rail_focus_weights.retain(|id, weight| {
+            snaps.iter().any(|s| s.provider_id == *id) || *weight > 0.005
+        });
+        if focus_animating {
             ctx.request_repaint();
         }
         let dim_target = if any_row_hovered { 1.0 } else { 0.0 };
-        self.rail_dim_t += (dim_target - self.rail_dim_t) * (1.0 - (-ctx.input(|i| i.stable_dt) / 0.48).exp());
+        let dim_step = 1.0 - (-dt_focus / 0.48).exp();
+        self.rail_dim_t += (dim_target - self.rail_dim_t) * dim_step;
         if (self.rail_dim_t - dim_target).abs() > 0.005 {
             ctx.request_repaint();
         }
-        // Smoothstep over 320ms: long enough to perceive as a glide, not a blink.
-        let focus_ease = self.rail_focus_t * self.rail_focus_t * (3.0 - 2.0 * self.rail_focus_t);
-        // Ambient dimming settles over roughly 480ms, slower than focus gain.
         let dim_ease = self.rail_dim_t * self.rail_dim_t * (3.0 - 2.0 * self.rail_dim_t);
+        let ambient_alpha = 1.0 - 0.68 * dim_ease;
         let mut next_y = body.top() + RAIL_PAD_TOP;
         for s in snaps.iter() {
             let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, rail_row_h));
@@ -1110,28 +1114,14 @@ impl App {
             if hovered {
                 hovered_id = Some(s.provider_id.clone());
             }
-            // A hovered gauge is the focus: keep its mark and arc bright while
-            // dimming the other gauges without painting a row background.
-            let is_new_focus = next_focus.as_deref() == Some(s.provider_id.as_str());
-            let is_old_focus = self.rail_focus_prev.as_deref() == Some(s.provider_id.as_str());
-            let focus_mix = if is_new_focus {
-                focus_ease
-            } else if is_old_focus {
-                1.0 - focus_ease
-            } else {
-                0.0
-            };
-            let ambient_alpha = if any_row_hovered {
-                1.0 - 0.68 * dim_ease
+            // A hovered gauge is the focus: each provider owns an independent
+            // weight, so rapid A -> B -> C switches never discard an in-flight
+            // fade from the previous provider.
+            let focus_mix = self.rail_focus_weights.get(&s.provider_id).copied().unwrap_or(0.0);
+            let gauge_alpha = if any_row_hovered {
+                ambient_alpha + (1.0 - ambient_alpha) * focus_mix
             } else {
                 1.0
-            };
-            let gauge_alpha = if is_new_focus {
-                ambient_alpha + (1.0 - ambient_alpha) * focus_mix
-            } else if is_old_focus {
-                ambient_alpha + (1.0 - ambient_alpha) * (1.0 - focus_mix)
-            } else {
-                ambient_alpha
             };
             let gauge_stroke = RAIL_RING_STROKE + 0.7 * focus_mix;
             // gauge: track ring + heat arc (share used) around the bare mark
