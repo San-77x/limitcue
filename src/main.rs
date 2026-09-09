@@ -862,16 +862,8 @@ impl App {
                 if w::pill_button(ui, "Add", true, id_ok, pal).clicked() && id_ok {
                     self.cfg_next.provider.push(config::ProviderConfig {
                         id: self.new_provider_id.trim().to_string(),
-                        name: String::new(),
-                        url: None,
-                        auth_header: None,
-                        key_env: None,
-                        api_key: None,
-                        base_url: None,
-                        windows: vec![],
                         enabled: Some(true),
-                        billing: false,
-                        priority: None,
+                        ..Default::default()
                     });
                     self.new_provider_id.clear();
                     dirty = true;

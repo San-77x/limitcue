@@ -2,23 +2,68 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// One quota window mapped out of a provider's JSON response.
+///
+/// Real APIs report quota in every shape there is, so rather than demanding a
+/// ready-made percentage the mapping accepts whichever pair of values the
+/// endpoint actually returns and derives the rest:
+///
+/// | endpoint gives            | set                                        |
+/// |---------------------------|--------------------------------------------|
+/// | a percentage 0-100        | `remaining_path`                           |
+/// | a fraction 0-1            | `remaining_fraction_path`                  |
+/// | "12 of 30 left"           | `remaining_count_path` + `total_count_path`|
+/// | "18 of 30 used"           | `used_count_path` + `total_count_path`     |
+/// | a balance with no ceiling | `remaining_count_path` + `total_const`     |
+///
+/// Numbers may arrive as JSON numbers or as strings; timestamps as unix
+/// seconds, unix milliseconds, or RFC3339.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WindowConfig {
     pub label: String,
+    /// Percentage remaining, 0-100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remaining_path: Option<String>,
+    /// Fraction remaining, 0-1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_fraction_path: Option<String>,
+    /// Absolute units left, e.g. requests or dollars.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_count_path: Option<String>,
+    /// Absolute units spent — the inverse of `remaining_count_path`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_count_path: Option<String>,
+    /// The ceiling those absolute units are measured against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_count_path: Option<String>,
+    /// A ceiling the endpoint does not report — a plan size you know yourself.
+    /// This is what turns a bare balance into a gauge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_const: Option<f64>,
+    /// Unix seconds (or millis, or RFC3339) when the window refills.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resets_at_path: Option<String>,
+    /// Seconds from now until it refills, for APIs that report a countdown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_in_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProviderConfig {
     pub id: String,
     #[serde(default)]
     pub name: String,
     pub url: Option<String>,
     pub auth_header: Option<String>,
+    /// Extra request headers, `Name: value`, with `{key}` substituted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub headers: Vec<String>,
     pub key_env: Option<String>,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+    /// Where to send someone to fetch the key. Set by the provider catalogue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_hint: Option<String>,
     #[serde(default)]
     pub windows: Vec<WindowConfig>,
     #[serde(default)]
