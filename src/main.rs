@@ -173,8 +173,6 @@ const RAIL_ORB: f32 = 20.0; // compact settings orb diameter
 const RAIL_PAD_TOP: f32 = 10.0; // breathing room above the first cell
 /// Gauge ring stroke width in a rail cell.
 const RAIL_RING_STROKE: f32 = 2.6;
-/// Card tail width (base at the notch edge, tip on the card).
-const RAIL_TAIL_W: f32 = 12.0;
 
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
@@ -608,9 +606,8 @@ fn rail_row_cy(i: usize, body_top: f32, row_h: f32) -> f32 {
     body_top + RAIL_PAD_TOP + (i as f32 + 0.5) * row_h + i as f32 * RAIL_ROW_GAP
 }
 
-/// The usage card's rect for provider `id`: vertically centered on that
-/// provider's own cell (clamped into the window), beside the notch. Single
-/// source of truth for drawing AND for the hover keep-zone.
+/// Minimal panel layout for provider `id`, placed beside the notch with no
+/// tail. This is the single source of truth for painting and hover hit-testing.
 fn rail_card_layout(
     id: &str,
     snaps: &[Snapshot],
@@ -1248,9 +1245,7 @@ impl App {
                 return;
             };
             let card_rect = card_layout.rect;
-            // The card paints into its own rect, but the tail must cross the
-            // gap between card and strip — draw through the ui painter so the
-            // tip isn't clipped at the card boundary.
+            // Paint the panel directly in its exact hover rectangle.
             let card_p = ui.painter();
             // Slide the card out from the notch while it fades in; reverse on exit.
             let slide = (1.0 - a) * 10.0;
@@ -1261,39 +1256,13 @@ impl App {
             };
             let fill = pal.rail_deep.linear_multiply(a);
             card_p.rect_filled(card_rect, 16.0_f32, fill);
-            // tail triangle from the card edge toward the hovered cell
-            let tail_base_x = if on_left { card_rect.left() } else { card_rect.right() };
-            let tip_x = if on_left {
-                card_rect.left() - RAIL_TAIL_W
-            } else {
-                card_rect.right() + RAIL_TAIL_W
-            };
-            // The tail always points at the card provider's own cell.
-            let row_cy = snaps
-                .iter()
-                .position(|p| p.provider_id == id)
-                .map(|i| rail_row_cy(i, body.top(), rail_row_h))
-                .unwrap_or_else(|| card_rect.center().y);
-            let tw = 9.0; // half the tail's vertical extent
-            // clamp order matters when the card is shorter than the margins
-            let (lo, hi) = (card_rect.top() + 24.0, card_rect.bottom() - 24.0);
-            let cy = if lo <= hi {
-                row_cy.clamp(lo, hi)
-            } else {
-                card_rect.center().y
-            };
-            let tip = egui::pos2(tip_x, cy);
-            let base_hi = egui::pos2(tail_base_x, cy - tw);
-            let base_lo = egui::pos2(tail_base_x, cy + tw);
-            card_p.add(egui::Shape::convex_polygon(
-                vec![base_hi, base_lo, tip],
-                fill,
-                egui::Stroke::NONE,
-            ));
-            // hairline on the slanted edges only (the base hides inside the card)
-            let hair = Color32::from_white_alpha(14).linear_multiply(a);
-            card_p.add(egui::Shape::line(vec![base_hi, tip], egui::Stroke::new(1.0_f32, hair)));
-            card_p.add(egui::Shape::line(vec![base_lo, tip], egui::Stroke::new(1.0_f32, hair)));
+            card_p.rect_stroke(
+                card_rect,
+                16.0_f32,
+                egui::Stroke::new(1.0_f32, Color32::from_white_alpha(18).linear_multiply(a)),
+            );
+            // Minimal panel: no speech-bubble tail or pointer-facing arrow.
+            // The rounded card floats beside the notch with its own shadow.
             // content (scaled presence via alpha)
             let content_ui = &mut ui.new_child(
                 egui::UiBuilder::new().max_rect(card_rect).layout(egui::Layout::top_down(egui::Align::Min)),

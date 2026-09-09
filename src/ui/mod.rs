@@ -114,11 +114,9 @@ pub fn draw_chip(
     );
 }
 
-/// Usage card shown beside the side-rail strip when a provider row is
-/// hovered: bare white mark + "<Provider> Usage" on top, then one block per
-/// window — label (left) + human reset copy (right), a 6px heat bar showing
-/// the share used, and "N% Used" underneath, hairline-separated. The tail
-/// triangle is drawn by the caller (it needs the hovered row's offset).
+/// Minimal glass usage panel shown beside the side rail: provider summary,
+/// scrollable quota rows, and an updated footer. It deliberately has no tail
+/// or pointer-facing arrow.
 #[allow(clippy::too_many_arguments)]
 pub fn rail_card(
     ui: &mut egui::Ui,
