@@ -1051,8 +1051,22 @@ impl App {
         // ---- ring cells ---------------------------------------------------
         let cell_w = RAIL_STRIP_W;
         let mut hovered_id: Option<String> = None;
+        let pointer_row = pointer.and_then(|pt| {
+            if pt.x < body.left() || pt.x > body.right() {
+                return None;
+            }
+            let y = pt.y - body.top() - RAIL_PAD_TOP;
+            if y < 0.0 {
+                return None;
+            }
+            let stride = rail_row_h + RAIL_ROW_GAP;
+            let index = (y / stride).floor() as usize;
+            let within = y - index as f32 * stride;
+            (index < snaps.len() && within <= rail_row_h).then_some(index)
+        });
+        let any_row_hovered = pointer_row.is_some();
         let mut next_y = body.top() + RAIL_PAD_TOP;
-        for s in snaps {
+        for (row_index, s) in snaps.iter().enumerate() {
             let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, rail_row_h));
             next_y = row_rect.bottom() + RAIL_ROW_GAP;
             let pct = self.render_pct(s);
@@ -1070,14 +1084,9 @@ impl App {
             }
             // A hovered gauge is the focus: keep its mark and arc bright while
             // dimming the other gauges without painting a row background.
-            let any_row_hovered = pointer.is_some_and(|pt| {
-                pt.y >= body.top() + RAIL_PAD_TOP
-                    && pt.y < next_y - RAIL_ROW_GAP
-                    && pt.x >= body.left()
-                    && pt.x <= body.right()
-            });
-            let gauge_alpha = if any_row_hovered && !hovered { 0.32 } else { 1.0 };
-            let gauge_stroke = if hovered { RAIL_RING_STROKE + 0.7 } else { RAIL_RING_STROKE };
+            let focused = pointer_row == Some(row_index);
+            let gauge_alpha = if any_row_hovered && !focused { 0.32 } else { 1.0 };
+            let gauge_stroke = if focused { RAIL_RING_STROKE + 0.7 } else { RAIL_RING_STROKE };
             // gauge: track ring + heat arc (share used) around the bare mark
             let used01 = pct.map(|v| 1.0 - (v / 100.0) as f32).unwrap_or(0.0);
             let heat = if ok { ui::theme::heat(used01, &pal) } else { ring_col };
@@ -1131,7 +1140,7 @@ impl App {
         ui.painter().circle_filled(
             orb_rect.center(),
             RAIL_ORB / 2.0,
-            if orb_hover { ui::theme::mix(pal.rail_deep, Color32::WHITE, 0.12) } else { pal.rail_deep },
+            pal.rail_deep,
         );
         // Neutral three-dot menu mark: this control is navigation/settings,
         // not another quota gauge. The dots brighten together on hover.
@@ -1152,7 +1161,7 @@ impl App {
         {
             ctx.send_viewport_cmd(ViewportCommand::StartDrag);
         }
-        orb.on_hover_text("settings · drag the notch to move it");
+        let _ = orb;
 
         // ---- hover state machine ------------------------------------------
         // The card is a real hover target, not just painted pixels. This is
