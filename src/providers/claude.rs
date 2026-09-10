@@ -70,8 +70,8 @@ fn parse_timestamp(s: &str) -> Option<u64> {
 /// Name a window after the key it arrived under.
 ///
 /// `five_hour` and `seven_day` are the plan-wide windows; anything
-/// `seven_day_*` is that model's own weekly allowance, so `seven_day_fable`
-/// reads "weekly fable". Keys we have never seen are prettified rather than
+/// `seven_day_*` is a weekly allowance of its own, so `seven_day_cowork`
+/// reads "weekly cowork". Keys we have never seen are prettified rather than
 /// hidden — a quota nobody has taught this app about is still the user's
 /// quota.
 fn label_for(key: &str) -> String {
@@ -188,8 +188,9 @@ mod tests {
             },
             "seven_day_opus": null,
             "seven_day_sonnet": null,
-            // A per-model weekly the app has never been told about.
-            "seven_day_fable": {
+            // A window the hardcoded list never included, taken from a real
+            // response rather than imagined.
+            "seven_day_cowork": {
                 "utilization": 12.0,
                 "resets_at": "2026-09-12T01:59:59.970876+00:00",
                 "limit_dollars": null, "used_dollars": null,
@@ -225,18 +226,17 @@ mod tests {
         // most of them null on any given plan.
         let r = parse(&body());
         let labels: Vec<&str> = windows(&r).iter().map(|w| w.label.as_str()).collect();
-        assert_eq!(labels, ["session", "weekly", "weekly fable"]);
+        assert_eq!(labels, ["session", "weekly", "weekly cowork"]);
     }
 
     #[test]
-    fn a_per_model_window_appears_without_the_app_knowing_its_name() {
+    fn a_window_outside_the_old_hardcoded_four_still_appears() {
         // The endpoint enumerates a slot per window kind and which ones an
-        // account has depends on its plan. Listing them in code meant a new
-        // one — a Fable weekly, say — stayed invisible until somebody edited
-        // Rust. Every window in the response is read now.
+        // account has depends on its plan. Listing four of them in code meant
+        // the rest stayed invisible until somebody edited Rust.
         let r = parse(&body());
-        let fable = windows(&r).iter().find(|w| w.label == "weekly fable").expect("fable window");
-        assert_eq!(fable.remaining_percent, Some(88.0));
+        let w = windows(&r).iter().find(|w| w.label == "weekly cowork").expect("cowork window");
+        assert_eq!(w.remaining_percent, Some(88.0));
     }
 
     #[test]
