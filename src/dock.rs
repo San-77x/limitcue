@@ -242,6 +242,88 @@ impl DockIface {
     }
 }
 
+/// The compositor integration this build expects, kept in the binary so an
+/// installed copy can be brought up to date.
+const INTEGRATION_JS: &str =
+    include_str!("../misc/kwin/limitcue-integrate/contents/code/main.js");
+/// Must match `LC_SCRIPT_VERSION` in that file.
+const INTEGRATION_VERSION: u32 = 3;
+
+fn installed_integration_version(src: &str) -> u32 {
+    src.split("LC_SCRIPT_VERSION")
+        .nth(1)
+        .and_then(|rest| rest.split(';').next())
+        .and_then(|rest| rest.trim_start_matches([' ', '=']).trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Bring an already-installed integration script up to date.
+///
+/// Only ever *updates* — if the script is not installed, nothing is written,
+/// because whether to hand KWin a script is the user's call and not something
+/// to decide for them by starting the app.
+///
+/// Reloading is the fiddly part. `org.kde.KWin.reconfigure` re-reads settings
+/// but not code: a script KWin has already loaded keeps running its old source
+/// until it is explicitly unloaded, so replacing the file otherwise does
+/// nothing until the next login. That is how a fix for this exact area shipped
+/// and appeared to change nothing.
+pub fn refresh_integration() {
+    let Some(dir) = dirs::data_dir() else { return };
+    let path = dir.join("kwin/scripts/limitcue-integrate/contents/code/main.js");
+    let Ok(existing) = std::fs::read_to_string(&path) else { return };
+    let have = installed_integration_version(&existing);
+    if have >= INTEGRATION_VERSION {
+        return;
+    }
+    if std::fs::write(&path, INTEGRATION_JS).is_err() {
+        eprintln!("limitcue: could not update the KWin integration at {}", path.display());
+        return;
+    }
+    let reloaded = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let conn = zbus::blocking::Connection::session()?;
+        let scripting: zbus::blocking::Proxy<'_> =
+            zbus::blocking::Proxy::new(&conn, "org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting")?;
+        scripting.call::<_, _, bool>("unloadScript", &("limitcue-integrate"))?;
+        scripting.call::<_, _, i32>(
+            "loadScript",
+            &(path.to_string_lossy().to_string(), "limitcue-integrate"),
+        )?;
+        scripting.call::<_, _, ()>("start", &())?;
+        Ok(())
+    })();
+    match reloaded {
+        Ok(()) => eprintln!(
+            "limitcue: updated the KWin integration from v{have} to v{INTEGRATION_VERSION}"
+        ),
+        Err(_) => eprintln!(
+            "limitcue: KWin integration updated on disk to v{INTEGRATION_VERSION}; log out and \
+             back in, or run scripts/install-kwin.sh, to load it"
+        ),
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_version_out_of_the_script() {
+        assert_eq!(installed_integration_version("const LC_SCRIPT_VERSION = 3;"), 3);
+        assert_eq!(installed_integration_version("const LC_SCRIPT_VERSION=12;\nmore"), 12);
+    }
+
+    #[test]
+    fn a_script_without_a_version_marker_counts_as_ancient() {
+        assert_eq!(installed_integration_version("const APP = \"limitcue\";"), 0);
+    }
+
+    #[test]
+    fn the_shipped_script_matches_the_constant() {
+        assert_eq!(installed_integration_version(INTEGRATION_JS), INTEGRATION_VERSION);
+    }
+}
+
 /// Ask KWin (via its Scripting D-Bus interface) to place our window.
 ///
 /// `y` and `height` are baked into a generated one-shot script; `x` is left to

@@ -225,6 +225,16 @@ Install it with:
 scripts/install-kwin.sh
 ```
 
+On a multi-monitor desktop the notch belongs to the screen you put it on. A
+hover card opens away from the bezel it is docked against — right of a
+left-docked notch, left of a right-docked one — and stays on that monitor
+rather than spilling onto the neighbour.
+
+That last part needs the KWin script, and it needs a *current* one: the app
+updates an installed copy on start and reloads it, because `reconfigure` only
+re-reads settings and a script KWin has already loaded keeps running its old
+source until the next login.
+
 The app itself works everywhere (GNOME, X11, other compositors) — without
 KWin you just don't get snap-to-edge and position persistence, and
 always-on-top falls back to whatever the compositor allows. `--once` mode

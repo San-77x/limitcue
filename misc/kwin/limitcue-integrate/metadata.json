@@ -3,7 +3,7 @@
         "Id": "limitcue-integrate",
         "Name": "LimitCue Integration",
         "Description": "Keep the LimitCue pill above all windows and dock it flush to screen edges with persisted position",
-        "Version": "1.0",
+        "Version": "3.0",
         "EnabledByDefault": true,
         "ServiceTypes": ["KWin/Script"]
     },

@@ -2731,6 +2731,9 @@ fn main() -> eframe::Result<()> {
     // D-Bus service must exist before the window so the KWin dock script can
     // restore the position at window-add time. Bus-less environments just
     // lose persistence, nothing else.
+    // Bring an outdated compositor integration up to date before opening the
+    // window, since the docking behaviour depends on which version is running.
+    dock::refresh_integration();
     let dock = dock::shared();
     let usage: service::SharedUsage = Default::default();
     if let Err(e) = service::start_dbus(dock.clone(), usage.clone()) {

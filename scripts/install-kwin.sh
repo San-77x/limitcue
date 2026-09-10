@@ -16,10 +16,23 @@ kwriteconfig6 --file kwinrc --group Plugins --key limitcue-integrateEnabled --ty
 kwriteconfig6 --file kwinrc --group Plugins --key limitcue-pinEnabled --type bool false 2>/dev/null || true
 rm -rf "$HOME/.local/share/kwin/scripts/limitcue-pin"
 
-# Reload KWin configuration so the script starts immediately.
+# Reload KWin configuration so the script is enabled...
 if command -v gdbus >/dev/null; then
     gdbus call --session --dest org.kde.KWin --object-path /KWin \
         --method org.kde.KWin.reconfigure 2>/dev/null || true
+
+    # ...and force the code itself to be re-read. `reconfigure` only re-reads
+    # settings: a script KWin has already loaded keeps running its old source
+    # until it is unloaded, so updating this file otherwise does nothing until
+    # the next login. That is worth knowing — an "installed" fix that silently
+    # does not apply is worse than one that fails loudly.
+    gdbus call --session --dest org.kde.KWin --object-path /Scripting \
+        --method org.kde.kwin.Scripting.unloadScript "limitcue-integrate" >/dev/null 2>&1 || true
+    gdbus call --session --dest org.kde.KWin --object-path /Scripting \
+        --method org.kde.kwin.Scripting.loadScript \
+        "$DST/contents/code/main.js" "limitcue-integrate" >/dev/null 2>&1 || true
+    gdbus call --session --dest org.kde.KWin --object-path /Scripting \
+        --method org.kde.kwin.Scripting.start >/dev/null 2>&1 || true
 fi
 
 echo "LimitCue KWin integration installed: $DST"
