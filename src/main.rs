@@ -152,6 +152,10 @@ const RAIL_PULSE_ANGLE: f32 = -std::f32::consts::PI * 52.0 / 180.0;
 /// notch should draw less attention, not turn into a window onto the desktop.
 const QUIET_CONTENT_ALPHA: f32 = 0.62;
 
+/// Longest a struggling provider is made to wait between attempts. It doubles
+/// per consecutive failure up to this, and resets the moment one succeeds.
+const BACKOFF_CEILING_SECS: u64 = 900;
+
 /// How close a provider is to running out; unreadable ones sort last so a
 /// broken adapter never claims the top of the notch.
 fn urgency(s: &Snapshot) -> f64 {
@@ -2749,25 +2753,42 @@ fn spawn_poller(
     usage: service::SharedUsage,
 ) {
     let providers = build_all(&cfg);
-    let poll_secs = cfg.poll_interval_secs;
+    let poll_secs = cfg.poll_interval_secs.max(1);
     thread::spawn(move || {
-        let mut backoff = poll_secs;
-        let mut failed = false;
         // Alerts live here rather than in the UI so they still arrive when the
         // notch is minimised, on another desktop, or simply not being looked at.
         let mut notifier = notify::Notifier::new();
+        // Backoff is per provider. It used to be one counter for the whole
+        // loop, so a single failing endpoint doubled the wait for everything —
+        // one stale API key and a 30-second interval quietly became fifteen
+        // minutes for every provider. A provider that is struggling should
+        // slow down on its own.
+        let mut fails: HashMap<String, u32> = HashMap::new();
+        let mut due: HashMap<String, Instant> = HashMap::new();
+        let mut last: HashMap<String, Snapshot> = HashMap::new();
         loop {
-            let mut out = Vec::new();
+            let now = Instant::now();
             for p in &providers {
                 if !p.is_present() {
                     continue;
                 }
-                let s = p.snapshot();
-                if matches!(s.reading, Reading::Error(_) | Reading::NeedsAuth(_)) {
-                    failed = true;
+                let id = p.id();
+                if due.get(&id).is_some_and(|t| now < *t) {
+                    continue; // still backing off; its previous reading stands
                 }
-                out.push(s);
+                let snap = p.snapshot();
+                let struggling =
+                    matches!(snap.reading, Reading::Error(_) | Reading::NeedsAuth(_));
+                let streak = fails.entry(id.clone()).or_insert(0);
+                *streak = if struggling { (*streak + 1).min(5) } else { 0 };
+                let wait = poll_secs.saturating_mul(1 << *streak).min(BACKOFF_CEILING_SECS);
+                due.insert(id.clone(), now + std::time::Duration::from_secs(wait));
+                last.insert(id, snap);
             }
+            // Always publish the full set: a provider skipped for backoff keeps
+            // its last reading rather than vanishing from the JSON and the notch.
+            let out: Vec<Snapshot> =
+                providers.iter().filter_map(|p| last.get(&p.id()).cloned()).collect();
             notifier.review(&out, &cfg);
             // Publish before handing to the UI: a reader asking over D-Bus or
             // the socket should not have to wait for a repaint.
@@ -2775,11 +2796,23 @@ fn spawn_poller(
             if tx_snap.send(out).is_err() {
                 break;
             }
-            backoff = if failed { (backoff * 2).min(900) } else { poll_secs };
-            failed = false;
-            match rx_tick.recv_timeout(std::time::Duration::from_secs(backoff)) {
-                Ok(Ctl::Refresh) => continue,
-                Err(_) => break, // channel replaced (config change) or app quit
+            // A timeout here is the ordinary periodic poll — it is what the
+            // wait is *for*. Treating every `Err` as "the app has gone" made
+            // the thread exit after its first reading, so the notch showed
+            // whatever it fetched at startup for the rest of the session and
+            // the poll interval did nothing at all.
+            match rx_tick.recv_timeout(std::time::Duration::from_secs(poll_secs)) {
+                Ok(Ctl::Refresh) => {
+                    // An explicit refresh clears every backoff: the user is
+                    // asking now, and "come back in eight minutes" is not an
+                    // answer to that.
+                    due.clear();
+                    fails.clear();
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                // The sender is gone: the app is quitting, or a config change
+                // has replaced this poller with a new one.
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
     });
