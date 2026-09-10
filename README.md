@@ -322,6 +322,11 @@ than stock widgets. Three tabs:
   (Claude, Codex, Kimi) are toggles, and each shows which credential file it
   borrows from — nothing is read that isn't named on screen.
 
+  Two logins to the same provider is just two entries: *Claude — another
+  account* asks only which CLI config directory that account lives in
+  (`~/.claude-work` alongside `~/.claude`), and gives it its own row and its
+  own gauge.
+
   Not in the catalogue? *Anything with a JSON endpoint* gives you the same
   editor with the field mapping exposed: point it at a URL, say which fields
   hold the numbers, and it derives the rest. See `config.toml` for the full

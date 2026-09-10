@@ -64,6 +64,18 @@ pub struct ProviderConfig {
     /// Where to send someone to fetch the key. Set by the provider catalogue.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_hint: Option<String>,
+    /// Which compiled-in adapter to run: "claude", "codex", "kimi",
+    /// "minimax", "billing", or "json". Absent means "guess from the id",
+    /// which is what every config written before this key did.
+    ///
+    /// Naming it explicitly is what lets one machine track two logins to the
+    /// same provider: two entries, different ids, same adapter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<String>,
+    /// Read this login's credentials from here instead of the default
+    /// location, e.g. "~/.claude-work" alongside "~/.claude".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credentials_dir: Option<String>,
     #[serde(default)]
     pub windows: Vec<WindowConfig>,
     #[serde(default)]

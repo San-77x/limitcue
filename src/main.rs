@@ -198,6 +198,32 @@ fn cfg_eq(a: &Config, b: &Config) -> bool {
     toml::to_string(a).ok() == toml::to_string(b).ok()
 }
 
+/// What an editor has to ask for, decided by the entry itself rather than by
+/// looking its id up in the catalogue. Ids are free-form — a second Claude
+/// login is `claude-work` — so the config is the only reliable source.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EditorShape {
+    /// A CLI login: only which config directory it lives in.
+    Cli,
+    /// A compiled-in adapter that needs a base URL and a key.
+    Keyed,
+    /// A billing gateway.
+    Billing,
+    /// A JSON endpoint with its own field mapping.
+    Json,
+}
+
+fn editor_shape(p: &config::ProviderConfig) -> EditorShape {
+    match p.adapter.as_deref() {
+        Some("claude" | "codex" | "kimi") => EditorShape::Cli,
+        Some("minimax") => EditorShape::Keyed,
+        Some("billing") => EditorShape::Billing,
+        _ if p.billing => EditorShape::Billing,
+        _ if p.id == "minimax" => EditorShape::Keyed,
+        _ => EditorShape::Json,
+    }
+}
+
 /// Remaining width, never negative — egui panics on a negative child size.
 fn avail(ui: &egui::Ui) -> f32 {
     ui.available_width().max(1.0)
@@ -1108,10 +1134,7 @@ impl App {
     fn settings_editor(&mut self, ui: &mut egui::Ui, pal: &Palette, i: usize) -> bool {
         use ui::widgets as w;
         let mut dirty = false;
-        let preset_id = self.cfg_next.provider[i].id.split('-').next().unwrap_or("").to_string();
-        let preset = providers::catalog::preset(&preset_id);
-        let source = preset.map(|p| p.source).unwrap_or(providers::catalog::Source::Json);
-        let is_billing = self.cfg_next.provider[i].billing;
+        let shape = editor_shape(&self.cfg_next.provider[i]);
 
         ui.horizontal(|ui| {
             if w::pill_button(ui, "‹  Back", false, true, pal).clicked() {
@@ -1144,10 +1167,30 @@ impl App {
         });
 
         ui.add_space(16.0);
-        section(ui, "Endpoint", pal);
+        section(ui, if shape == EditorShape::Cli { "Credentials" } else { "Endpoint" }, pal);
         card(ui, pal, |ui| {
             ui.add_space(6.0);
-            if is_billing || source == providers::catalog::Source::Keyed {
+            if shape == EditorShape::Cli {
+                // A CLI-based login has no endpoint to configure: the only
+                // question is which config directory this account lives in.
+                let mut dir = self.cfg_next.provider[i].credentials_dir.clone().unwrap_or_default();
+                if w::field(ui, "CLI config directory", "~/.claude-work", &mut dir, pal) {
+                    self.cfg_next.provider[i].credentials_dir =
+                        (!dir.trim().is_empty()).then_some(dir);
+                    dirty = true;
+                }
+                let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 28.0), Sense::hover());
+                ui.painter().galley(
+                    egui::pos2(r.left() + 2.0, r.top()),
+                    ui.painter().layout(
+                        "Sign in with the vendor's CLI pointed at this directory; LimitCue only reads what it wrote.".to_owned(),
+                        theme::sans(10.0),
+                        pal.faint,
+                        r.width() - 4.0,
+                    ),
+                    pal.faint,
+                );
+            } else if shape == EditorShape::Billing || shape == EditorShape::Keyed {
                 let mut base = self.cfg_next.provider[i].base_url.clone().unwrap_or_default();
                 if w::field(ui, "Base URL", "https://gateway.example.com/v1", &mut base, pal) {
                     self.cfg_next.provider[i].base_url = (!base.trim().is_empty()).then_some(base);
@@ -1167,6 +1210,7 @@ impl App {
             }
         });
 
+        if shape != EditorShape::Cli {
         ui.add_space(16.0);
         section(ui, "Key", pal);
         card(ui, pal, |ui| {
@@ -1197,7 +1241,8 @@ impl App {
             );
         });
 
-        if !is_billing && source != providers::catalog::Source::Keyed {
+        }
+        if shape == EditorShape::Json {
             ui.add_space(16.0);
             dirty |= self.settings_windows(ui, pal, i);
         }

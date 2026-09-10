@@ -19,6 +19,9 @@ pub enum Source {
     Keyed,
     /// A New-API style billing gateway: base URL plus key.
     Billing,
+    /// A compiled-in adapter reading a CLI config directory the user names,
+    /// which is how a second login to the same provider is tracked.
+    CliProfile,
     /// A JSON endpoint mapped by dot-paths.
     Json,
 }
@@ -45,6 +48,10 @@ pub struct Preset {
     pub key_env: &'static str,
     pub base_url: &'static str,
     pub url: &'static str,
+    /// Compiled-in adapter to run, when it is not implied by the id.
+    pub adapter: &'static str,
+    /// Default CLI config directory for a `CliProfile` entry.
+    pub credentials_dir: &'static str,
     pub auth_header: &'static str,
     pub windows: &'static [PresetWindow],
 }
@@ -66,6 +73,9 @@ impl Preset {
             key_hint: (!self.key_hint.is_empty()).then(|| self.key_hint.into()),
             key_env: (!self.key_env.is_empty()).then(|| self.key_env.into()),
             billing: self.source == Source::Billing,
+            adapter: (!self.adapter.is_empty()).then(|| self.adapter.into()),
+            credentials_dir: (!self.credentials_dir.is_empty())
+                .then(|| self.credentials_dir.into()),
             enabled: Some(true),
             windows: self
                 .windows
@@ -102,6 +112,8 @@ pub const PRESETS: &[Preset] = &[
         key_env: "",
         base_url: "",
         url: "",
+        adapter: "",
+        credentials_dir: "",
         auth_header: "",
         windows: NONE_W,
     },
@@ -115,6 +127,8 @@ pub const PRESETS: &[Preset] = &[
         key_env: "",
         base_url: "",
         url: "",
+        adapter: "",
+        credentials_dir: "",
         auth_header: "",
         windows: NONE_W,
     },
@@ -128,6 +142,8 @@ pub const PRESETS: &[Preset] = &[
         key_env: "",
         base_url: "",
         url: "",
+        adapter: "",
+        credentials_dir: "",
         auth_header: "",
         windows: NONE_W,
     },
@@ -141,6 +157,8 @@ pub const PRESETS: &[Preset] = &[
         key_env: "MINIMAX_API_KEY",
         base_url: "https://api.minimax.io",
         url: "",
+        adapter: "",
+        credentials_dir: "",
         auth_header: "",
         windows: NONE_W,
     },
@@ -154,6 +172,8 @@ pub const PRESETS: &[Preset] = &[
         key_env: "OPENROUTER_API_KEY",
         base_url: "",
         url: "https://openrouter.ai/api/v1/auth/key",
+        adapter: "",
+        credentials_dir: "",
         auth_header: "Authorization: Bearer {key}",
         windows: &[PresetWindow {
             label: "credits",
@@ -173,6 +193,8 @@ pub const PRESETS: &[Preset] = &[
         key_env: "AGENTROUTER_API_KEY",
         base_url: "https://agentrouter.org/v1",
         url: "",
+        adapter: "",
+        credentials_dir: "",
         auth_header: "",
         windows: NONE_W,
     },
@@ -186,7 +208,39 @@ pub const PRESETS: &[Preset] = &[
         key_env: "",
         base_url: "",
         url: "",
+        adapter: "billing",
+        credentials_dir: "",
         auth_header: "",
+        windows: NONE_W,
+    },
+    Preset {
+        id: "claude-account",
+        name: "Claude — another account",
+        blurb: "A second login living in its own CLI config directory.",
+        source: Source::CliProfile,
+        fidelity: Fidelity::Official,
+        key_hint: "",
+        key_env: "",
+        base_url: "",
+        url: "",
+        auth_header: "",
+        adapter: "claude",
+        credentials_dir: "~/.claude-work",
+        windows: NONE_W,
+    },
+    Preset {
+        id: "codex-account",
+        name: "Codex — another account",
+        blurb: "A second Codex login from a different config directory.",
+        source: Source::CliProfile,
+        fidelity: Fidelity::Official,
+        key_hint: "",
+        key_env: "",
+        base_url: "",
+        url: "",
+        auth_header: "",
+        adapter: "codex",
+        credentials_dir: "~/.codex-work",
         windows: NONE_W,
     },
     Preset {
@@ -199,14 +253,12 @@ pub const PRESETS: &[Preset] = &[
         key_env: "",
         base_url: "",
         url: "",
+        adapter: "",
+        credentials_dir: "",
         auth_header: "Authorization: Bearer {key}",
         windows: NONE_W,
     },
 ];
-
-pub fn preset(id: &str) -> Option<&'static Preset> {
-    PRESETS.iter().find(|p| p.id == id)
-}
 
 /// Entries that are configured by toggling rather than by being added.
 pub fn built_ins() -> impl Iterator<Item = &'static Preset> {
@@ -218,7 +270,12 @@ pub fn addable(existing: &[ProviderConfig]) -> Vec<&'static Preset> {
     PRESETS
         .iter()
         .filter(|p| !p.is_built_in())
-        .filter(|p| p.id == "custom" || p.id == "gateway" || !existing.iter().any(|e| e.id == p.id))
+        .filter(|p| {
+            matches!(p.source, Source::CliProfile)
+                || p.id == "custom"
+                || p.id == "gateway"
+                || !existing.iter().any(|e| e.id == p.id)
+        })
         .collect()
 }
 

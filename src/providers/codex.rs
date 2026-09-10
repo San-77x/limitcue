@@ -1,22 +1,50 @@
 use super::{home, http_get_json, read_json_file, Provider};
 use crate::types::{Fidelity, Reading, Snapshot, Window, now_unix};
 
-pub struct Codex;
+/// One Codex login, read from a CLI config directory.
+pub struct Codex {
+    dir: std::path::PathBuf,
+    id: String,
+    name: String,
+}
+
+impl Default for Codex {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+impl Codex {
+    pub fn new(cfg: Option<&crate::config::ProviderConfig>) -> Self {
+        let dir = cfg
+            .and_then(|c| c.credentials_dir.clone())
+            .map(super::expand_home)
+            .unwrap_or_else(|| home().join(".codex"));
+        Self {
+            dir,
+            id: cfg.map(|c| c.id.clone()).unwrap_or_else(|| "codex".into()),
+            name: cfg
+                .filter(|c| !c.name.is_empty())
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| "ChatGPT / Codex".into()),
+        }
+    }
+}
 
 impl Provider for Codex {
-    fn id(&self) -> String { "codex".into() }
+    fn id(&self) -> String { self.id.clone() }
     fn fidelity(&self) -> Fidelity { Fidelity::Official }
-    fn is_present(&self) -> bool { home().join(".codex/auth.json").exists() }
+    fn is_present(&self) -> bool { self.dir.join("auth.json").exists() }
 
     fn snapshot(&self) -> Snapshot {
         let make = |reading| Snapshot {
-            provider_id: "codex".into(),
-            display_name: "ChatGPT / Codex".into(),
+            provider_id: self.id.clone(),
+            display_name: self.name.clone(),
             fidelity: self.fidelity(),
             reading,
             fetched_at: now_unix(),
         };
-        let Some(v) = read_json_file(&home().join(".codex/auth.json")) else {
+        let Some(v) = read_json_file(&self.dir.join("auth.json")) else {
             return make(Reading::NotConfigured);
         };
         let Some(token) = v.get("tokens").and_then(|t| t.get("access_token")).and_then(|s| s.as_str()) else {

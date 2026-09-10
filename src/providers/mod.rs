@@ -26,7 +26,7 @@ pub trait Provider: Send {
 /// Every adapter the config asks for, in display order: the compiled-in ones
 /// first, then user entries, with `priority` overriding file order.
 pub fn build_all(cfg: &Config) -> Vec<Box<dyn Provider>> {
-    let mut v: Vec<Box<dyn Provider>> = vec![Box::new(claude::Claude), Box::new(codex::Codex)];
+    let mut v: Vec<Box<dyn Provider>> = vec![Box::new(claude::Claude::default()), Box::new(codex::Codex::default())];
     for p in &cfg.provider {
         if p.enabled == Some(false) {
             continue;
@@ -58,14 +58,30 @@ pub fn build_all(cfg: &Config) -> Vec<Box<dyn Provider>> {
 /// the poll loop and the settings sheet's Test button can never disagree
 /// about what a given config actually does.
 pub fn adapter_for(cfg: &ProviderConfig) -> Box<dyn Provider> {
-    if cfg.billing {
-        Box::new(billing::Billing::new(cfg.clone()))
-    } else if cfg.id == "minimax" {
-        Box::new(minimax::MiniMax::new(cfg.clone()))
-    } else if cfg.id == "kimi" {
-        Box::new(kimi::Kimi::new(Some(cfg.clone())))
-    } else {
-        Box::new(custom::Custom::new(cfg.clone()))
+    // An explicit `adapter` wins; otherwise the id picks one, which is how
+    // every config written before that key behaves.
+    let kind = cfg.adapter.clone().unwrap_or_else(|| {
+        if cfg.billing {
+            "billing".into()
+        } else {
+            cfg.id.clone()
+        }
+    });
+    match kind.as_str() {
+        "billing" => Box::new(billing::Billing::new(cfg.clone())),
+        "claude" => Box::new(claude::Claude::new(Some(cfg))),
+        "codex" => Box::new(codex::Codex::new(Some(cfg))),
+        "kimi" => Box::new(kimi::Kimi::new(Some(cfg.clone()))),
+        "minimax" => Box::new(minimax::MiniMax::new(cfg.clone())),
+        _ => Box::new(custom::Custom::new(cfg.clone())),
+    }
+}
+
+/// Expand a leading `~` so config files can name a home-relative directory.
+pub fn expand_home(p: String) -> std::path::PathBuf {
+    match p.strip_prefix("~/") {
+        Some(rest) => home().join(rest),
+        None => std::path::PathBuf::from(p),
     }
 }
 
