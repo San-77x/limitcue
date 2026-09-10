@@ -156,6 +156,10 @@ const QUIET_CONTENT_ALPHA: f32 = 0.62;
 /// per consecutive failure up to this, and resets the moment one succeeds.
 const BACKOFF_CEILING_SECS: u64 = 900;
 
+/// Frame interval for the live-session pulse. The only thing in the notch that
+/// animates continuously, so it sets the app's idle cost while an agent runs.
+const PULSE_FRAME_MS: u64 = 160;
+
 /// How close a provider is to running out; unreadable ones sort last so a
 /// broken adapter never claims the top of the notch.
 fn urgency(s: &Snapshot) -> f64 {
@@ -2542,7 +2546,14 @@ impl App {
                     pal.accent,
                     gauge_alpha,
                 );
-                ctx.request_repaint_after(std::time::Duration::from_millis(80));
+                // A slow breathe needs far fewer frames than it was asking
+                // for. At a 2.2 s period this is still ~15 steps a cycle and
+                // looks identical, but it is the difference between repainting
+                // 12 times a second and 6 — for the whole time an agent is
+                // running, which for this app is most of the time.
+                ctx.request_repaint_after(std::time::Duration::from_millis(
+                    PULSE_FRAME_MS,
+                ));
             }
             // The label line is percentages-only now: with them switched off
             // the badge carries the status on its own.
