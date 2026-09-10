@@ -2251,6 +2251,32 @@ impl App {
         let dim_ease = self.rail_dim_t * self.rail_dim_t * (3.0 - 2.0 * self.rail_dim_t);
         let ambient_alpha = 1.0 - 0.68 * dim_ease;
         let mut next_y = body.top() + RAIL_PAD_TOP;
+        // ---- nothing configured yet ----------------------------------------
+        // A blank rail is not a state anyone can act on. One cell that says
+        // what to do, and opens the place to do it.
+        if snaps.is_empty() {
+            let cell = Rect::from_min_size(
+                egui::pos2(body.left(), next_y),
+                Vec2::new(RAIL_STRIP_W, rail_row_h),
+            );
+            let resp = ui.interact(cell, ui.id().with("rail-empty"), Sense::click());
+            let c = egui::pos2(cell.center().x, cell.center().y - 9.0);
+            let col = if resp.hovered() { Color32::WHITE } else { pal.muted };
+            ui.painter().circle_stroke(c, RAIL_RING_R, egui::Stroke::new(1.4_f32, pal.track));
+            let s = egui::Stroke::new(1.8_f32, col);
+            ui.painter().line_segment([egui::pos2(c.x - 5.0, c.y), egui::pos2(c.x + 5.0, c.y)], s);
+            ui.painter().line_segment([egui::pos2(c.x, c.y - 5.0), egui::pos2(c.x, c.y + 5.0)], s);
+            resp.clone().on_hover_text("Add a provider");
+            if resp.clicked() {
+                self.settings_open = true;
+                self.settings_tab = SettingsTab::Providers;
+                self.settings_view = SettingsView::Picker;
+            }
+            // The orb sits below whatever the cursor reached, so the
+            // placeholder has to move it just as a real row would.
+            next_y = cell.bottom() + RAIL_ROW_GAP;
+        }
+
         for s in snaps.iter() {
             let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, rail_row_h));
             next_y = row_rect.bottom() + RAIL_ROW_GAP;
