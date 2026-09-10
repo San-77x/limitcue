@@ -107,7 +107,8 @@ pub struct Config {
     /// Extra user-declared providers.
     #[serde(default)]
     pub provider: Vec<ProviderConfig>,
-    /// UI theme: midnight | paper | acid | prism | slate | neon. Retired
+    /// UI theme: midnight, paper, acid, prism, slate, neon, sakura, mecha,
+    /// pitch, arcade. Retired
     /// names (flux, ember, aurora, chrome, tokyo-night, catppuccin, gruvbox)
     /// still load, mapped to their nearest survivor.
     #[serde(default)]
@@ -243,7 +244,8 @@ impl Config {
 poll_interval_secs = 120
 hide_unconfigured = true
 # disabled = ["codex"]
-# theme = "midnight"             # midnight | paper | acid | prism | slate | neon
+# theme = "midnight"             # midnight paper acid prism slate neon
+#                                 # sakura mecha pitch arcade
 # max_visible_collapsed = 4      # providers on the pill before folding into "+N"
 # quiet_mode = false              # dim the gauges until you point at the notch
 # show_rail_percent = false       # show used percentages beneath rail gauges

@@ -59,7 +59,9 @@ pub struct Palette {
 /// restrained dark one. Every surface is themed — the notch body, the card
 /// glass, the ink the marks are drawn in — so these are different designs
 /// rather than one design with the accent swapped.
-pub const THEMES: &[&str] = &["midnight", "paper", "acid", "prism", "slate", "neon"];
+pub const THEMES: &[&str] = &[
+    "midnight", "paper", "acid", "prism", "slate", "neon", "sakura", "mecha", "pitch", "arcade",
+];
 
 /// Restrained near-black. The default, and the one that disappears into any
 /// desktop.
@@ -265,6 +267,137 @@ pub const NEON: Palette = Palette {
     glow: 1.0,
 };
 
+/// Cherry blossom. A pale pink field with plum ink — the second light theme,
+/// and the softest thing in the set.
+pub const SAKURA: Palette = Palette {
+    bg: Color32::from_rgb(0xFF, 0xF3, 0xF7),
+    border: Color32::from_rgb(0xEC, 0xC6, 0xD6),
+    card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    card_hover: Color32::from_rgb(0xFD, 0xE9, 0xF0),
+    text: Color32::from_rgb(0x3B, 0x11, 0x28),
+    muted: Color32::from_rgb(0x8A, 0x5A, 0x71),
+    faint: Color32::from_rgb(0xB4, 0x8C, 0x9E),
+    ok: Color32::from_rgb(0x0F, 0x7A, 0x5A),
+    warn: Color32::from_rgb(0xA8, 0x6A, 0x0A),
+    bad: Color32::from_rgb(0xC0, 0x1F, 0x57),
+    stale: Color32::from_rgb(0xB4, 0x8C, 0x9E),
+    track: Color32::from_rgb(0xF2, 0xD6, 0xE0),
+    accent: Color32::from_rgb(0xD1, 0x4C, 0x8A),
+    ink: Color32::from_rgb(0x3B, 0x11, 0x28),
+    rail_bg: Color32::from_rgba_premultiplied(168, 150, 157, 168),
+    rail_disc: Color32::from_rgb(0xF7, 0xDC, 0xE6),
+    rail_deep: Color32::from_rgba_premultiplied(174, 164, 167, 174),
+    hairline: Color32::from_rgba_premultiplied(7, 2, 5, 30),
+    sheen: Color32::from_rgba_premultiplied(44, 44, 44, 44),
+    control: Color32::from_rgb(0xFB, 0xE4, 0xEC),
+    control_hi: Color32::from_rgb(0xF5, 0xD2, 0xDF),
+    gauge: [
+        Color32::from_rgb(0x0F, 0x7A, 0x5A),
+        Color32::from_rgb(0xC0, 0x8A, 0x12),
+        Color32::from_rgb(0xD8, 0x5A, 0x2E),
+        Color32::from_rgb(0xC0, 0x1F, 0x57),
+    ],
+    glow: 0.0,
+};
+
+/// Hangar. Deep indigo steel with hazard markings — acid green and warning
+/// amber against a cockpit-dark field.
+pub const MECHA: Palette = Palette {
+    bg: Color32::from_rgb(0x0A, 0x0D, 0x18),
+    border: Color32::from_rgb(0x27, 0x2F, 0x4A),
+    card: Color32::from_rgb(0x11, 0x16, 0x26),
+    card_hover: Color32::from_rgb(0x1A, 0x21, 0x36),
+    text: Color32::from_rgb(0xE6, 0xEE, 0xFF),
+    muted: Color32::from_rgb(0x94, 0xA6, 0xC6),
+    faint: Color32::from_rgb(0x5C, 0x6C, 0x8C),
+    ok: Color32::from_rgb(0x8F, 0xFF, 0x00),
+    warn: Color32::from_rgb(0xFF, 0xD4, 0x00),
+    bad: Color32::from_rgb(0xFF, 0x2E, 0x2E),
+    stale: Color32::from_rgb(0x5C, 0x6C, 0x8C),
+    track: Color32::from_rgb(0x1E, 0x26, 0x3E),
+    accent: Color32::from_rgb(0x7B, 0x5C, 0xFF),
+    ink: Color32::from_rgb(0xE6, 0xEE, 0xFF),
+    rail_bg: Color32::from_rgba_premultiplied(7, 9, 16, 168),
+    rail_disc: Color32::from_rgb(0x1B, 0x22, 0x38),
+    rail_deep: Color32::from_rgba_premultiplied(12, 16, 29, 174),
+    hairline: Color32::from_rgba_premultiplied(12, 22, 0, 22),
+    sheen: Color32::from_rgba_premultiplied(35, 53, 58, 58),
+    control: Color32::from_rgb(0x14, 0x1A, 0x2C),
+    control_hi: Color32::from_rgb(0x1F, 0x27, 0x40),
+    gauge: [
+        Color32::from_rgb(0x8F, 0xFF, 0x00),
+        Color32::from_rgb(0xFF, 0xD4, 0x00),
+        Color32::from_rgb(0xFF, 0x6A, 0x00),
+        Color32::from_rgb(0xFF, 0x2E, 0x2E),
+    ],
+    glow: 0.85,
+};
+
+/// Floodlit. Night-match green with chalk-white markings.
+pub const PITCH: Palette = Palette {
+    bg: Color32::from_rgb(0x06, 0x2A, 0x17),
+    border: Color32::from_rgb(0x17, 0x52, 0x33),
+    card: Color32::from_rgb(0x09, 0x36, 0x1E),
+    card_hover: Color32::from_rgb(0x0E, 0x46, 0x28),
+    text: Color32::from_rgb(0xEF, 0xFA, 0xF2),
+    muted: Color32::from_rgb(0x93, 0xC4, 0xA8),
+    faint: Color32::from_rgb(0x5C, 0x8C, 0x72),
+    ok: Color32::from_rgb(0x7C, 0xFC, 0x55),
+    warn: Color32::from_rgb(0xFF, 0xE1, 0x4D),
+    bad: Color32::from_rgb(0xFF, 0x3B, 0x3B),
+    stale: Color32::from_rgb(0x5C, 0x8C, 0x72),
+    track: Color32::from_rgb(0x12, 0x46, 0x2A),
+    accent: Color32::from_rgb(0xEF, 0xFA, 0xF2),
+    ink: Color32::from_rgb(0xEF, 0xFA, 0xF2),
+    rail_bg: Color32::from_rgba_premultiplied(4, 32, 17, 168),
+    rail_disc: Color32::from_rgb(0x11, 0x44, 0x28),
+    rail_deep: Color32::from_rgba_premultiplied(7, 43, 24, 174),
+    hairline: Color32::from_rgba_premultiplied(19, 21, 20, 22),
+    sheen: Color32::from_rgba_premultiplied(52, 52, 52, 52),
+    control: Color32::from_rgb(0x0B, 0x3A, 0x21),
+    control_hi: Color32::from_rgb(0x12, 0x4B, 0x2C),
+    gauge: [
+        Color32::from_rgb(0x7C, 0xFC, 0x55),
+        Color32::from_rgb(0xFF, 0xE1, 0x4D),
+        Color32::from_rgb(0xFF, 0x8A, 0x3D),
+        Color32::from_rgb(0xFF, 0x3B, 0x3B),
+    ],
+    glow: 0.45,
+};
+
+/// Cabinet. Black glass and phosphor, the way a CRT looked with the lights
+/// off.
+pub const ARCADE: Palette = Palette {
+    bg: Color32::from_rgb(0x02, 0x04, 0x02),
+    border: Color32::from_rgb(0x1A, 0x38, 0x14),
+    card: Color32::from_rgb(0x06, 0x0B, 0x06),
+    card_hover: Color32::from_rgb(0x0C, 0x16, 0x0A),
+    text: Color32::from_rgb(0xC9, 0xFF, 0xC2),
+    muted: Color32::from_rgb(0x5F, 0xB8, 0x53),
+    faint: Color32::from_rgb(0x3A, 0x73, 0x33),
+    ok: Color32::from_rgb(0x39, 0xFF, 0x14),
+    warn: Color32::from_rgb(0xFF, 0xC4, 0x00),
+    bad: Color32::from_rgb(0xFF, 0x2D, 0x95),
+    stale: Color32::from_rgb(0x3A, 0x73, 0x33),
+    track: Color32::from_rgb(0x14, 0x2A, 0x11),
+    accent: Color32::from_rgb(0x00, 0xF0, 0xD4),
+    ink: Color32::from_rgb(0xC9, 0xFF, 0xC2),
+    rail_bg: Color32::from_rgba_premultiplied(0, 0, 0, 168),
+    rail_disc: Color32::from_rgb(0x0E, 0x1F, 0x0C),
+    rail_deep: Color32::from_rgba_premultiplied(3, 5, 3, 174),
+    hairline: Color32::from_rgba_premultiplied(6, 26, 2, 26),
+    sheen: Color32::from_rgba_premultiplied(13, 60, 5, 60),
+    control: Color32::from_rgb(0x08, 0x12, 0x07),
+    control_hi: Color32::from_rgb(0x11, 0x24, 0x0E),
+    gauge: [
+        Color32::from_rgb(0x39, 0xFF, 0x14),
+        Color32::from_rgb(0xFF, 0xC4, 0x00),
+        Color32::from_rgb(0xFF, 0x6A, 0x00),
+        Color32::from_rgb(0xFF, 0x2D, 0x95),
+    ],
+    glow: 1.0,
+};
+
 pub fn palette(name: &str) -> Palette {
     match name {
         "paper" => PAPER,
@@ -272,6 +405,10 @@ pub fn palette(name: &str) -> Palette {
         "prism" => PRISM,
         "slate" => SLATE,
         "neon" => NEON,
+        "sakura" => SAKURA,
+        "mecha" => MECHA,
+        "pitch" => PITCH,
+        "arcade" => ARCADE,
         // Retired palettes map to their nearest survivor rather than silently
         // reverting to the default, so an existing config keeps looking like
         // the thing its owner chose.

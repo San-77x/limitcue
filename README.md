@@ -118,6 +118,13 @@ never granted and cards fall back to the room below the notch.
   which paint each theme's real background so you can see what you are
   picking.
 
+  Four more take their cue from somewhere: `sakura` (cherry blossom — pale
+  pink, plum ink), `mecha` (hangar indigo with hazard green and amber),
+  `pitch` (a floodlit night match — deep grass, chalk-white markings) and
+  `arcade` (black glass and phosphor, the way a CRT looked with the lights
+  off). They are palettes, not tributes: no brand's colours are copied and
+  nothing is named after anything anyone owns.
+
   Every surface is themed: the notch body, the card glass, the hairlines, and
   the *ink* the provider marks are drawn in. That last one is what makes a
   light or bright theme possible at all — the marks used to be hardcoded
@@ -171,7 +178,7 @@ table header belong to that table):
 poll_interval_secs = 120
 hide_unconfigured = true
 disabled = []            # e.g. ["codex"]
-theme = "midnight"       # midnight | paper | acid | prism | slate | neon
+theme = "midnight"       # see Settings -> Appearance for all ten
 max_visible_collapsed = 4  # providers on the pill before folding into "+N"
 quiet_mode = false         # dim the gauges until you point at the notch
 notch_opacity = 0.60       # notch body opacity, 0.15-1.0
