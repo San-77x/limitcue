@@ -115,7 +115,9 @@ pub struct Config {
     /// Providers shown on the collapsed pill before the rest folds into "+N".
     #[serde(default = "default_max_visible")]
     pub max_visible_collapsed: usize,
-    /// Reduce idle rail/pill opacity until the pointer is over the surface.
+    /// Dim the notch's *contents* until the pointer is over it. The panel
+    /// keeps whatever `notch_opacity` says: being quiet means drawing less
+    /// attention, not turning into a window onto the desktop.
     #[serde(default)]
     pub quiet_mode: bool,
     /// Show used percentage text beneath gauges in the side rail.
@@ -243,7 +245,7 @@ hide_unconfigured = true
 # disabled = ["codex"]
 # theme = "midnight"             # midnight | flux | ember | aurora | chrome
 # max_visible_collapsed = 4      # providers on the pill before folding into "+N"
-# quiet_mode = false              # dim idle UI until the pointer is over it
+# quiet_mode = false              # dim the gauges until you point at the notch
 # show_rail_percent = false       # show used percentages beneath rail gauges
 # notch_opacity = 0.60            # notch body opacity, 0.15-1.0
 # card_opacity = 0.70             # hover usage card opacity, 0.15-1.0

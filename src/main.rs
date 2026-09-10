@@ -147,6 +147,10 @@ const RAIL_BADGE_ANGLE: f32 = std::f32::consts::PI * 40.0 / 180.0;
 /// provider can be both busy and in trouble without the two overlapping.
 const RAIL_PULSE_R: f32 = 3.6;
 const RAIL_PULSE_ANGLE: f32 = -std::f32::consts::PI * 52.0 / 180.0;
+/// How far the notch's contents fade when quiet mode is on and the pointer is
+/// elsewhere. Applied to the gauges and labels, never to the panel — a quiet
+/// notch should draw less attention, not turn into a window onto the desktop.
+const QUIET_CONTENT_ALPHA: f32 = 0.62;
 
 /// How close a provider is to running out; unreadable ones sort last so a
 /// broken adapter never claims the top of the notch.
@@ -772,7 +776,7 @@ impl App {
             dirty |= toggle_row(
                 ui,
                 "Quiet at rest",
-                "Fade the notch until the pointer is over it.",
+                "Dim the gauges until you point at it. The panel stays as solid as you set it below.",
                 &mut self.cfg_next.quiet_mode,
                 pal,
             );
@@ -2343,16 +2347,24 @@ impl App {
         } else {
             egui::Rounding { nw: r, sw: r, ne: 0.0, se: 0.0 }
         };
-        // Surface opacity is the user's setting; quiet mode is a separate
-        // factor on top of it, so setting the notch to 100 % actually yields
-        // an opaque notch rather than the old baked-in 0.92.
+        // Quiet mode fades what is *on* the notch, not the notch itself.
+        //
+        // It used to multiply the body's alpha, which had two problems. It
+        // silently overrode an explicit `notch_opacity = 1.0` — asking for an
+        // opaque notch and getting a 78 %-transparent one — and it faded only
+        // the panel while the gauges stayed at full strength, so instead of a
+        // quieter notch you got a see-through slab with bright rings on it,
+        // whose readability depended on whatever happened to be behind it.
+        //
+        // Being quiet should mean drawing less attention, not becoming a
+        // window onto the desktop.
         let quiet = if self.cfg.quiet_mode && !pointer.map(|p| body.contains(p)).unwrap_or(false) {
-            0.78
+            QUIET_CONTENT_ALPHA
         } else {
             1.0
         };
         let body_fill = ui::theme::at_opacity(pal.rail_bg, self.cfg.notch_opacity);
-        ui.painter().rect_filled(body, body_rounding, body_fill.linear_multiply(quiet));
+        ui.painter().rect_filled(body, body_rounding, body_fill);
 
         // ---- whole-notch drag surface --------------------------------------
         // Any drag on the body (left or middle button) hands off to the
@@ -2459,11 +2471,12 @@ impl App {
             // weight, so rapid A -> B -> C switches never discard an in-flight
             // fade from the previous provider.
             let focus_mix = self.rail_focus_weights.get(&s.provider_id).copied().unwrap_or(0.0);
-            let gauge_alpha = if any_row_hovered {
-                ambient_alpha + (1.0 - ambient_alpha) * focus_mix
-            } else {
-                1.0
-            };
+            let gauge_alpha = quiet
+                * if any_row_hovered {
+                    ambient_alpha + (1.0 - ambient_alpha) * focus_mix
+                } else {
+                    1.0
+                };
             let gauge_stroke = RAIL_RING_STROKE + 0.7 * focus_mix;
             // gauge: track ring + heat arc (share used) around the bare mark
             let used01 = pct.map(|v| 1.0 - (v / 100.0) as f32).unwrap_or(0.0);
@@ -2541,7 +2554,7 @@ impl App {
                     egui::Align2::CENTER_CENTER,
                     label,
                     ui::theme::medium(12.0),
-                    label_col,
+                    label_col.linear_multiply(gauge_alpha),
                 );
             }
         }
@@ -2562,7 +2575,8 @@ impl App {
         );
         // Neutral three-dot menu mark: this control is navigation/settings,
         // not another quota gauge. The dots brighten together on hover.
-        let dot_color = if orb_hover { Color32::WHITE } else { pal.muted };
+        let dot_color =
+            if orb_hover { Color32::WHITE } else { pal.muted }.linear_multiply(quiet);
         let dot_radius = if orb_hover { 2.0 } else { 1.7 };
         for offset in [-6.0_f32, 0.0, 6.0] {
             ui.painter().circle_filled(
