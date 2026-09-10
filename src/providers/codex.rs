@@ -31,25 +31,57 @@ impl Codex {
     }
 }
 
+/// Name a window after how long it actually is.
+///
+/// The two slots are not fixed durations: on a Go plan the primary window is
+/// 30 days, so calling it "5h" — as the positional fallback did — told the
+/// user their monthly quota resets this afternoon. The response says how long
+/// the window is; use it, and keep the positional name only for a plan that
+/// does not.
+fn window_label(seconds: Option<u64>, fallback: &str) -> String {
+    match seconds {
+        Some(s) if s >= 86_400 => match s / 86_400 {
+            1 => "daily".into(),
+            7 => "weekly".into(),
+            28..=31 => "monthly".into(),
+            d => format!("{d}d"),
+        },
+        Some(s) if s >= 3_600 => format!("{}h", s / 3_600),
+        Some(s) if s >= 60 => format!("{}m", s / 60),
+        _ => fallback.into(),
+    }
+}
+
 /// Turn the usage endpoint's body into a reading. `now` is passed in because
 /// this endpoint reports a countdown rather than a timestamp, and a test needs
 /// the arithmetic to be reproducible.
 fn parse(j: &serde_json::Value, now: u64) -> Reading {
     let mut windows = Vec::new();
     let rl = j.get("rate_limit").cloned().unwrap_or_default();
-    for (key, label) in [("primary_window", "5h"), ("secondary_window", "weekly")] {
+    for (key, fallback) in [("primary_window", "5h"), ("secondary_window", "weekly")] {
         if let Some(w) = rl.get(key) {
             let used = w.get("used_percent").and_then(|p| p.as_f64());
-            let resets_in = w.get("resets_in_seconds").and_then(|s| s.as_u64());
-            if used.is_none() && resets_in.is_none() {
+            // The reset arrives as an absolute timestamp, or as a countdown
+            // under either of two names depending on the plan.
+            let resets_at = w
+                .get("reset_at")
+                .and_then(|t| t.as_u64())
+                .filter(|t| *t > 1_000_000_000)
+                .or_else(|| {
+                    ["reset_after_seconds", "resets_in_seconds"]
+                        .iter()
+                        .find_map(|k| w.get(*k).and_then(|s| s.as_u64()))
+                        .map(|s| now + s)
+                });
+            if used.is_none() && resets_at.is_none() {
                 continue;
             }
             windows.push(Window {
-                label: label.into(),
+                label: window_label(w.get("limit_window_seconds").and_then(|s| s.as_u64()), fallback),
                 remaining_percent: used.map(|u| (100.0 - u).clamp(0.0, 100.0)),
                 remaining_count: None,
                 total_count: None,
-                resets_at: resets_in.map(|s| now + s),
+                resets_at,
             });
         }
     }
@@ -100,11 +132,24 @@ mod tests {
 
     const NOW: u64 = 1_789_000_000;
 
-    /// Shape of `GET /backend-api/wham/usage`, as observed.
+    /// Recorded from a live `GET /backend-api/wham/usage` (a Go plan), with
+    /// the identifying fields dropped. The window is 30 days, the reset is an
+    /// absolute timestamp, and the secondary slot is null.
+    ///
+    /// The invented fixture this replaces used `resets_in_seconds`, a field
+    /// this endpoint does not send — so it happily proved that a reset the
+    /// adapter could never find was being read correctly.
     fn body() -> serde_json::Value {
         json!({"rate_limit": {
-            "primary_window":   {"used_percent": 27.0, "resets_in_seconds": 3600},
-            "secondary_window": {"used_percent": 5.5,  "resets_in_seconds": 86400}
+            "allowed": true,
+            "limit_reached": false,
+            "primary_window": {
+                "used_percent": 27,
+                "limit_window_seconds": 2_592_000,
+                "reset_after_seconds": 2_408_464,
+                "reset_at": 1_791_449_547u64
+            },
+            "secondary_window": null
         }})
     }
 
@@ -118,25 +163,39 @@ mod tests {
     #[test]
     fn used_percent_is_reported_as_what_is_left() {
         let r = parse(&body(), NOW);
-        let w = windows(&r);
-        assert_eq!((w[0].label.as_str(), w[0].remaining_percent), ("5h", Some(73.0)));
-        assert_eq!((w[1].label.as_str(), w[1].remaining_percent), ("weekly", Some(94.5)));
+        assert_eq!(windows(&r)[0].remaining_percent, Some(73.0));
     }
 
     #[test]
-    fn a_countdown_becomes_a_wall_clock_reset() {
+    fn a_window_is_named_after_how_long_it_actually_is() {
+        // The regression: this slot was hardcoded "5h", so a 30-day quota
+        // claimed to reset this afternoon.
         let r = parse(&body(), NOW);
+        assert_eq!(windows(&r)[0].label, "monthly");
+        assert_eq!(window_label(Some(18_000), "x"), "5h");
+        assert_eq!(window_label(Some(604_800), "x"), "weekly");
+        assert_eq!(window_label(None, "5h"), "5h", "fall back when unsaid");
+    }
+
+    #[test]
+    fn an_absolute_reset_is_used_as_given() {
+        // Not `now + reset`: this is a timestamp, not a countdown.
+        let r = parse(&body(), NOW);
+        assert_eq!(windows(&r)[0].resets_at, Some(1_791_449_547));
+    }
+
+    #[test]
+    fn a_countdown_is_resolved_against_now_when_there_is_no_timestamp() {
+        let r = parse(
+            &json!({"rate_limit": {"primary_window": {"used_percent": 10, "reset_after_seconds": 3600}}}),
+            NOW,
+        );
         assert_eq!(windows(&r)[0].resets_at, Some(NOW + 3600));
     }
 
     #[test]
-    fn a_window_reporting_only_a_countdown_still_counts() {
-        // Seen in the wild between resets: no percentage yet, but a timer.
-        let r = parse(&json!({"rate_limit": {"primary_window": {"resets_in_seconds": 60}}}), NOW);
-        let w = windows(&r);
-        assert_eq!(w.len(), 1);
-        assert_eq!(w[0].remaining_percent, None);
-        assert_eq!(w[0].resets_at, Some(NOW + 60));
+    fn a_null_secondary_window_is_skipped() {
+        assert_eq!(windows(&parse(&body(), NOW)).len(), 1);
     }
 
     #[test]
