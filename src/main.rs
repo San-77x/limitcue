@@ -1916,13 +1916,19 @@ impl eframe::App for App {
             // The script reports the *window's* top; the notch is `headroom`
             // below it. Debug hook: LIMITCUE_UI_TOP parks the notch at a given
             // screen y without dragging the real window.
-            let reported = std::env::var("LIMITCUE_UI_TOP")
+            let forced = std::env::var("LIMITCUE_UI_TOP")
                 .ok()
-                .and_then(|v| v.parse::<f32>().ok())
-                .unwrap_or(dock_now.y as f32);
+                .and_then(|v| v.parse::<f32>().ok());
+            let reported = forced.unwrap_or(dock_now.y as f32);
             if !self.reported_y.is_finite() || (reported - self.reported_y).abs() > 0.5 {
                 self.reported_y = reported;
-                self.notch_y = (reported + self.headroom).clamp(screen_top, screen_top + monitor_h);
+                // A drag moves the notch; our own placement moves only the
+                // window around it. Reading the second as the first is what
+                // made the notch walk across the screen.
+                if !dock_now.self_placed || forced.is_some() {
+                    self.notch_y =
+                        (reported + self.headroom).clamp(screen_top, screen_top + monitor_h);
+                }
             }
         }
         let card_max_h = snaps
@@ -1930,11 +1936,20 @@ impl eframe::App for App {
             .map(|s| ui::rail_card_height(s, self.pace_line(s, now).is_some()))
             .fold(0.0_f32, f32::max);
         let band_h = rail_h.max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0);
-        let window_y = self
+        // Where the window should sit for the notch to land where the user
+        // put it. When the compositor has already placed it somewhere else —
+        // it clamps against the real output, which is authoritative — take its
+        // answer rather than insisting on ours, or the two chase each other.
+        let wanted_y = self
             .notch_y
             .min(screen_top + monitor_h - band_h)
             .max(screen_top);
-        self.headroom = (self.notch_y - window_y).max(0.0);
+        let window_y = if dock_now.self_placed && dock_now.output_known() {
+            dock_now.y as f32
+        } else {
+            wanted_y
+        };
+        self.headroom = (self.notch_y - window_y).clamp(0.0, (band_h - rail_h).max(0.0));
         let rail_size = match self.rail_open.is_some() || self.rail_last.is_some() {
             true => Vec2::new(RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W, band_h),
             false => Vec2::new(RAIL_STRIP_W, band_h),
@@ -1951,11 +1966,19 @@ impl eframe::App for App {
             // other side, or to another monitor, changes everything the
             // placement depends on, and the one-shot is what reports the new
             // output back.
-            if dock_now != self.dock_seen {
+            if !dock_now.same_geometry(&self.dock_seen) {
                 self.dock_seen = dock_now;
                 self.placed = None;
             }
-            let want = (window_y.round() as i32, band_h.round() as i32);
+            // Until the compositor has said which output this window is on,
+            // ask for nothing but a report. Choosing a y from a guessed screen
+            // means clamping against one rectangle while KWin clamps against
+            // another, and the window walks between the two answers.
+            let want = if dock_now.output_known() {
+                (wanted_y.round() as i32, band_h.round() as i32)
+            } else {
+                (-1, -1)
+            };
             let settling = self.restore_sent < 30 && self.restore_sent.is_multiple_of(6);
             // Screenshot runs must not touch the compositor: the script picks
             // the first limitcue window it finds, which would be whatever

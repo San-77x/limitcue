@@ -66,7 +66,7 @@ impl Edge {
 /// which side of *that* monitor the notch is against, and how much vertical
 /// room the card has on a screen whose origin is not 0,0. A Wayland client is
 /// told neither.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 pub struct DockState {
     pub edge: Edge,
     pub x: i32,
@@ -81,9 +81,31 @@ pub struct DockState {
     pub out_w: i32,
     #[serde(default)]
     pub out_h: i32,
+    /// True when this state came from the app moving its own window, false
+    /// when the user dragged it.
+    ///
+    /// Without this the app cannot tell its own placement apart from a drag,
+    /// so it reads its own move back as "the notch has been moved", derives a
+    /// new target from it, moves again — and the window walks across the
+    /// screen. That is the jumping.
+    #[serde(skip)]
+    pub self_placed: bool,
 }
 
 impl DockState {
+    /// Same window geometry, ignoring who reported it.
+    pub fn same_geometry(&self, other: &Self) -> bool {
+        (self.x, self.y, self.out_x, self.out_y, self.out_w, self.out_h)
+            == (other.x, other.y, other.out_x, other.out_y, other.out_w, other.out_h)
+    }
+
+    /// Has the compositor told us which output we are on? Until it has, the
+    /// app must not move its own window: it would be clamping against a guess
+    /// while KWin clamps against the truth, and the two would fight.
+    pub fn output_known(&self) -> bool {
+        self.out_w > 0 && self.out_h > 0
+    }
+
     /// Which side of its own output the notch is against, worked out from the
     /// position rather than taken on trust from `edge`.
     ///
@@ -134,6 +156,17 @@ fn save_dock(st: &DockState) {
     }
 }
 
+/// Is a pid-tagged report about this process?
+///
+/// The pid arrives as a *signed* int, because that is the only integer type
+/// KWin's `callDBus` marshals. Declaring the parameter `u32` gave the method
+/// the D-Bus signature `iiiu…`, which no call from the script could ever
+/// match — so every pid-tagged report was dropped before it arrived,
+/// including the one carrying the output geometry.
+fn is_us(pid: i32) -> bool {
+    pid >= 0 && pid as u32 == std::process::id()
+}
+
 /// D-Bus interface served at /io/limitcue/dock (io.limitcue.Dock).
 /// The KWin script calls StorePosition after each drag.
 pub struct DockIface {
@@ -158,6 +191,7 @@ impl DockIface {
         st.edge = Edge::from_u8(edge.clamp(0, 4) as u8);
         st.x = x;
         st.y = y;
+        st.self_placed = false; // the persistent script only reports drags
         save_dock(&st);
         *self.state.lock().unwrap() = st;
     }
@@ -168,8 +202,8 @@ impl DockIface {
     /// The app now paints the notch relative to its own window position, so a
     /// stray report would visibly shift somebody's notch. Reports that are not
     /// about this process are dropped.
-    fn store_position_for_pid(&mut self, x: i32, y: i32, edge: i32, pid: u32) {
-        if pid != std::process::id() {
+    fn store_position_for_pid(&mut self, x: i32, y: i32, edge: i32, pid: i32) {
+        if !is_us(pid) {
             return;
         }
         self.store_position(x, y, edge);
@@ -184,13 +218,13 @@ impl DockIface {
         x: i32,
         y: i32,
         edge: i32,
-        pid: u32,
+        pid: i32,
         out_x: i32,
         out_y: i32,
         out_w: i32,
         out_h: i32,
     ) {
-        if pid != std::process::id() {
+        if !is_us(pid) {
             return;
         }
         let st = DockState {
@@ -201,6 +235,7 @@ impl DockIface {
             out_y,
             out_w,
             out_h,
+            self_placed: true,
         };
         save_dock(&st);
         *self.state.lock().unwrap() = st;
@@ -311,6 +346,19 @@ mod tests {
     }
 
     #[test]
+    fn an_unreported_output_is_not_mistaken_for_a_known_one() {
+        assert!(!DockState::default().output_known());
+        assert!(on(0, 0, 1920).output_known());
+    }
+
+    #[test]
+    fn who_reported_a_position_does_not_change_the_geometry() {
+        let a = DockState { self_placed: true, ..on(0, 0, 1920) };
+        let b = DockState { self_placed: false, ..on(0, 0, 1920) };
+        assert!(a.same_geometry(&b));
+    }
+
+    #[test]
     fn a_notch_against_the_left_bezel_reads_as_left() {
         assert_eq!(on(0, 0, 1920).side(48), Some(Edge::Left));
     }
@@ -334,6 +382,25 @@ mod tests {
         // desktop's right-hand side.
         assert_eq!(on(1920, 1920, 2560).side(48), Some(Edge::Left));
         assert_eq!(on(1920 + 2560 - 48, 1920, 2560).side(48), Some(Edge::Right));
+    }
+
+    #[test]
+    fn the_reported_case_a_notch_on_a_second_monitors_left_bezel() {
+        // Taken from the machine this was reported on: a second output
+        // starting at x=3840, with the notch flush against its left bezel and
+        // a stored enum still claiming "right".
+        let st = DockState {
+            edge: Edge::Right,
+            x: 3840,
+            y: 400,
+            out_x: 3840,
+            out_y: 0,
+            out_w: 2048,
+            out_h: 1280,
+            self_placed: true,
+        };
+        assert_eq!(st.side(48), Some(Edge::Left));
+        assert_eq!(st.output_span(900.0), (0.0, 1280.0));
     }
 
     #[test]
