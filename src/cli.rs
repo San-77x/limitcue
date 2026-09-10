@@ -24,6 +24,8 @@ pub enum Cmd {
     TestAlert,
     /// Look for providers this machine is signed in to and offer to add them.
     Init,
+    /// Block until a quota has recovered, for scripting an agent loop.
+    Wait,
     Help,
     Version,
 }
@@ -32,12 +34,23 @@ pub struct Args {
     pub cmd: Cmd,
     /// Keep printing every poll interval instead of exiting.
     pub watch: bool,
+    /// `wait`: which provider to watch. None means "all of them".
+    pub provider: Option<String>,
+    /// `wait`: the percentage that counts as recovered.
+    pub above: f64,
+    /// `wait`: give up after this many seconds.
+    pub timeout: Option<u64>,
 }
 
 pub fn parse<I: Iterator<Item = String>>(argv: I) -> Args {
     let mut cmd = Cmd::Gui;
     let mut watch = false;
-    for a in argv.skip(1) {
+    let mut provider = None;
+    let mut above = 10.0;
+    let mut timeout = None;
+    let mut argv = argv.skip(1).peekable();
+    while let Some(a) = argv.next() {
+        let mut value = || argv.next();
         match a.as_str() {
             "--once" => cmd = Cmd::Once,
             "--json" => cmd = Cmd::Json,
@@ -45,13 +58,17 @@ pub fn parse<I: Iterator<Item = String>>(argv: I) -> Args {
             "--waybar" => cmd = Cmd::Waybar,
             "--test-alert" => cmd = Cmd::TestAlert,
             "init" | "--init" => cmd = Cmd::Init,
+            "wait" | "--wait" => cmd = Cmd::Wait,
+            "--provider" | "-p" => provider = value(),
+            "--above" => above = value().and_then(|v| v.parse().ok()).unwrap_or(above),
+            "--timeout" => timeout = value().and_then(|v| v.parse().ok()),
             "--watch" => watch = true,
             "-h" | "--help" => cmd = Cmd::Help,
             "-V" | "--version" => cmd = Cmd::Version,
             _ => {}
         }
     }
-    Args { cmd, watch }
+    Args { cmd, watch, provider, above, timeout }
 }
 
 pub const HELP: &str = "\
@@ -60,10 +77,17 @@ limitcue — an always-on-top quota gauge for AI coding plans
 USAGE
   limitcue                 open the notch (default)
   limitcue init            find providers you are already signed in to
+  limitcue wait            block until a quota has recovered
   limitcue --once          print one reading per provider and exit
   limitcue --json          print one JSON document and exit
   limitcue --line          print one status-bar line (pango markup)
   limitcue --waybar        print one waybar custom-module object
+
+WAIT
+  limitcue wait -p claude --above 20 && claude -p \"carry on\"
+  --provider ID            which provider to watch (default: all of them)
+  --above PERCENT          the percentage that counts as recovered (default 10)
+  --timeout SECONDS        give up and exit 1
 
 OPTIONS
   --test-alert             send one desktop notification and exit
@@ -81,7 +105,8 @@ CONFIG
   Providers are easier to add from Settings → Providers → Add.
 
 EXIT
-  0 always, so a status bar never shows an error box for a missing provider.
+  0, so a status bar never shows an error box for a missing provider.
+  `wait` is the exception: 1 if it timed out, 2 if the provider is unknown.
 ";
 
 /// Read every configured provider once. Shared by all the one-shot commands so
@@ -99,7 +124,11 @@ fn worst(s: &Snapshot) -> Option<f64> {
     s.min_remaining()
 }
 
-pub fn run(cmd: Cmd, cfg: &Config, watch: bool) {
+pub fn run(cmd: Cmd, cfg: &Config, args: &Args) {
+    let watch = args.watch;
+    if cmd == Cmd::Wait {
+        std::process::exit(wait(cfg, args));
+    }
     if cmd == Cmd::Init {
         init(cfg);
         return;
@@ -128,6 +157,93 @@ pub fn run(cmd: Cmd, cfg: &Config, watch: bool) {
         let _ = std::io::stdout().flush();
         std::thread::sleep(std::time::Duration::from_secs(cfg.poll_interval_secs.max(5)));
     }
+}
+
+/// Block until a quota has recovered. This is what turns a gauge into
+/// something an agent loop can be built on: `limitcue wait && do the work`.
+///
+/// It prefers the running app's cached reading over fetching for itself —
+/// waiting on a quota should not spend requests against it.
+fn wait(cfg: &Config, args: &Args) -> i32 {
+    let started = std::time::Instant::now();
+    let target = args.above;
+    if let Some(id) = &args.provider {
+        let known = crate::providers::build_all(cfg).iter().any(|p| p.id() == *id);
+        if !known {
+            eprintln!("limitcue: no provider called {id:?} is configured");
+            return 2;
+        }
+    }
+    // Checking every poll interval would make `wait` as slow as the widget;
+    // a minute is responsive without being rude to anyone's rate limit.
+    let every = cfg.poll_interval_secs.clamp(20, 60);
+    loop {
+        let snaps = cached().unwrap_or_else(|| read_all(cfg));
+        let lowest = snaps
+            .iter()
+            .filter(|s| args.provider.as_deref().is_none_or(|id| s.provider_id == id))
+            .filter_map(worst)
+            .fold(f64::INFINITY, f64::min);
+        if lowest.is_finite() && lowest >= target {
+            println!("{lowest:.0}% — go");
+            return 0;
+        }
+        let elapsed = started.elapsed().as_secs();
+        // The nap is capped by whatever is left of the deadline, so a short
+        // timeout is honoured to the second rather than at the next poll.
+        let nap = match args.timeout {
+            Some(limit) if elapsed >= limit => 0,
+            Some(limit) => every.min(limit - elapsed),
+            None => every,
+        };
+        if nap == 0 {
+            let limit = args.timeout.unwrap_or(0);
+            eprintln!("limitcue: still below {target:.0}% after {limit}s");
+            return 1;
+        }
+        let shown = if lowest.is_finite() { format!("{lowest:.0}%") } else { "no reading".into() };
+        println!("{shown} — waiting for {target:.0}%");
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        std::thread::sleep(std::time::Duration::from_secs(nap));
+    }
+}
+
+/// The running app's last reading, over its socket. `None` when it is not
+/// running, in which case the caller fetches for itself.
+fn cached() -> Option<Vec<Snapshot>> {
+    use std::io::Read;
+    let path = crate::service::socket_path()?;
+    let mut stream = std::os::unix::net::UnixStream::connect(path).ok()?;
+    let mut buf = String::new();
+    stream.read_to_string(&mut buf).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&buf).ok()?;
+    let mut out = Vec::new();
+    for p in v.get("providers")?.as_array()? {
+        let id = p.get("id")?.as_str()?.to_string();
+        let pct = p.get("remaining_percent").and_then(|x| x.as_f64());
+        // Only the fields `wait` needs; this is a reader, not a re-hydration.
+        out.push(Snapshot {
+            provider_id: id.clone(),
+            display_name: id,
+            fidelity: crate::types::Fidelity::Official,
+            reading: match pct {
+                Some(p) => Reading::Ok {
+                    windows: vec![crate::types::Window {
+                        label: "quota".into(),
+                        remaining_percent: Some(p),
+                        remaining_count: None,
+                        total_count: None,
+                        resets_at: None,
+                    }],
+                    detail: None,
+                },
+                None => Reading::NotConfigured,
+            },
+            fetched_at: v.get("generated_at").and_then(|x| x.as_u64()).unwrap_or(0),
+        });
+    }
+    Some(out)
 }
 
 /// Find what this machine is already signed in to, wire it up, and show the
@@ -387,6 +503,33 @@ mod tests {
         assert_eq!(a("--stdout"), Cmd::Line); // the name the v2 note used
         assert_eq!(parse(["limitcue".to_string()].into_iter()).cmd, Cmd::Gui);
         assert!(parse(["l".to_string(), "--watch".to_string()].into_iter()).watch);
+    }
+
+    #[test]
+    fn wait_takes_its_target_from_the_arguments() {
+        let a = parse(
+            ["limitcue", "wait", "-p", "claude", "--above", "35", "--timeout", "600"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
+        assert_eq!(a.cmd, Cmd::Wait);
+        assert_eq!(a.provider.as_deref(), Some("claude"));
+        assert_eq!(a.above, 35.0);
+        assert_eq!(a.timeout, Some(600));
+    }
+
+    #[test]
+    fn wait_has_workable_defaults() {
+        let a = parse(["limitcue", "wait"].iter().map(|s| s.to_string()));
+        assert_eq!(a.above, 10.0);
+        assert_eq!(a.provider, None, "no provider means watch them all");
+        assert_eq!(a.timeout, None, "and wait indefinitely");
+    }
+
+    #[test]
+    fn a_flag_missing_its_value_does_not_eat_the_command() {
+        let a = parse(["limitcue", "--above", "wait"].iter().map(|s| s.to_string()));
+        assert_eq!(a.above, 10.0, "unparseable value falls back to the default");
     }
 
     #[test]

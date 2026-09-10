@@ -282,8 +282,24 @@ the provider closest to empty, so a bar can style itself:
 }
 ```
 
-The exit status is always 0 — a status bar should not grow an error box
-because one provider needs re-authenticating.
+The exit status is 0 — a status bar should not grow an error box because one
+provider needs re-authenticating.
+
+### Waiting for a quota
+
+```sh
+limitcue wait --provider claude --above 20 && claude -p "carry on"
+```
+
+Blocks until the quota recovers, which is what you want in an agent loop or a
+CI job rather than a failed run at 3am. `--timeout` gives up with exit 1;
+naming a provider that isn't configured exits 2 instead of waiting forever for
+something that will never arrive.
+
+If the app is running it reads that process's cached reading over the socket
+rather than fetching — waiting on a quota should not spend requests against
+it. In practice that is 5 ms instead of 5 s per check, and no API calls at
+all.
 
 Each of those spawns a process and re-fetches. For anything that polls often —
 a status bar, an editor plugin, a shell prompt — the running app publishes its

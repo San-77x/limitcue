@@ -2612,7 +2612,7 @@ fn main() -> eframe::Result<()> {
             return Ok(());
         }
         other => {
-            cli::run(other, &cfg, args.watch);
+            cli::run(other, &cfg, &args);
             return Ok(());
         }
     }
