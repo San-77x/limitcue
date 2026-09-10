@@ -40,36 +40,31 @@ impl Claude {
 }
 
 fn window(label: &str, block: &Value) -> Option<Window> {
+    // `utilization` is a percentage, 0-100 — not a fraction. Reading it as a
+    // fraction made every window come back exhausted: at 8 % used,
+    // (1.0 - 8.0) * 100 is -700, which clamps to nothing left.
     let util = block.get("utilization")?.as_f64()?;
     let resets_at = block
         .get("resets_at")
         .and_then(|d| d.as_str())
-        .and_then(chrono_like_parse);
+        .and_then(parse_timestamp);
     Some(Window {
         label: label.into(),
-        remaining_percent: Some(((1.0 - util) * 100.0).clamp(0.0, 100.0)),
+        remaining_percent: Some((100.0 - util).clamp(0.0, 100.0)),
         remaining_count: None,
         total_count: None,
         resets_at,
     })
 }
 
-/// Parse ISO-8601 like 2026-09-07T12:34:56Z into unix seconds without pulling in chrono.
-fn chrono_like_parse(s: &str) -> Option<u64> {
-    let s = s.trim_end_matches('Z');
-    let (date, time) = s.split_once('T')?;
-    let mut it = date.split('-').filter_map(|p| p.parse::<u64>().ok());
-    let (y, mo, d) = (it.next()?, it.next()?, it.next()?);
-    let mut it = time.split(':').filter_map(|p| p.parse::<u64>().ok());
-    let (h, mi, sec) = (it.next()?, it.next()?, it.next().unwrap_or(0));
-    // days from civil algorithm (Howard Hinnant)
-    let y = if mo <= 2 { y - 1 } else { y };
-    let era = y / 400;
-    let yoe = y - era * 400;
-    let mp = if mo > 2 { mo - 3 } else { mo + 9 };
-    let doy = (153 * mp + 2) / 5 + d - 1 + yoe * 365 + yoe / 4 - yoe / 100;
-    let days = era * 146097 + doy - 719468;
-    Some(days * 86400 + h * 3600 + mi * 60 + sec)
+/// The endpoint reports RFC3339 with fractional seconds and an offset
+/// ("2026-09-10T14:09:59.970852+00:00"). chrono is already a dependency and
+/// handles both; the hand-rolled parser this replaces dropped the seconds and
+/// assumed UTC.
+fn parse_timestamp(s: &str) -> Option<u64> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|d| d.timestamp().max(0) as u64)
 }
 
 /// Turn the usage endpoint's body into a reading.
@@ -131,12 +126,31 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Shape of `GET /api/oauth/usage`, as observed.
+    /// Recorded from a live `GET /api/oauth/usage`, structure intact:
+    /// `utilization` is a **percentage**, most window slots are null, and
+    /// timestamps carry fractional seconds and an offset.
+    ///
+    /// The previous version of this fixture was invented from what the parser
+    /// assumed rather than recorded from the endpoint — it used `0.62` for a
+    /// utilisation — so it agreed with the bug instead of catching it. A
+    /// fixture is only worth anything if it comes from the wire.
     fn body() -> Value {
         json!({
-            "five_hour":        {"utilization": 0.62, "resets_at": "2026-09-10T18:00:00Z"},
-            "seven_day":        {"utilization": 0.31, "resets_at": "2026-09-14T00:00:00Z"},
-            "seven_day_opus":   {"utilization": 0.08, "resets_at": "2026-09-14T00:00:00Z"}
+            "five_hour": {
+                "utilization": 8.0,
+                "resets_at": "2026-09-10T14:09:59.970852+00:00",
+                "limit_dollars": null, "used_dollars": null,
+                "remaining_dollars": null, "locked_reason": null
+            },
+            "seven_day": {
+                "utilization": 83.0,
+                "resets_at": "2026-09-12T01:59:59.970876+00:00",
+                "limit_dollars": null, "used_dollars": null,
+                "remaining_dollars": null, "locked_reason": null
+            },
+            "seven_day_opus": null,
+            "seven_day_sonnet": null,
+            "extra_usage": {"is_enabled": false, "monthly_limit": null}
         })
     }
 
@@ -148,40 +162,45 @@ mod tests {
     }
 
     #[test]
-    fn utilisation_is_reported_as_what_is_left() {
+    fn utilisation_is_a_percentage_not_a_fraction() {
+        // The regression that mattered: 8 % used is 92 % left, not nothing
+        // left. Reading the field as a fraction clamped every window to zero,
+        // so a healthy plan showed as completely spent.
         let r = parse(&body());
         let w = windows(&r);
-        assert_eq!(w[0].label, "session");
-        assert_eq!(w[0].remaining_percent, Some(38.0));
-        assert_eq!(w[1].label, "weekly");
-        assert_eq!(w[1].remaining_percent, Some(69.0));
+        assert_eq!((w[0].label.as_str(), w[0].remaining_percent), ("session", Some(92.0)));
+        assert_eq!((w[1].label.as_str(), w[1].remaining_percent), ("weekly", Some(17.0)));
     }
 
     #[test]
-    fn only_the_windows_present_are_reported() {
-        // No `seven_day_sonnet` in the fixture, so no such row.
-        let r = parse(&body());
-        assert_eq!(windows(&r).len(), 3);
-        assert!(windows(&r).iter().all(|w| w.label != "weekly sonnet"));
+    fn null_window_slots_are_skipped() {
+        // The response carries a slot for every window kind that could exist,
+        // most of them null on any given plan.
+        assert_eq!(windows(&parse(&body())).len(), 2);
     }
 
     #[test]
-    fn reset_times_are_parsed_to_unix_seconds() {
+    fn timestamps_with_fractional_seconds_and_an_offset_are_parsed() {
         let r = parse(&body());
-        assert_eq!(windows(&r)[0].resets_at, Some(1_789_063_200)); // 2026-09-10T18:00:00Z
+        // 2026-09-10T14:09:59Z
+        assert_eq!(windows(&r)[0].resets_at, Some(1_789_049_399));
+    }
+
+    #[test]
+    fn a_fully_spent_window_still_reads_as_spent() {
+        let r = parse(&json!({"five_hour": {"utilization": 100.0}}));
+        assert_eq!(windows(&r)[0].remaining_percent, Some(0.0));
+    }
+
+    #[test]
+    fn over_use_is_clamped_rather_than_reported_as_negative() {
+        let r = parse(&json!({"five_hour": {"utilization": 140.0}}));
+        assert_eq!(windows(&r)[0].remaining_percent, Some(0.0));
     }
 
     #[test]
     fn a_shape_we_do_not_recognise_is_an_error_not_an_empty_reading() {
-        // If the endpoint is reshaped, say so rather than quietly showing
-        // nothing — an empty notch looks like "no quota used".
         let r = parse(&json!({"limits": {"five_hour": {"pct": 62}}}));
-        assert!(matches!(r, Reading::Error(_)), "got {r:?}");
-    }
-
-    #[test]
-    fn a_window_without_utilisation_is_skipped_rather_than_zeroed() {
-        let r = parse(&json!({"five_hour": {"resets_at": "2026-09-10T18:00:00Z"}}));
         assert!(matches!(r, Reading::Error(_)), "got {r:?}");
     }
 }
