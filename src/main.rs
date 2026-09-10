@@ -423,6 +423,10 @@ struct App {
     usage: service::SharedUsage,
     activity: activity::SharedActivity,
     restore_sent: u32,
+    /// A drag was handed to the compositor; replay the release it swallowed.
+    replay_drag_release: bool,
+    /// Where the pointer was when that drag started.
+    drag_release_at: Option<egui::Pos2>,
     /// Screen y the notch should be painted at — the position the user chose.
     /// The host window is taller than the notch and sits *above* this, so the
     /// window's own y (what the dock script reports) is `notch_y - headroom`.
@@ -530,6 +534,8 @@ impl App {
             usage,
             activity,
             restore_sent: 0,
+            replay_drag_release: false,
+            drag_release_at: None,
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
             cfg_mtime: Config::mtime(),
@@ -1555,6 +1561,20 @@ impl App {
         }
     }
 
+    /// Hand the drag to the compositor, and remember to replay the release.
+    ///
+    /// KWin takes a pointer grab for the whole interactive move, so the
+    /// button-release that ends it never reaches us. egui would go on
+    /// believing a button is held — and it suppresses hover on every widget
+    /// while one is ("we don't hover widgets while interacting with *other*
+    /// widgets") — which left the notch ignoring the pointer after every move
+    /// until a click delivered a fresh press and release to clear it.
+    fn start_window_drag(&mut self, ctx: &egui::Context) {
+        self.drag_release_at = ctx.input(|i| i.pointer.hover_pos());
+        self.replay_drag_release = true;
+        ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+    }
+
     /// True when an agent is writing to this provider's session log.
     fn is_live(&self, id: &str) -> bool {
         if std::env::var_os("LIMITCUE_UI_LIVE").is_some() {
@@ -1798,6 +1818,29 @@ fn debug_shot(ctx: &egui::Context, started: Instant, requested: &mut bool) {
 }
 
 impl eframe::App for App {
+    /// Replay the button-release the compositor swallowed when it took over a
+    /// window drag. Without it egui believes a button is still held for the
+    /// rest of the session, and hover stops working everywhere until a real
+    /// click resets it.
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if !self.replay_drag_release {
+            return;
+        }
+        self.replay_drag_release = false;
+        // Where the pointer last was; the compositor reports its own position
+        // again as soon as the grab ends, so this only has to hold until then.
+        let pos = self.drag_release_at.unwrap_or_default();
+        let modifiers = raw_input.modifiers;
+        for button in [egui::PointerButton::Primary, egui::PointerButton::Middle] {
+            raw_input.events.push(egui::Event::PointerButton {
+                pos,
+                button,
+                pressed: false,
+                modifiers,
+            });
+        }
+    }
+
     /// Fully transparent clear. (eframe's default is `rgba(12,12,12,180)` —
     /// a 70%-opaque grey that fills whatever the UI doesn't paint, which
     /// shows up as a flat dark slab behind the usage card.)
@@ -2177,7 +2220,7 @@ impl App {
                 );
                 let grip = ui.interact(grect.expand(4.0), ui.id().with("grip"), Sense::drag());
                 if grip.drag_started() {
-                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+                    self.start_window_drag(ctx);
                 }
                 ui.add_space(2.0);
 
@@ -2297,7 +2340,7 @@ impl App {
         if drag.drag_started_by(egui::PointerButton::Primary)
             || drag.drag_started_by(egui::PointerButton::Middle)
         {
-            ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+            self.start_window_drag(ctx);
         }
 
         // ---- ring cells ---------------------------------------------------
@@ -2382,7 +2425,11 @@ impl App {
                 ui::widgets::pct_color(pct, ok, &pal)
             };
             let resp = ui.allocate_rect(row_rect, Sense::hover());
-            let hovered = resp.hovered();
+            // `contains_pointer` rather than `hovered`: this is a plain "is
+            // the pointer over this row" question, and `hovered` additionally
+            // answers false whenever any button is held anywhere — which makes
+            // the notch dependent on interaction state it has no part in.
+            let hovered = resp.contains_pointer();
             if hovered {
                 hovered_id = Some(s.provider_id.clone());
             }
@@ -2508,7 +2555,7 @@ impl App {
         if orb.drag_started_by(egui::PointerButton::Primary)
             || orb.drag_started_by(egui::PointerButton::Middle)
         {
-            ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+            self.start_window_drag(ctx);
         }
         let _ = orb;
 
@@ -2527,7 +2574,7 @@ impl App {
         });
         let card_hovered = card_rect_now.is_some_and(|rect| {
             ui.interact(rect, ui.id().with(("rail-card", self.rail_open.as_deref())), Sense::hover())
-                .hovered()
+                .contains_pointer()
         });
         // Screenshot hook: pin only when there is no pointer at all. Normal
         // desktop interaction never uses this path.
