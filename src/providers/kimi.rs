@@ -78,6 +78,34 @@ fn row_to_window(detail: &Value, fallback_label: &str, window: &Value) -> Option
     })
 }
 
+/// Turn the usage response into a reading.
+///
+/// Split out from the request so the response shape can be pinned by tests.
+/// This adapter is labelled `derived` precisely because the endpoint is not
+/// published — a fixture is the only warning we will get when it moves.
+fn parse(v: &Value) -> Reading {
+    let mut windows = Vec::new();
+    if let Some(u) = v.get("usage") {
+        if let Some(w) = row_to_window(u, "weekly", &Value::Null) {
+            windows.push(w);
+        }
+    }
+    if let Some(list) = v.get("limits").and_then(|l| l.as_array()) {
+        for item in list {
+            let detail = item.get("detail").cloned().unwrap_or_else(|| item.clone());
+            let window = item.get("window").cloned().unwrap_or_default();
+            if let Some(w) = row_to_window(&detail, "window", &window) {
+                windows.push(w);
+            }
+        }
+    }
+    if windows.is_empty() {
+        Reading::Error("no windows in response".into())
+    } else {
+        Reading::Ok { windows, detail: None }
+    }
+}
+
 /// api_key = "..." in ~/.kimi/config.toml under [providers.kimi-for-coding]
 fn key_from_kimi_config() -> Option<String> {
     let text = std::fs::read_to_string(home().join(".kimi/config.toml")).ok()?;
@@ -140,30 +168,72 @@ impl Provider for Kimi {
             .unwrap_or_else(|| std::env::var("KIMI_CODE_BASE_URL").unwrap_or_else(|_| "https://api.kimi.com/coding/v1".into()));
         let url = format!("{base}/usages");
         match http_get_json(&url, &[("Authorization", format!("Bearer {token}"))]) {
-            Ok(v) => {
-                let mut windows = Vec::new();
-                if let Some(u) = v.get("usage") {
-                    if let Some(w) = row_to_window(u, "weekly", &Value::Null) {
-                        windows.push(w);
-                    }
-                }
-                if let Some(list) = v.get("limits").and_then(|l| l.as_array()) {
-                    for item in list {
-                        let detail = item.get("detail").cloned().unwrap_or_else(|| item.clone());
-                        let window = item.get("window").cloned().unwrap_or_default();
-                        if let Some(w) = row_to_window(&detail, "window", &window) {
-                            windows.push(w);
-                        }
-                    }
-                }
-                if windows.is_empty() {
-                    make(Reading::Error("no windows in response".into()))
-                } else {
-                    make(Reading::Ok { windows, detail: None })
-                }
-            }
+            Ok(v) => make(parse(&v)),
             Err(e) if e == "auth-failed" => make(Reading::NeedsAuth("check KIMI_API_KEY / kimi login".into())),
             Err(e) => make(Reading::Error(e)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Shape of `GET /coding/v1/usages`, as observed. This endpoint is not
+    /// published, which is why the adapter is labelled `derived` — and why
+    /// pinning the shape here is the only warning we will get when it moves.
+    fn body() -> Value {
+        json!({
+            "usage": {"limit": 1000.0, "used": 250.0, "name": "weekly",
+                      "resetTime": "2026-09-14T00:00:00Z"},
+            "limits": [{
+                "window": {"duration": 5, "timeUnit": "hour"},
+                "detail": {"limit": 100.0, "remaining": 80.0}
+            }]
+        })
+    }
+
+    fn windows(r: &Reading) -> &[Window] {
+        match r {
+            Reading::Ok { windows, .. } => windows,
+            other => panic!("expected a reading, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn used_of_limit_becomes_a_percentage() {
+        let r = parse(&body());
+        let w = &windows(&r)[0];
+        assert_eq!(w.label, "weekly");
+        assert_eq!(w.remaining_percent, Some(75.0));
+        assert_eq!((w.remaining_count, w.total_count), (Some(750), Some(1000)));
+    }
+
+    #[test]
+    fn a_window_without_a_name_is_labelled_from_its_duration() {
+        let r = parse(&body());
+        let w = &windows(&r)[1];
+        assert_eq!(w.label, "5 hour");
+        assert_eq!(w.remaining_percent, Some(80.0));
+    }
+
+    #[test]
+    fn numbers_arriving_as_strings_still_count() {
+        // Several fields come back quoted from this endpoint.
+        let r = parse(&json!({"usage": {"limit": "200", "remaining": "50", "name": "weekly"}}));
+        assert_eq!(windows(&r)[0].remaining_percent, Some(25.0));
+    }
+
+    #[test]
+    fn a_row_with_no_limit_is_skipped_rather_than_divided_by_zero() {
+        let r = parse(&json!({"usage": {"limit": 0.0, "used": 5.0}}));
+        assert!(matches!(r, Reading::Error(_)), "got {r:?}");
+    }
+
+    #[test]
+    fn a_shape_we_do_not_recognise_is_an_error_not_an_empty_reading() {
+        let r = parse(&json!({"quota": {"left": 10}}));
+        assert!(matches!(r, Reading::Error(_)), "got {r:?}");
     }
 }

@@ -25,6 +25,34 @@ impl Billing {
     }
 }
 
+/// Turn the two billing responses into a reading.
+///
+/// Split out from the requests so the shapes can be pinned by tests. The
+/// cents-or-dollars heuristic below is a guess about somebody else's API, and
+/// a guess is exactly the thing worth having tests for.
+fn parse(sub: &serde_json::Value, usage: &serde_json::Value) -> Reading {
+    let Some(limit) = sub.get("hard_limit_usd").and_then(|x| x.as_f64()).filter(|l| *l > 0.0) else {
+        return Reading::Error("no hard_limit_usd in subscription".into());
+    };
+    let Some(raw) = usage.get("total_usage").and_then(|x| x.as_f64()) else {
+        return Reading::Error("no total_usage in response".into());
+    };
+    // total_usage is cents on New-API deployments; sanity-check the heuristic
+    let used_usd = if raw > limit * 10.0 { raw / 100.0 } else { raw };
+    let remaining = ((limit - used_usd) / limit * 100.0).clamp(0.0, 100.0);
+    let access_until = sub.get("access_until").and_then(|x| x.as_f64()).filter(|t| *t > 1e9).map(|t| t as u64);
+    Reading::Ok {
+        windows: vec![Window {
+            label: format!("quota ${:.2} of ${:.0}", limit - used_usd.max(0.0), limit),
+            remaining_percent: Some(remaining),
+            remaining_count: None,
+            total_count: None,
+            resets_at: access_until,
+        }],
+        detail: Some(format!("${used_usd:.2} used")),
+    }
+}
+
 impl Provider for Billing {
     fn id(&self) -> String { self.cfg.id.clone() }
     fn fidelity(&self) -> Fidelity { Fidelity::Official }
@@ -50,25 +78,55 @@ impl Provider for Billing {
             Ok(v) => v,
             Err(e) => return make(Reading::Error(e)),
         };
-        let Some(limit) = sub.get("hard_limit_usd").and_then(|x| x.as_f64()).filter(|l| *l > 0.0) else {
-            return make(Reading::Error("no hard_limit_usd in subscription".into()));
-        };
-        let Some(raw) = usage.get("total_usage").and_then(|x| x.as_f64()) else {
-            return make(Reading::Error("no total_usage in response".into()));
-        };
-        // total_usage is cents on New-API deployments; sanity-check the heuristic
-        let used_usd = if raw > limit * 10.0 { raw / 100.0 } else { raw };
-        let remaining = ((limit - used_usd) / limit * 100.0).clamp(0.0, 100.0);
-        let access_until = sub.get("access_until").and_then(|x| x.as_f64()).filter(|t| *t > 1e9).map(|t| t as u64);
-        make(Reading::Ok {
-            windows: vec![Window {
-                label: format!("quota ${:.2} of ${:.0}", limit - used_usd.max(0.0), limit),
-                remaining_percent: Some(remaining),
-                remaining_count: None,
-                total_count: None,
-                resets_at: access_until,
-            }],
-            detail: Some(format!("${used_usd:.2} used")),
-        })
+        make(parse(&sub, &usage))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn window0(r: &Reading) -> &Window {
+        match r {
+            Reading::Ok { windows, .. } => &windows[0],
+            other => panic!("expected a reading, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn usage_in_cents_is_recognised_as_cents() {
+        // New-API deployments report cents; $30.46 spent of a $50 cap.
+        let r = parse(&json!({"hard_limit_usd": 50.0}), &json!({"total_usage": 3046.0}));
+        assert_eq!(window0(&r).remaining_percent, Some(39.08));
+        assert_eq!(window0(&r).label, "quota $19.54 of $50");
+    }
+
+    #[test]
+    fn usage_already_in_dollars_is_left_alone() {
+        // The heuristic is "too large to be dollars"; $12.50 of $50 is not.
+        let r = parse(&json!({"hard_limit_usd": 50.0}), &json!({"total_usage": 12.5}));
+        assert_eq!(window0(&r).remaining_percent, Some(75.0));
+    }
+
+    #[test]
+    fn spending_past_the_cap_reads_as_empty_not_as_negative() {
+        let r = parse(&json!({"hard_limit_usd": 10.0}), &json!({"total_usage": 5000.0}));
+        assert_eq!(window0(&r).remaining_percent, Some(0.0));
+    }
+
+    #[test]
+    fn an_access_expiry_becomes_the_reset_time() {
+        let r = parse(
+            &json!({"hard_limit_usd": 50.0, "access_until": 1_789_500_000.0}),
+            &json!({"total_usage": 100.0}),
+        );
+        assert_eq!(window0(&r).resets_at, Some(1_789_500_000));
+    }
+
+    #[test]
+    fn a_gateway_reporting_no_cap_says_so_rather_than_guessing_one() {
+        let r = parse(&json!({}), &json!({"total_usage": 100.0}));
+        assert!(matches!(r, Reading::Error(_)), "got {r:?}");
     }
 }

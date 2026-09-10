@@ -72,6 +72,32 @@ fn chrono_like_parse(s: &str) -> Option<u64> {
     Some(days * 86400 + h * 3600 + mi * 60 + sec)
 }
 
+/// Turn the usage endpoint's body into a reading.
+///
+/// Split out from the request so the response shape can be pinned by tests.
+/// This endpoint is not one we control: the shape changing is a thing that
+/// happens, and finding out from a test beats finding out from a user.
+fn parse(v: &Value) -> Reading {
+    let mut windows = Vec::new();
+    for (key, label) in [
+        ("five_hour", "session"),
+        ("seven_day", "weekly"),
+        ("seven_day_sonnet", "weekly sonnet"),
+        ("seven_day_opus", "weekly opus"),
+    ] {
+        if let Some(b) = v.get(key) {
+            if let Some(w) = window(label, b) {
+                windows.push(w);
+            }
+        }
+    }
+    if windows.is_empty() {
+        Reading::Error("no windows in response".into())
+    } else {
+        Reading::Ok { windows, detail: None }
+    }
+}
+
 impl Provider for Claude {
     fn id(&self) -> String { self.id.clone() }
     fn fidelity(&self) -> Fidelity { Fidelity::Official }
@@ -93,28 +119,69 @@ impl Provider for Claude {
             ("User-Agent", "claude-cli/1.0 (external, cli)".into()),
         ];
         match http_get_json("https://api.anthropic.com/api/oauth/usage", &headers) {
-            Ok(v) => {
-                let mut windows = Vec::new();
-                for (key, label) in [
-                    ("five_hour", "session"),
-                    ("seven_day", "weekly"),
-                    ("seven_day_sonnet", "weekly sonnet"),
-                    ("seven_day_opus", "weekly opus"),
-                ] {
-                    if let Some(b) = v.get(key) {
-                        if let Some(w) = window(label, b) {
-                            windows.push(w);
-                        }
-                    }
-                }
-                if windows.is_empty() {
-                    make(Reading::Error("no windows in response".into()))
-                } else {
-                    make(Reading::Ok { windows, detail: None })
-                }
-            }
+            Ok(v) => make(parse(&v)),
             Err(e) if e == "auth-failed" => make(Reading::NeedsAuth("run `claude login`".into())),
             Err(e) => make(Reading::Error(e)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Shape of `GET /api/oauth/usage`, as observed.
+    fn body() -> Value {
+        json!({
+            "five_hour":        {"utilization": 0.62, "resets_at": "2026-09-10T18:00:00Z"},
+            "seven_day":        {"utilization": 0.31, "resets_at": "2026-09-14T00:00:00Z"},
+            "seven_day_opus":   {"utilization": 0.08, "resets_at": "2026-09-14T00:00:00Z"}
+        })
+    }
+
+    fn windows(r: &Reading) -> &[Window] {
+        match r {
+            Reading::Ok { windows, .. } => windows,
+            other => panic!("expected a reading, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn utilisation_is_reported_as_what_is_left() {
+        let r = parse(&body());
+        let w = windows(&r);
+        assert_eq!(w[0].label, "session");
+        assert_eq!(w[0].remaining_percent, Some(38.0));
+        assert_eq!(w[1].label, "weekly");
+        assert_eq!(w[1].remaining_percent, Some(69.0));
+    }
+
+    #[test]
+    fn only_the_windows_present_are_reported() {
+        // No `seven_day_sonnet` in the fixture, so no such row.
+        let r = parse(&body());
+        assert_eq!(windows(&r).len(), 3);
+        assert!(windows(&r).iter().all(|w| w.label != "weekly sonnet"));
+    }
+
+    #[test]
+    fn reset_times_are_parsed_to_unix_seconds() {
+        let r = parse(&body());
+        assert_eq!(windows(&r)[0].resets_at, Some(1_789_063_200)); // 2026-09-10T18:00:00Z
+    }
+
+    #[test]
+    fn a_shape_we_do_not_recognise_is_an_error_not_an_empty_reading() {
+        // If the endpoint is reshaped, say so rather than quietly showing
+        // nothing — an empty notch looks like "no quota used".
+        let r = parse(&json!({"limits": {"five_hour": {"pct": 62}}}));
+        assert!(matches!(r, Reading::Error(_)), "got {r:?}");
+    }
+
+    #[test]
+    fn a_window_without_utilisation_is_skipped_rather_than_zeroed() {
+        let r = parse(&json!({"five_hour": {"resets_at": "2026-09-10T18:00:00Z"}}));
+        assert!(matches!(r, Reading::Error(_)), "got {r:?}");
     }
 }
