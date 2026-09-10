@@ -49,7 +49,9 @@ when `show_rail_percent` is on; the badge is always there. A settings orb sits
 at the bottom (arc at rest, gear on hover). The whole notch is draggable:
 press and drag anywhere on it (left or middle button) and the compositor
 moves the window; on release it snaps back flush to whichever side you
-dropped it nearest. Hovering a cell slides out a glass usage card that
+dropped it nearest — and is hoverable again the instant you let go, since the
+app replays the button-release the compositor swallows when it ends its own
+drag. Hovering a cell slides out a glass usage card that
 answers three questions in reading order:
 
 1. **How much is gone** — a headline `100% used` in the heat colour, with
