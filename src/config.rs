@@ -64,6 +64,11 @@ pub struct ProviderConfig {
     /// Where to send someone to fetch the key. Set by the provider catalogue.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_hint: Option<String>,
+    /// The provider's own dashboard, opened from the usage card. The
+    /// catalogue supplies a sensible default; override it here when a
+    /// provider moves its console.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub console_url: Option<String>,
     /// Which compiled-in adapter to run: "claude", "codex", "kimi",
     /// "minimax", "billing", or "json". Absent means "guess from the id",
     /// which is what every config written before this key did.

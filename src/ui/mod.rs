@@ -220,7 +220,9 @@ pub fn rail_card(
     list_height: f32,
     opacity: f32,
     pace: Option<&str>,
-) {
+    // Whether the header should offer a link to the provider's dashboard.
+    console: bool,
+) -> bool {
     let a = alpha.clamp(0.0, 1.0);
     let dim = |c: Color32| c.linear_multiply(a);
     let p = ui.painter().clone();
@@ -293,18 +295,36 @@ pub fn rail_card(
         mark_col,
     );
     let name_col = if stale { theme::mix(pal.text, pal.faint, 0.4) } else { Color32::WHITE };
+    let arrow_w = if console { 18.0 } else { 0.0 };
     let name = widgets::elide(
         ui,
         &s.display_name,
         theme::semibold(13.5),
         dim(name_col),
-        w - 22.0 - mark_w - 10.0,
+        w - 22.0 - mark_w - 10.0 - arrow_w,
     );
+    let name_w = name.rect.width();
     p.galley(
         egui::pos2(x0 + 22.0, head.center().y - name.rect.height() / 2.0),
         name,
         name_col,
     );
+    // A quota you have run out of usually ends with a trip to the provider's
+    // own page; the name is the obvious thing to click for that.
+    let mut console_clicked = false;
+    if console {
+        let hit = egui::Rect::from_min_size(
+            egui::pos2(x0 + 18.0, head.top() - 2.0),
+            Vec2::new(name_w + 4.0 + arrow_w, head.height() + 4.0),
+        );
+        let resp = ui
+            .interact(hit, ui.id().with(("console", &s.provider_id)), egui::Sense::click())
+            .on_hover_text("Open this provider's dashboard");
+        console_clicked = resp.clicked();
+        let c = egui::pos2(x0 + 31.0 + name_w, head.center().y - 1.0);
+        let col = if resp.hovered() { pal.accent } else { pal.faint };
+        widgets::open_arrow(&p, c, dim(col));
+    }
     y = head.bottom() + HEAD_GAP;
 
     // ---- hero ------------------------------------------------------------
@@ -402,7 +422,7 @@ pub fn rail_card(
             dim(pal.track),
         );
         card_footer(ui, rect, s, pal, a, now, x0, x1, w);
-        return;
+        return console_clicked;
     }
 
     // ---- rule ------------------------------------------------------------
@@ -468,6 +488,7 @@ pub fn rail_card(
         });
 
     card_footer(ui, rect, s, pal, a, now, x0, x1, w);
+    console_clicked
 }
 
 /// Provenance line at the foot of the card: how old the reading is on the

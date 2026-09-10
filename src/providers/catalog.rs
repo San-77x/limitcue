@@ -52,6 +52,10 @@ pub struct Preset {
     pub adapter: &'static str,
     /// Default CLI config directory for a `CliProfile` entry.
     pub credentials_dir: &'static str,
+    /// The provider's dashboard. Kept conservative — a landing page that is
+    /// certainly right beats a deep link that might not be — and overridable
+    /// per entry in config.
+    pub console_url: &'static str,
     pub auth_header: &'static str,
     pub windows: &'static [PresetWindow],
 }
@@ -76,6 +80,7 @@ impl Preset {
             adapter: (!self.adapter.is_empty()).then(|| self.adapter.into()),
             credentials_dir: (!self.credentials_dir.is_empty())
                 .then(|| self.credentials_dir.into()),
+            console_url: (!self.console_url.is_empty()).then(|| self.console_url.into()),
             enabled: Some(true),
             windows: self
                 .windows
@@ -114,6 +119,7 @@ pub const PRESETS: &[Preset] = &[
         url: "",
         adapter: "",
         credentials_dir: "",
+        console_url: "https://claude.ai/settings/usage",
         auth_header: "",
         windows: NONE_W,
     },
@@ -129,6 +135,7 @@ pub const PRESETS: &[Preset] = &[
         url: "",
         adapter: "",
         credentials_dir: "",
+        console_url: "https://chatgpt.com/",
         auth_header: "",
         windows: NONE_W,
     },
@@ -144,6 +151,7 @@ pub const PRESETS: &[Preset] = &[
         url: "",
         adapter: "",
         credentials_dir: "",
+        console_url: "",
         auth_header: "",
         windows: NONE_W,
     },
@@ -159,6 +167,7 @@ pub const PRESETS: &[Preset] = &[
         url: "",
         adapter: "",
         credentials_dir: "",
+        console_url: "https://platform.minimax.io/",
         auth_header: "",
         windows: NONE_W,
     },
@@ -174,6 +183,7 @@ pub const PRESETS: &[Preset] = &[
         url: "https://openrouter.ai/api/v1/auth/key",
         adapter: "",
         credentials_dir: "",
+        console_url: "https://openrouter.ai/settings/credits",
         auth_header: "Authorization: Bearer {key}",
         windows: &[PresetWindow {
             label: "credits",
@@ -195,6 +205,7 @@ pub const PRESETS: &[Preset] = &[
         url: "",
         adapter: "",
         credentials_dir: "",
+        console_url: "https://agentrouter.org/",
         auth_header: "",
         windows: NONE_W,
     },
@@ -210,6 +221,7 @@ pub const PRESETS: &[Preset] = &[
         url: "",
         adapter: "billing",
         credentials_dir: "",
+        console_url: "",
         auth_header: "",
         windows: NONE_W,
     },
@@ -226,6 +238,7 @@ pub const PRESETS: &[Preset] = &[
         auth_header: "",
         adapter: "claude",
         credentials_dir: "~/.claude-work",
+        console_url: "https://claude.ai/settings/usage",
         windows: NONE_W,
     },
     Preset {
@@ -241,6 +254,7 @@ pub const PRESETS: &[Preset] = &[
         auth_header: "",
         adapter: "codex",
         credentials_dir: "~/.codex-work",
+        console_url: "https://chatgpt.com/",
         windows: NONE_W,
     },
     Preset {
@@ -255,6 +269,7 @@ pub const PRESETS: &[Preset] = &[
         url: "",
         adapter: "",
         credentials_dir: "",
+        console_url: "",
         auth_header: "Authorization: Bearer {key}",
         windows: NONE_W,
     },

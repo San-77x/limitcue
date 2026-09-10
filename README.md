@@ -73,7 +73,11 @@ answers three questions in reading order:
    live in memory and are never written anywhere; a refill discards the old
    slope rather than averaging across it. Turn it off with
    `projections = false`.
-5. **How fresh the number is** — the footer carries the reading's age on the
+5. **Where to go about it** — the provider's name carries a small ↗; clicking
+   it opens that provider's own dashboard, which is usually the next thing you
+   want when a quota has run out. The catalogue supplies the link and
+   `console_url` overrides it per provider.
+6. **How fresh the number is** — the footer carries the reading's age on the
    left and the provider's own note (a dollar balance, a window count) on the
    right; provenance (official / derived / manual, or *stale*) sits in the
    header next to the name.

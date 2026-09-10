@@ -2526,7 +2526,19 @@ impl App {
                 if on_left { -slide } else { slide },
                 0.0,
             ));
-            ui::rail_card(
+            let console = self
+                .cfg
+                .provider
+                .iter()
+                .find(|p| p.id == s.provider_id)
+                .and_then(|p| p.console_url.clone())
+                .or_else(|| {
+                    providers::catalog::PRESETS
+                        .iter()
+                        .find(|p| p.id == s.provider_id && !p.console_url.is_empty())
+                        .map(|p| p.console_url.to_string())
+                });
+            let clicked = ui::rail_card(
                 ui,
                 card_rect,
                 s,
@@ -2538,7 +2550,13 @@ impl App {
                 card_layout.list_height,
                 self.cfg.card_opacity,
                 pace.as_deref(),
+                console.is_some(),
             );
+            if clicked {
+                if let Some(url) = console {
+                    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+                }
+            }
         }
 
         if ui.input(|i| i.key_pressed(egui::Key::R)) {

@@ -708,6 +708,16 @@ pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette
     resp
 }
 
+/// The little "opens elsewhere" arrow. Painted rather than typed: Inter has
+/// no such glyph, and a tofu box next to a provider's name would be worse
+/// than no affordance at all.
+pub fn open_arrow(p: &egui::Painter, c: Pos2, color: Color32) {
+    let s = Stroke::new(1.3_f32, color);
+    p.line_segment([egui::pos2(c.x - 3.0, c.y + 3.0), egui::pos2(c.x + 3.0, c.y - 3.0)], s);
+    p.line_segment([egui::pos2(c.x - 0.5, c.y - 3.0), egui::pos2(c.x + 3.0, c.y - 3.0)], s);
+    p.line_segment([egui::pos2(c.x + 3.0, c.y - 3.0), egui::pos2(c.x + 3.0, c.y + 0.5)], s);
+}
+
 /// A soft pulse on the gauge rim, marking a provider an agent is working
 /// against right now. Deliberately unlike the alert badge: this is
 /// information, not a problem, so it breathes rather than shouts, and sits on
