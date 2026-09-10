@@ -214,6 +214,20 @@ KWin you just don't get snap-to-edge and position persistence, and
 always-on-top falls back to whatever the compositor allows. `--once` mode
 never touches D-Bus or files.
 
+## First run
+
+```sh
+limitcue init
+```
+
+Looks for providers this machine is already signed in to — a credential file
+one of the vendor CLIs wrote, or a key sitting in the environment — wires up
+what it finds, and prints the first reading. It is deliberately incurious: it
+notes that a credential file exists without opening it, points at
+`$OPENROUTER_API_KEY` rather than copying the secret into a config file, and
+never guesses a URL for something it cannot see. If it finds nothing it says
+which CLIs it would have recognised.
+
 ## Alerts
 
 LimitCue can tell you before a quota bites, instead of waiting for you to look:

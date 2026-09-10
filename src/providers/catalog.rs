@@ -40,6 +40,9 @@ pub struct Preset {
     pub fidelity: Fidelity,
     /// Where to go to get a key. Empty when the entry needs none.
     pub key_hint: &'static str,
+    /// The environment variable people conventionally keep this key in, which
+    /// is what `limitcue init` looks for. Empty when there is no convention.
+    pub key_env: &'static str,
     pub base_url: &'static str,
     pub url: &'static str,
     pub auth_header: &'static str,
@@ -61,6 +64,7 @@ impl Preset {
             auth_header: (!self.auth_header.is_empty()).then(|| self.auth_header.into()),
             base_url: (!self.base_url.is_empty()).then(|| self.base_url.into()),
             key_hint: (!self.key_hint.is_empty()).then(|| self.key_hint.into()),
+            key_env: (!self.key_env.is_empty()).then(|| self.key_env.into()),
             billing: self.source == Source::Billing,
             enabled: Some(true),
             windows: self
@@ -95,6 +99,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Cli("~/.claude/.credentials.json"),
         fidelity: Fidelity::Official,
         key_hint: "",
+        key_env: "",
         base_url: "",
         url: "",
         auth_header: "",
@@ -107,6 +112,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Cli("~/.codex/auth.json"),
         fidelity: Fidelity::Official,
         key_hint: "",
+        key_env: "",
         base_url: "",
         url: "",
         auth_header: "",
@@ -119,6 +125,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Cli("~/.kimi"),
         fidelity: Fidelity::Derived,
         key_hint: "",
+        key_env: "",
         base_url: "",
         url: "",
         auth_header: "",
@@ -131,6 +138,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Keyed,
         fidelity: Fidelity::Official,
         key_hint: "MiniMax console → API keys (a key starting sk-cp-)",
+        key_env: "MINIMAX_API_KEY",
         base_url: "https://api.minimax.io",
         url: "",
         auth_header: "",
@@ -143,6 +151,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Json,
         fidelity: Fidelity::Official,
         key_hint: "openrouter.ai/settings/keys",
+        key_env: "OPENROUTER_API_KEY",
         base_url: "",
         url: "https://openrouter.ai/api/v1/auth/key",
         auth_header: "Authorization: Bearer {key}",
@@ -161,6 +170,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Billing,
         fidelity: Fidelity::Official,
         key_hint: "AgentRouter dashboard → API tokens",
+        key_env: "AGENTROUTER_API_KEY",
         base_url: "https://agentrouter.org/v1",
         url: "",
         auth_header: "",
@@ -173,6 +183,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Billing,
         fidelity: Fidelity::Official,
         key_hint: "the gateway's own dashboard",
+        key_env: "",
         base_url: "",
         url: "",
         auth_header: "",
@@ -185,6 +196,7 @@ pub const PRESETS: &[Preset] = &[
         source: Source::Json,
         fidelity: Fidelity::Manual,
         key_hint: "",
+        key_env: "",
         base_url: "",
         url: "",
         auth_header: "Authorization: Bearer {key}",
@@ -208,4 +220,45 @@ pub fn addable(existing: &[ProviderConfig]) -> Vec<&'static Preset> {
         .filter(|p| !p.is_built_in())
         .filter(|p| p.id == "custom" || p.id == "gateway" || !existing.iter().any(|e| e.id == p.id))
         .collect()
+}
+
+/// What `limitcue init` found on this machine.
+pub struct Found {
+    pub preset: &'static Preset,
+    /// Why it counts as present: a credential file, or a key in the env.
+    pub because: String,
+    /// Already in the config, so nothing to add.
+    pub already: bool,
+}
+
+/// Look for providers this machine is already signed in to.
+///
+/// Deliberately conservative: it reports a credential file existing, or a key
+/// sitting in the environment. It never opens a credential file, and it never
+/// guesses a URL for something it cannot see.
+pub fn detect(cfg: &crate::config::Config) -> Vec<Found> {
+    let home = crate::providers::home();
+    let mut out = Vec::new();
+    for p in PRESETS {
+        let already = match p.source {
+            Source::Cli(_) => !cfg.disabled.iter().any(|d| *d == *p.id),
+            _ => cfg.provider.iter().any(|e| e.id == p.id),
+        };
+        let because = match p.source {
+            Source::Cli(path) => {
+                let real = home.join(path.trim_start_matches("~/"));
+                if real.exists() {
+                    format!("{path} is here")
+                } else {
+                    continue;
+                }
+            }
+            _ if !p.key_env.is_empty() && std::env::var(p.key_env).is_ok() => {
+                format!("${} is set", p.key_env)
+            }
+            _ => continue,
+        };
+        out.push(Found { preset: p, because, already });
+    }
+    out
 }

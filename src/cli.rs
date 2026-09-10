@@ -22,6 +22,8 @@ pub enum Cmd {
     Waybar,
     /// Send one desktop notification, to check alerts reach the tray.
     TestAlert,
+    /// Look for providers this machine is signed in to and offer to add them.
+    Init,
     Help,
     Version,
 }
@@ -42,6 +44,7 @@ pub fn parse<I: Iterator<Item = String>>(argv: I) -> Args {
             "--line" | "--stdout" => cmd = Cmd::Line,
             "--waybar" => cmd = Cmd::Waybar,
             "--test-alert" => cmd = Cmd::TestAlert,
+            "init" | "--init" => cmd = Cmd::Init,
             "--watch" => watch = true,
             "-h" | "--help" => cmd = Cmd::Help,
             "-V" | "--version" => cmd = Cmd::Version,
@@ -56,6 +59,7 @@ limitcue — an always-on-top quota gauge for AI coding plans
 
 USAGE
   limitcue                 open the notch (default)
+  limitcue init            find providers you are already signed in to
   limitcue --once          print one reading per provider and exit
   limitcue --json          print one JSON document and exit
   limitcue --line          print one status-bar line (pango markup)
@@ -96,6 +100,10 @@ fn worst(s: &Snapshot) -> Option<f64> {
 }
 
 pub fn run(cmd: Cmd, cfg: &Config, watch: bool) {
+    if cmd == Cmd::Init {
+        init(cfg);
+        return;
+    }
     if cmd == Cmd::TestAlert {
         if crate::notify::Notifier::new().test() {
             println!("sent one notification to the desktop");
@@ -120,6 +128,53 @@ pub fn run(cmd: Cmd, cfg: &Config, watch: bool) {
         let _ = std::io::stdout().flush();
         std::thread::sleep(std::time::Duration::from_secs(cfg.poll_interval_secs.max(5)));
     }
+}
+
+/// Find what this machine is already signed in to, wire it up, and show the
+/// result. The point is that a first run should not begin with reading docs.
+fn init(cfg: &Config) {
+    use crate::providers::catalog;
+    let found = catalog::detect(cfg);
+    if found.is_empty() {
+        println!("Found nothing set up yet.\n");
+        println!("LimitCue reads credentials the vendor CLIs already wrote, so signing in");
+        println!("with one of them is usually all it takes:");
+        for p in catalog::PRESETS.iter().filter(|p| p.is_built_in()) {
+            println!("  {:<16} {}", p.name, p.blurb);
+        }
+        println!("\nFor anything key-based, add it from Settings -> Providers -> Add.");
+        return;
+    }
+
+    let mut next = cfg.clone();
+    let mut added = Vec::new();
+    println!("Found on this machine:\n");
+    for f in &found {
+        let mark = if f.already { "already tracked" } else { "adding" };
+        println!("  {:<16} {:<28} {}", f.preset.name, f.because, mark);
+        if f.already {
+            continue;
+        }
+        if f.preset.is_built_in() {
+            next.disabled.retain(|d| *d != *f.preset.id);
+        } else {
+            let mut entry = f.preset.to_config();
+            // Point at the environment rather than copying the secret into a
+            // file the user did not ask us to put it in.
+            entry.key_env = (!f.preset.key_env.is_empty()).then(|| f.preset.key_env.to_string());
+            next.provider.push(entry);
+        }
+        added.push(f.preset.name);
+    }
+
+    if added.is_empty() {
+        println!("\nEverything found is already tracked — nothing to change.");
+    } else {
+        Config::save(&next);
+        println!("\nAdded {} to {}.", added.join(", "), Config::path().display());
+    }
+    println!("\nReading now:\n");
+    print_table(&read_all(&next));
 }
 
 fn print_table(snaps: &[Snapshot]) {
