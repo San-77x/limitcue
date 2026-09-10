@@ -67,25 +67,63 @@ fn parse_timestamp(s: &str) -> Option<u64> {
         .map(|d| d.timestamp().max(0) as u64)
 }
 
+/// Name a window after the key it arrived under.
+///
+/// `five_hour` and `seven_day` are the plan-wide windows; anything
+/// `seven_day_*` is that model's own weekly allowance, so `seven_day_fable`
+/// reads "weekly fable". Keys we have never seen are prettified rather than
+/// hidden — a quota nobody has taught this app about is still the user's
+/// quota.
+fn label_for(key: &str) -> String {
+    match key {
+        "five_hour" => "session".into(),
+        "seven_day" => "weekly".into(),
+        k => match k.strip_prefix("seven_day_") {
+            Some(rest) => format!("weekly {}", rest.replace('_', " ")),
+            None => k.replace('_', " "),
+        },
+    }
+}
+
+/// Should a window the app does not recognise be shown?
+///
+/// The response carries a slot for every window kind that could exist, most
+/// of them null and some of them internal code names sitting at zero. A named
+/// window always counts; an unfamiliar one counts once it is actually in use
+/// or has a reset scheduled, which is the point at which it means something to
+/// the person reading it.
+fn worth_showing(key: &str, util: f64, resets_at: Option<u64>) -> bool {
+    key == "five_hour" || key == "seven_day" || key.starts_with("seven_day_")
+        || util > 0.0
+        || resets_at.is_some()
+}
+
 /// Turn the usage endpoint's body into a reading.
 ///
-/// Split out from the request so the response shape can be pinned by tests.
-/// This endpoint is not one we control: the shape changing is a thing that
-/// happens, and finding out from a test beats finding out from a user.
+/// Every window in the response is read, rather than a hardcoded four. The
+/// endpoint enumerates a slot per window kind — per-model weeklies among them
+/// — and which ones an account has depends on its plan, so listing them in
+/// code meant a new one stayed invisible until somebody edited Rust.
 fn parse(v: &Value) -> Reading {
+    let Some(map) = v.as_object() else {
+        return Reading::Error("unrecognised response".into());
+    };
     let mut windows = Vec::new();
-    for (key, label) in [
-        ("five_hour", "session"),
-        ("seven_day", "weekly"),
-        ("seven_day_sonnet", "weekly sonnet"),
-        ("seven_day_opus", "weekly opus"),
-    ] {
-        if let Some(b) = v.get(key) {
-            if let Some(w) = window(label, b) {
-                windows.push(w);
-            }
+    for (key, block) in map {
+        // `extra_usage` and friends are objects without a utilisation; they
+        // are not quota windows.
+        let Some(w) = window(&label_for(key), block) else { continue };
+        let util = block.get("utilization").and_then(|u| u.as_f64()).unwrap_or(0.0);
+        if worth_showing(key, util, w.resets_at) {
+            windows.push(w);
         }
     }
+    // Plan-wide windows first, then the rest in a stable order.
+    windows.sort_by_key(|w| match w.label.as_str() {
+        "session" => (0, String::new()),
+        "weekly" => (1, String::new()),
+        other => (2, other.to_string()),
+    });
     if windows.is_empty() {
         Reading::Error("no windows in response".into())
     } else {
@@ -150,6 +188,15 @@ mod tests {
             },
             "seven_day_opus": null,
             "seven_day_sonnet": null,
+            // A per-model weekly the app has never been told about.
+            "seven_day_fable": {
+                "utilization": 12.0,
+                "resets_at": "2026-09-12T01:59:59.970876+00:00",
+                "limit_dollars": null, "used_dollars": null,
+                "remaining_dollars": null, "locked_reason": null
+            },
+            // An internal code name, dormant on this account.
+            "nimbus_quill": {"utilization": 0.0, "resets_at": null},
             "extra_usage": {"is_enabled": false, "monthly_limit": null}
         })
     }
@@ -176,7 +223,44 @@ mod tests {
     fn null_window_slots_are_skipped() {
         // The response carries a slot for every window kind that could exist,
         // most of them null on any given plan.
-        assert_eq!(windows(&parse(&body())).len(), 2);
+        let r = parse(&body());
+        let labels: Vec<&str> = windows(&r).iter().map(|w| w.label.as_str()).collect();
+        assert_eq!(labels, ["session", "weekly", "weekly fable"]);
+    }
+
+    #[test]
+    fn a_per_model_window_appears_without_the_app_knowing_its_name() {
+        // The endpoint enumerates a slot per window kind and which ones an
+        // account has depends on its plan. Listing them in code meant a new
+        // one — a Fable weekly, say — stayed invisible until somebody edited
+        // Rust. Every window in the response is read now.
+        let r = parse(&body());
+        let fable = windows(&r).iter().find(|w| w.label == "weekly fable").expect("fable window");
+        assert_eq!(fable.remaining_percent, Some(88.0));
+    }
+
+    #[test]
+    fn a_dormant_internal_slot_is_not_shown() {
+        // `nimbus_quill` and friends sit at zero with no reset. Showing an
+        // unexplained code name at 100% would be noise, so an unfamiliar
+        // window has to be in use or scheduled before it earns a row.
+        let r = parse(&body());
+        assert!(windows(&r).iter().all(|w| w.label != "nimbus quill"));
+    }
+
+    #[test]
+    fn an_unfamiliar_window_that_is_in_use_does_earn_a_row() {
+        let r = parse(&json!({"copper_kite": {"utilization": 30.0, "resets_at": null}}));
+        let w = &windows(&r)[0];
+        assert_eq!(w.label, "copper kite");
+        assert_eq!(w.remaining_percent, Some(70.0));
+    }
+
+    #[test]
+    fn plan_wide_windows_come_first() {
+        let r = parse(&body());
+        assert_eq!(windows(&r)[0].label, "session");
+        assert_eq!(windows(&r)[1].label, "weekly");
     }
 
     #[test]
