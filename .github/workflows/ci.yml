@@ -1,0 +1,59 @@
+name: ci
+
+# Runs on every push and pull request, which is the point: the release
+# workflow only fires on a tag, so until now nothing checked a commit at the
+# time it was made. The adapters read endpoints we do not control, so the
+# fixtures are the early-warning system — they are worth nothing if they only
+# run when somebody remembers.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxkbcommon-dev libwayland-dev
+      - uses: Swatinem/rust-cache@v2
+
+      # No `cargo fmt --check` step on purpose. The tree predates rustfmt by
+      # ~260 hunks and its compact one-liners in the adapters read as
+      # deliberate; reformatting is a decision to take on its own, not a
+      # condition to fail every build on meanwhile. A step that is permanently
+      # red just teaches people to ignore this workflow.
+
+      # The project has held zero warnings throughout; keep it that way rather
+      # than letting them accumulate back.
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: tests
+        run: cargo test --all-targets
+
+      # The compositor integration is JavaScript KWin runs, so cargo cannot
+      # see it. Its geometry maths is where the multi-monitor docking bugs
+      # lived, and it has its own tests.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: kwin script tests
+        run: node scripts/test-kwin-script.js
+
+      - name: headless smoke test
+        run: |
+          cargo build
+          ./target/debug/limitcue --help > /dev/null
+          ./target/debug/limitcue --json | python3 -c "import json,sys; json.load(sys.stdin)"
+          echo "CLI surfaces respond and emit valid JSON"
