@@ -395,6 +395,13 @@ struct App {
     reported_y: f32,
     last_edge: Edge,
     cfg_next: Config,
+    /// Last-seen mtime of config.toml, so an edit made in an editor is picked
+    /// up without a restart — and so our own writes are not mistaken for one.
+    cfg_mtime: Option<std::time::SystemTime>,
+    cfg_check_at: Instant,
+    /// Whether the config watcher thread has been started (it needs a Context,
+    /// which only exists once the first frame runs).
+    cfg_watching: bool,
     settings_open: bool,
     settings_tab: SettingsTab,
     settings_view: SettingsView,
@@ -478,6 +485,9 @@ impl App {
             restore_sent: 0,
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
+            cfg_mtime: Config::mtime(),
+            cfg_check_at: Instant::now(),
+            cfg_watching: false,
             settings_open,
             settings_tab,
             settings_view,
@@ -653,6 +663,7 @@ impl App {
                 if w::pill_button(ui, "Save", true, true, pal).clicked() {
                     self.cfg = self.cfg_next.clone();
                     config::Config::save(&self.cfg);
+                    self.cfg_mtime = Config::mtime();
                     self.pal = theme::palette(&self.cfg.theme);
                     // Re-apply the global style: tooltips and the scrollbar
                     // are styled once at startup and would otherwise keep the
@@ -1553,6 +1564,51 @@ impl App {
 
     /// Restart the poll thread after a config change (provider set, order,
     /// interval). The old thread exits on its own when its channel closes.
+    /// Pick up an edit made to config.toml outside the app. Checked on a slow
+    /// timer rather than watched: one `stat` every couple of seconds is
+    /// cheaper than an inotify thread, and a config file is not a hot path.
+    ///
+    /// Skipped while the settings sheet is open — reloading underneath
+    /// somebody's half-finished edit would throw their work away.
+    fn reload_config_if_changed(&mut self, ctx: &egui::Context) {
+        // An idle notch repaints every 30 s, which would make a config edit
+        // take that long to land. A watcher thread stats the file on its own
+        // clock and wakes the UI when it actually changes.
+        if !self.cfg_watching {
+            self.cfg_watching = true;
+            let ctx = ctx.clone();
+            let mut seen = self.cfg_mtime;
+            thread::spawn(move || loop {
+                thread::sleep(std::time::Duration::from_secs(2));
+                let now = Config::mtime();
+                if now != seen {
+                    seen = now;
+                    ctx.request_repaint();
+                }
+            });
+        }
+        if self.settings_open || self.cfg_check_at.elapsed().as_secs() < 2 {
+            return;
+        }
+        self.cfg_check_at = Instant::now();
+        let now = Config::mtime();
+        if now == self.cfg_mtime {
+            return;
+        }
+        self.cfg_mtime = now;
+        let fresh = Config::load();
+        // Our own Save writes the file too; that is not a change to react to.
+        if cfg_eq(&fresh, &self.cfg) {
+            return;
+        }
+        self.cfg = fresh.clone();
+        self.cfg_next = fresh;
+        self.pal = theme::palette(&self.cfg.theme);
+        theme::apply_style(ctx, &self.pal);
+        self.restart_poller();
+        ctx.request_repaint();
+    }
+
     fn restart_poller(&mut self) {
         let (tx_snap, rx_snap) = mpsc::channel::<Vec<Snapshot>>();
         let (tx_tick, rx_tick) = mpsc::channel::<Ctl>();
@@ -1648,6 +1704,7 @@ impl eframe::App for App {
         if self.usage.take_refresh() {
             self.refresh(ctx);
         }
+        self.reload_config_if_changed(ctx);
         self.drain(ctx);
         self.tweens.retain(|_, t| t.value().is_some());
         let stored_edge = self.dock.lock().unwrap().edge;

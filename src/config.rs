@@ -167,6 +167,11 @@ impl Config {
         dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("limitcue").join("config.toml")
     }
 
+    /// When the file was last written, for spotting edits made outside the app.
+    pub fn mtime() -> Option<std::time::SystemTime> {
+        std::fs::metadata(Self::path()).ok()?.modified().ok()
+    }
+
     pub fn load() -> Self {
         match std::fs::read_to_string(Self::path()) {
             Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {

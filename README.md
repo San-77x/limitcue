@@ -318,7 +318,9 @@ than stock widgets. Three tabs:
   pill.
 
 *Save* writes `config.toml` and hot-reloads the poll loop — no restart
-needed. Providers can also carry a `priority = <n>` key in config.toml
+needed. Edits made to the file in an editor are picked up the same way, within
+a couple of seconds, except while the settings sheet is open: reloading
+underneath a half-finished edit would throw it away. Providers can also carry a `priority = <n>` key in config.toml
 (lower = earlier in the pill; file order otherwise).
 
 ## Development
