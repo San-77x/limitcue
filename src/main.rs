@@ -390,7 +390,7 @@ fn provider_mark(
                 tex.id(),
                 Rect::from_center_size(r.center(), Vec2::splat(15.0)),
                 Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE.linear_multiply(a),
+                pal.ink.linear_multiply(a),
             );
         }
         None => {
@@ -399,7 +399,7 @@ fn provider_mark(
                 egui::Align2::CENTER_CENTER,
                 theme::monogram(id),
                 theme::semibold(12.0),
-                Color32::WHITE.linear_multiply(a),
+                pal.ink.linear_multiply(a),
             );
         }
     }
@@ -2431,7 +2431,7 @@ impl App {
             );
             let resp = ui.interact(cell, ui.id().with("rail-empty"), Sense::click());
             let c = egui::pos2(cell.center().x, cell.center().y - 9.0);
-            let col = if resp.hovered() { Color32::WHITE } else { pal.muted };
+            let col = if resp.hovered() { pal.ink } else { pal.muted };
             ui.painter().circle_stroke(c, RAIL_RING_R, egui::Stroke::new(1.4_f32, pal.track));
             let s = egui::Stroke::new(1.8_f32, col);
             ui.painter().line_segment([egui::pos2(c.x - 5.0, c.y), egui::pos2(c.x + 5.0, c.y)], s);
@@ -2493,6 +2493,7 @@ impl App {
                 if ok { used01 } else { 0.0 },
                 heat,
                 pal.rail_disc,
+                pal.ink,
                 gauge_alpha,
                 pal.glow,
             );
@@ -2576,7 +2577,7 @@ impl App {
         // Neutral three-dot menu mark: this control is navigation/settings,
         // not another quota gauge. The dots brighten together on hover.
         let dot_color =
-            if orb_hover { Color32::WHITE } else { pal.muted }.linear_multiply(quiet);
+            if orb_hover { pal.ink } else { pal.muted }.linear_multiply(quiet);
         let dot_radius = if orb_hover { 2.0 } else { 1.7 };
         for offset in [-6.0_f32, 0.0, 6.0] {
             ui.painter().circle_filled(

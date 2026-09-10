@@ -166,7 +166,7 @@ pub fn logo_ring_stroke_on(
         tex.id(),
         Rect::from_center_size(center, Vec2::splat(side)),
         Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-        Color32::WHITE.linear_multiply(alpha),
+        pal.ink.linear_multiply(alpha),
     );
     ring(ui, center, r, stroke, frac, color, pal, alpha);
 }
@@ -186,6 +186,10 @@ pub fn gauge(
     used: f32,
     color: Color32,
     track: Color32,
+    // Colour for the provider's mark. White on a dark theme, near-black on a
+    // light or fluorescent one — the marks are white PNGs, so tinting them
+    // dark is what lets the notch have a bright surface at all.
+    ink: Color32,
     alpha: f32,
     glow: f32,
 ) {
@@ -198,7 +202,7 @@ pub fn gauge(
                 tex.id(),
                 Rect::from_center_size(center, Vec2::splat(side)),
                 Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE.linear_multiply(alpha),
+                ink.linear_multiply(alpha),
             );
         }
         None => {
@@ -207,7 +211,7 @@ pub fn gauge(
                 egui::Align2::CENTER_CENTER,
                 letter,
                 theme::semibold(r * 0.95),
-                Color32::WHITE.linear_multiply(alpha),
+                ink.linear_multiply(alpha),
             );
         }
     }
@@ -329,7 +333,7 @@ pub fn icon_button(
         if hovered {
             ui.painter().rect_filled(rect.shrink(2.0), 8.0_f32, pal.card_hover);
         }
-        let base = if hovered { Color32::WHITE } else { Color32::from_gray(215) };
+        let base = if hovered { pal.ink } else { pal.ink.gamma_multiply(0.82) };
         let center = rect.center();
         let size = 17.0;
         match angle {
@@ -481,7 +485,8 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool, pal: &Palette) -> egui::Response
     let knob_r = rect.height() / 2.0 - 3.0;
     let x0 = rect.left() + 3.0 + knob_r;
     let cx = x0 + (rect.width() - 6.0 - knob_r * 2.0) * t;
-    let knob = if t > 0.5 { Color32::WHITE } else { pal.muted };
+    // On a light theme a white knob on a light accent would vanish.
+    let knob = if t > 0.5 { theme::on_brand(pal.accent) } else { pal.muted };
     p.circle_filled(egui::pos2(cx, rect.center().y), knob_r, knob);
     resp
 }

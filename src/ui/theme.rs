@@ -29,6 +29,13 @@ pub struct Palette {
     pub rail_disc: Color32,
     /// Translucent glass surface for the rail card.
     pub rail_deep: Color32,
+    /// Colour of anything drawn directly *on* the notch or card surface:
+    /// provider marks, the percentage under a gauge, the settings orb.
+    ///
+    /// These used to be hardcoded white, which quietly required every theme
+    /// to have a dark surface. Naming the colour is what lets a theme be
+    /// light, or bright, or green.
+    pub ink: Color32,
     /// Hairline rule drawn *inside* a glass surface (already translucent).
     pub hairline: Color32,
     /// Specular highlight along the top lip of a glass surface.
@@ -45,13 +52,16 @@ pub struct Palette {
     pub glow: f32,
 }
 
-/// The themes, in picker order. Each one re-colours *everything* — including
-/// the notch body and the card glass, which used to be identical across all
-/// four themes, so switching theme changed only the settings sheet and the
-/// gauge hues. That is why the old set felt like it did nothing.
-pub const THEMES: &[&str] = &["midnight", "flux", "ember", "aurora", "chrome"];
+/// The themes, in picker order.
+///
+/// Deliberately not six shades of the same near-black: a light one, a
+/// fluorescent one, a colourful one, a minimal one, a flashy one, and one
+/// restrained dark one. Every surface is themed — the notch body, the card
+/// glass, the ink the marks are drawn in — so these are different designs
+/// rather than one design with the accent swapped.
+pub const THEMES: &[&str] = &["midnight", "paper", "acid", "prism", "slate", "neon"];
 
-/// Restrained neutral. The default, and the one that disappears into any
+/// Restrained near-black. The default, and the one that disappears into any
 /// desktop.
 pub const MIDNIGHT: Palette = Palette {
     bg: Color32::from_rgb(0x0E, 0x0F, 0x12),
@@ -67,6 +77,7 @@ pub const MIDNIGHT: Palette = Palette {
     stale: Color32::from_rgb(0x6B, 0x72, 0x80),
     track: Color32::from_rgb(0x2A, 0x2D, 0x33),
     accent: Color32::from_rgb(0x7C, 0xA8, 0xFF),
+    ink: Color32::from_rgb(0xFF, 0xFF, 0xFF),
     rail_bg: Color32::from_rgba_premultiplied(5, 6, 8, 168),
     rail_disc: Color32::from_rgb(0x20, 0x23, 0x29),
     rail_deep: Color32::from_rgba_premultiplied(8, 10, 13, 174),
@@ -83,144 +94,190 @@ pub const MIDNIGHT: Palette = Palette {
     glow: 0.22,
 };
 
-/// Fluorescent. Violet-black with acid green, electric yellow and hot
-/// magenta, glowing hard. The one that gets noticed.
-pub const FLUX: Palette = Palette {
-    bg: Color32::from_rgb(0x0A, 0x07, 0x12),
-    border: Color32::from_rgb(0x2A, 0x1F, 0x45),
-    card: Color32::from_rgb(0x13, 0x0E, 0x23),
-    card_hover: Color32::from_rgb(0x1D, 0x15, 0x33),
-    text: Color32::from_rgb(0xF2, 0xEC, 0xFF),
-    muted: Color32::from_rgb(0xA9, 0x9C, 0xC8),
-    faint: Color32::from_rgb(0x6B, 0x5F, 0x8C),
-    ok: Color32::from_rgb(0x39, 0xFF, 0x88),
-    warn: Color32::from_rgb(0xEA, 0xFF, 0x00),
-    bad: Color32::from_rgb(0xFF, 0x2E, 0x88),
-    stale: Color32::from_rgb(0x6B, 0x5F, 0x8C),
-    track: Color32::from_rgb(0x24, 0x1A, 0x3B),
-    accent: Color32::from_rgb(0x00, 0xE5, 0xFF),
-    rail_bg: Color32::from_rgba_premultiplied(7, 4, 13, 168),
-    rail_disc: Color32::from_rgb(0x1E, 0x16, 0x36),
-    rail_deep: Color32::from_rgba_premultiplied(12, 7, 22, 174),
-    hairline: Color32::from_rgba_premultiplied(17, 14, 22, 22),
-    sheen: Color32::from_rgba_premultiplied(34, 55, 58, 58),
-    control: Color32::from_rgb(0x17, 0x10, 0x2A),
-    control_hi: Color32::from_rgb(0x24, 0x19, 0x38),
+/// Light. A white notch with dark ink — the one for people who do not run a
+/// dark desktop and would rather this did not punch a black hole in it.
+pub const PAPER: Palette = Palette {
+    bg: Color32::from_rgb(0xF7, 0xF6, 0xF3),
+    border: Color32::from_rgb(0xDD, 0xDA, 0xD3),
+    card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    card_hover: Color32::from_rgb(0xF0, 0xEE, 0xEA),
+    text: Color32::from_rgb(0x16, 0x18, 0x1D),
+    muted: Color32::from_rgb(0x5C, 0x62, 0x6B),
+    faint: Color32::from_rgb(0x8D, 0x94, 0x9E),
+    ok: Color32::from_rgb(0x0B, 0x8A, 0x4B),
+    warn: Color32::from_rgb(0xB4, 0x76, 0x00),
+    bad: Color32::from_rgb(0xC4, 0x25, 0x2B),
+    stale: Color32::from_rgb(0x9A, 0xA0, 0xA8),
+    track: Color32::from_rgb(0xE2, 0xE0, 0xDA),
+    accent: Color32::from_rgb(0x1D, 0x4E, 0xD8),
+    ink: Color32::from_rgb(0x14, 0x17, 0x1C),
+    rail_bg: Color32::from_rgba_premultiplied(168, 168, 168, 168),
+    rail_disc: Color32::from_rgb(0xE8, 0xE6, 0xE0),
+    rail_deep: Color32::from_rgba_premultiplied(174, 174, 174, 174),
+    hairline: Color32::from_rgba_premultiplied(2, 2, 3, 30),
+    sheen: Color32::from_rgba_premultiplied(40, 40, 40, 40),
+    control: Color32::from_rgb(0xEE, 0xEC, 0xE7),
+    control_hi: Color32::from_rgb(0xE0, 0xDD, 0xD6),
     gauge: [
-        Color32::from_rgb(0x39, 0xFF, 0x88),
-        Color32::from_rgb(0xEA, 0xFF, 0x00),
-        Color32::from_rgb(0xFF, 0x9E, 0x00),
-        Color32::from_rgb(0xFF, 0x2E, 0x88),
+        Color32::from_rgb(0x0B, 0x8A, 0x4B),
+        Color32::from_rgb(0xC9, 0x8A, 0x00),
+        Color32::from_rgb(0xDB, 0x62, 0x0B),
+        Color32::from_rgb(0xC4, 0x25, 0x2B),
     ],
-    glow: 0.95,
+    glow: 0.0,
 };
 
-/// Warm dark: charcoal, copper and amber, like a lamp on a desk.
-pub const EMBER: Palette = Palette {
-    bg: Color32::from_rgb(0x12, 0x0E, 0x0A),
-    border: Color32::from_rgb(0x33, 0x26, 0x1C),
-    card: Color32::from_rgb(0x1A, 0x14, 0x10),
-    card_hover: Color32::from_rgb(0x24, 0x1B, 0x14),
-    text: Color32::from_rgb(0xF6, 0xED, 0xE2),
-    muted: Color32::from_rgb(0xBF, 0xA9, 0x8F),
-    faint: Color32::from_rgb(0x7A, 0x65, 0x53),
-    ok: Color32::from_rgb(0x7B, 0xD8, 0x8F),
-    warn: Color32::from_rgb(0xFF, 0xC2, 0x4B),
-    bad: Color32::from_rgb(0xFF, 0x5C, 0x46),
-    stale: Color32::from_rgb(0x7A, 0x65, 0x53),
-    track: Color32::from_rgb(0x2E, 0x24, 0x1B),
-    accent: Color32::from_rgb(0xFF, 0x9E, 0x3D),
-    rail_bg: Color32::from_rgba_premultiplied(11, 7, 5, 168),
-    rail_disc: Color32::from_rgb(0x24, 0x1A, 0x13),
-    rail_deep: Color32::from_rgba_premultiplied(18, 12, 8, 174),
-    hairline: Color32::from_rgba_premultiplied(20, 16, 13, 20),
-    sheen: Color32::from_rgba_premultiplied(46, 37, 25, 46),
-    control: Color32::from_rgb(0x1D, 0x16, 0x10),
-    control_hi: Color32::from_rgb(0x2A, 0x20, 0x18),
-    gauge: [
-        Color32::from_rgb(0x7B, 0xD8, 0x8F),
-        Color32::from_rgb(0xFF, 0xD2, 0x4B),
-        Color32::from_rgb(0xFF, 0x8A, 0x3D),
-        Color32::from_rgb(0xFF, 0x44, 0x38),
-    ],
-    glow: 0.55,
-};
-
-/// Cool and luminous: deep teal with aqua, lime and a violet accent.
-pub const AURORA: Palette = Palette {
-    bg: Color32::from_rgb(0x07, 0x11, 0x0F),
-    border: Color32::from_rgb(0x1B, 0x3A, 0x38),
-    card: Color32::from_rgb(0x0C, 0x1A, 0x18),
-    card_hover: Color32::from_rgb(0x13, 0x25, 0x23),
-    text: Color32::from_rgb(0xE6, 0xFB, 0xF6),
-    muted: Color32::from_rgb(0x90, 0xB8, 0xB2),
-    faint: Color32::from_rgb(0x54, 0x75, 0x71),
-    ok: Color32::from_rgb(0x3B, 0xE8, 0xC0),
-    warn: Color32::from_rgb(0xF5, 0xD7, 0x6E),
-    bad: Color32::from_rgb(0xFF, 0x6B, 0x9D),
-    stale: Color32::from_rgb(0x54, 0x75, 0x71),
-    track: Color32::from_rgb(0x17, 0x30, 0x2D),
-    accent: Color32::from_rgb(0xA7, 0x8B, 0xFA),
-    rail_bg: Color32::from_rgba_premultiplied(3, 9, 9, 168),
-    rail_disc: Color32::from_rgb(0x12, 0x23, 0x20),
-    rail_deep: Color32::from_rgba_premultiplied(6, 14, 14, 174),
-    hairline: Color32::from_rgba_premultiplied(12, 19, 17, 20),
-    sheen: Color32::from_rgba_premultiplied(32, 48, 44, 48),
-    control: Color32::from_rgb(0x10, 0x20, 0x1E),
-    control_hi: Color32::from_rgb(0x1A, 0x2E, 0x2B),
-    gauge: [
-        Color32::from_rgb(0x3B, 0xE8, 0xC0),
-        Color32::from_rgb(0xA8, 0xE8, 0x5C),
-        Color32::from_rgb(0xFF, 0xC2, 0x4B),
-        Color32::from_rgb(0xFF, 0x6B, 0x9D),
-    ],
-    glow: 0.7,
-};
-
-/// Polished metal: cool greys with a hard specular edge and a steel-blue
-/// accent. The most "lit" of the set without being loud.
-pub const CHROME: Palette = Palette {
-    bg: Color32::from_rgb(0x10, 0x12, 0x16),
-    border: Color32::from_rgb(0x33, 0x39, 0x41),
-    card: Color32::from_rgb(0x19, 0x1D, 0x23),
-    card_hover: Color32::from_rgb(0x23, 0x28, 0x30),
-    text: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-    muted: Color32::from_rgb(0xA8, 0xB2, 0xC0),
-    faint: Color32::from_rgb(0x6A, 0x74, 0x84),
-    ok: Color32::from_rgb(0x5E, 0xEA, 0xD4),
-    warn: Color32::from_rgb(0xFD, 0xE6, 0x8A),
-    bad: Color32::from_rgb(0xFB, 0x71, 0x85),
-    stale: Color32::from_rgb(0x6A, 0x74, 0x84),
-    track: Color32::from_rgb(0x2B, 0x31, 0x3A),
-    accent: Color32::from_rgb(0x93, 0xC5, 0xFD),
-    rail_bg: Color32::from_rgba_premultiplied(9, 11, 13, 168),
-    rail_disc: Color32::from_rgb(0x26, 0x2C, 0x34),
-    rail_deep: Color32::from_rgba_premultiplied(14, 16, 20, 174),
-    hairline: Color32::from_rgba_premultiplied(23, 24, 26, 26),
+/// Fluorescent. A highlighter-green notch with black ink and dark saturated
+/// gauges.
+///
+/// Two things follow from the surface being bright rather than dark. The heat
+/// scale runs *darker* as it warms, because a pale colour would vanish into
+/// the field. And every surface in the theme has to be bright, not just the
+/// notch: the card and the settings sheet share one set of text colours, so a
+/// dark sheet with a bright card would leave one of them unreadable.
+pub const ACID: Palette = Palette {
+    bg: Color32::from_rgb(0xB6, 0xEF, 0x14),
+    border: Color32::from_rgb(0x7C, 0xA6, 0x0B),
+    card: Color32::from_rgb(0xC9, 0xF9, 0x45),
+    card_hover: Color32::from_rgb(0xD7, 0xFC, 0x70),
+    text: Color32::from_rgb(0x0B, 0x14, 0x00),
+    muted: Color32::from_rgb(0x33, 0x45, 0x09),
+    faint: Color32::from_rgb(0x59, 0x6F, 0x16),
+    ok: Color32::from_rgb(0x0A, 0x4F, 0x2E),
+    warn: Color32::from_rgb(0x6B, 0x49, 0x00),
+    bad: Color32::from_rgb(0x8E, 0x10, 0x22),
+    stale: Color32::from_rgb(0x59, 0x6F, 0x16),
+    track: Color32::from_rgba_premultiplied(16, 24, 3, 62),
+    accent: Color32::from_rgb(0x12, 0x33, 0x00),
+    ink: Color32::from_rgb(0x0B, 0x14, 0x00),
+    rail_bg: Color32::from_rgba_premultiplied(132, 168, 20, 168),
+    rail_disc: Color32::from_rgba_premultiplied(26, 38, 5, 52),
+    rail_deep: Color32::from_rgba_premultiplied(146, 174, 59, 174),
+    hairline: Color32::from_rgba_premultiplied(1, 3, 0, 34),
     sheen: Color32::from_rgba_premultiplied(70, 70, 70, 70),
-    control: Color32::from_rgb(0x1C, 0x20, 0x27),
-    control_hi: Color32::from_rgb(0x27, 0x2D, 0x36),
+    control: Color32::from_rgb(0xC1, 0xF3, 0x2C),
+    control_hi: Color32::from_rgb(0xD1, 0xF8, 0x5C),
     gauge: [
-        Color32::from_rgb(0x5E, 0xEA, 0xD4),
-        Color32::from_rgb(0xFD, 0xE6, 0x8A),
-        Color32::from_rgb(0xFD, 0xBA, 0x74),
-        Color32::from_rgb(0xFB, 0x71, 0x85),
+        Color32::from_rgb(0x0A, 0x4F, 0x2E),
+        Color32::from_rgb(0x6B, 0x49, 0x00),
+        Color32::from_rgb(0x9B, 0x2E, 0x00),
+        Color32::from_rgb(0x8E, 0x10, 0x22),
     ],
-    glow: 0.8,
+    glow: 0.0,
+};
+
+/// Colourful. A deep violet field with the gauge running right round the
+/// wheel — cyan, lime, amber, magenta — rather than four steps of one hue.
+pub const PRISM: Palette = Palette {
+    bg: Color32::from_rgb(0x14, 0x0C, 0x30),
+    border: Color32::from_rgb(0x3A, 0x2A, 0x6E),
+    card: Color32::from_rgb(0x1D, 0x12, 0x44),
+    card_hover: Color32::from_rgb(0x28, 0x1A, 0x57),
+    text: Color32::from_rgb(0xF2, 0xEB, 0xFF),
+    muted: Color32::from_rgb(0xB0, 0xA0, 0xDC),
+    faint: Color32::from_rgb(0x77, 0x66, 0xA8),
+    ok: Color32::from_rgb(0x2D, 0xE0, 0xC8),
+    warn: Color32::from_rgb(0xFF, 0xD1, 0x3C),
+    bad: Color32::from_rgb(0xFF, 0x4D, 0xA6),
+    stale: Color32::from_rgb(0x77, 0x66, 0xA8),
+    track: Color32::from_rgb(0x2E, 0x1F, 0x60),
+    accent: Color32::from_rgb(0x5B, 0xD4, 0xFF),
+    ink: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    rail_bg: Color32::from_rgba_premultiplied(18, 11, 42, 168),
+    rail_disc: Color32::from_rgb(0x2A, 0x1B, 0x5E),
+    rail_deep: Color32::from_rgba_premultiplied(25, 15, 57, 174),
+    hairline: Color32::from_rgba_premultiplied(20, 19, 26, 26),
+    sheen: Color32::from_rgba_premultiplied(33, 49, 54, 54),
+    control: Color32::from_rgb(0x21, 0x15, 0x4C),
+    control_hi: Color32::from_rgb(0x2E, 0x1E, 0x63),
+    gauge: [
+        Color32::from_rgb(0x2D, 0xE0, 0xC8),
+        Color32::from_rgb(0xB4, 0xF0, 0x3A),
+        Color32::from_rgb(0xFF, 0xB0, 0x2E),
+        Color32::from_rgb(0xFF, 0x3D, 0x9E),
+    ],
+    glow: 0.6,
+};
+
+/// Minimal. One cool hue, low saturation, no bloom. For people who want to
+/// read a number and not be shown a light display.
+pub const SLATE: Palette = Palette {
+    bg: Color32::from_rgb(0x14, 0x17, 0x1B),
+    border: Color32::from_rgb(0x2C, 0x32, 0x39),
+    card: Color32::from_rgb(0x1A, 0x1E, 0x23),
+    card_hover: Color32::from_rgb(0x23, 0x28, 0x2E),
+    text: Color32::from_rgb(0xDF, 0xE4, 0xEA),
+    muted: Color32::from_rgb(0x8B, 0x96, 0xA3),
+    faint: Color32::from_rgb(0x59, 0x63, 0x6E),
+    ok: Color32::from_rgb(0x8F, 0xB8, 0xA6),
+    warn: Color32::from_rgb(0xC2, 0xB6, 0x8B),
+    bad: Color32::from_rgb(0xC1, 0x8A, 0x90),
+    stale: Color32::from_rgb(0x59, 0x63, 0x6E),
+    track: Color32::from_rgb(0x2A, 0x30, 0x37),
+    accent: Color32::from_rgb(0x8B, 0x96, 0xA3),
+    ink: Color32::from_rgb(0xE6, 0xEB, 0xF0),
+    rail_bg: Color32::from_rgba_premultiplied(13, 15, 18, 168),
+    rail_disc: Color32::from_rgb(0x23, 0x28, 0x2E),
+    rail_deep: Color32::from_rgba_premultiplied(17, 20, 23, 174),
+    hairline: Color32::from_rgba_premultiplied(10, 11, 12, 16),
+    sheen: Color32::from_rgba_premultiplied(17, 18, 19, 22),
+    control: Color32::from_rgb(0x1C, 0x21, 0x26),
+    control_hi: Color32::from_rgb(0x26, 0x2C, 0x33),
+    gauge: [
+        Color32::from_rgb(0x8F, 0xB8, 0xA6),
+        Color32::from_rgb(0xC2, 0xB6, 0x8B),
+        Color32::from_rgb(0xC3, 0x9C, 0x7E),
+        Color32::from_rgb(0xC1, 0x8A, 0x90),
+    ],
+    glow: 0.0,
+};
+
+/// Flashy. Searing colour on near-black, glowing as hard as the renderer
+/// allows.
+pub const NEON: Palette = Palette {
+    bg: Color32::from_rgb(0x07, 0x03, 0x0E),
+    border: Color32::from_rgb(0x2E, 0x1B, 0x4E),
+    card: Color32::from_rgb(0x11, 0x08, 0x1F),
+    card_hover: Color32::from_rgb(0x1B, 0x0F, 0x2F),
+    text: Color32::from_rgb(0xF6, 0xEC, 0xFF),
+    muted: Color32::from_rgb(0xAE, 0x9A, 0xD6),
+    faint: Color32::from_rgb(0x6E, 0x5C, 0x96),
+    ok: Color32::from_rgb(0x00, 0xFF, 0xB2),
+    warn: Color32::from_rgb(0xFF, 0xF0, 0x1F),
+    bad: Color32::from_rgb(0xFF, 0x00, 0x55),
+    stale: Color32::from_rgb(0x6E, 0x5C, 0x96),
+    track: Color32::from_rgb(0x24, 0x14, 0x3C),
+    accent: Color32::from_rgb(0x00, 0xE5, 0xFF),
+    ink: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    rail_bg: Color32::from_rgba_premultiplied(3, 1, 7, 168),
+    rail_disc: Color32::from_rgb(0x1C, 0x10, 0x30),
+    rail_deep: Color32::from_rgba_premultiplied(8, 3, 16, 174),
+    hairline: Color32::from_rgba_premultiplied(18, 16, 24, 24),
+    sheen: Color32::from_rgba_premultiplied(31, 62, 64, 64),
+    control: Color32::from_rgb(0x16, 0x0B, 0x28),
+    control_hi: Color32::from_rgb(0x22, 0x13, 0x3B),
+    gauge: [
+        Color32::from_rgb(0x00, 0xFF, 0xB2),
+        Color32::from_rgb(0xFF, 0xF0, 0x1F),
+        Color32::from_rgb(0xFF, 0x7A, 0x00),
+        Color32::from_rgb(0xFF, 0x00, 0x55),
+    ],
+    glow: 1.0,
 };
 
 pub fn palette(name: &str) -> Palette {
     match name {
-        "flux" => FLUX,
-        "ember" => EMBER,
-        "aurora" => AURORA,
-        "chrome" => CHROME,
-        // The retired palettes map to their nearest survivor rather than
-        // silently reverting to the default, so an existing config keeps
-        // looking like the thing its owner chose.
-        "tokyo-night" => FLUX,
-        "catppuccin" => AURORA,
-        "gruvbox" => EMBER,
+        "paper" => PAPER,
+        "acid" => ACID,
+        "prism" => PRISM,
+        "slate" => SLATE,
+        "neon" => NEON,
+        // Retired palettes map to their nearest survivor rather than silently
+        // reverting to the default, so an existing config keeps looking like
+        // the thing its owner chose.
+        "flux" | "tokyo-night" => NEON,
+        "aurora" | "catppuccin" | "ember" | "gruvbox" => PRISM,
+        "chrome" => SLATE,
         _ => MIDNIGHT,
     }
 }

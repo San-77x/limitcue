@@ -108,15 +108,23 @@ still lands exactly where you put it, and paints the notch at an offset inside
 it. The band's height never changes on hover (only its width does), so opening
 a card can't disturb the notch. Without the KWin script the band is simply
 never granted and cards fall back to the room below the notch.
-- **Five dark themes** — midnight, flux, ember, aurora, chrome — via the
-  `theme` config key or the swatches in Settings → Appearance. Each one
-  re-colours *everything*: the notch body, the card glass, the hairlines and
-  the specular lip, not just the gauge hues. (They used to share one neutral
-  black for all of those, which is why switching theme looked like it did
-  almost nothing.) Each palette also carries a **glow** weight — how much the
-  gauge arcs and meters bloom — so `flux` reads as fluorescent and `midnight`
-  stays flat and quiet. Expanded cards show each reading's *fidelity* badge
-  (official / derived / manual)
+- **Six themes that are actually different** — not one design with the accent
+  swapped. `midnight` (restrained dark), `paper` (light — a white notch with
+  dark ink), `acid` (fluorescent: a highlighter-green notch, black ink, and a
+  heat scale that runs *darker* as it warms because a pale colour would vanish
+  into the field), `prism` (colourful — a violet field with the gauge running
+  round the wheel), `slate` (minimal — one hue, low saturation, no bloom) and
+  `neon` (flashy). Set via `theme` or the swatches in Settings → Appearance,
+  which paint each theme's real background so you can see what you are
+  picking.
+
+  Every surface is themed: the notch body, the card glass, the hairlines, and
+  the *ink* the provider marks are drawn in. That last one is what makes a
+  light or bright theme possible at all — the marks used to be hardcoded
+  white, which quietly required every theme to have a dark surface. Each
+  palette also carries a **glow** weight for how much the gauges bloom, so
+  `neon` reads as lit and `slate` stays flat. Expanded cards show each
+  reading's *fidelity* badge (official / derived / manual)
   so trust is always visible.
 - **Borrows existing credentials.** It never signs you in anywhere and never
   sends your keys anywhere but the owning provider's API:
@@ -163,7 +171,7 @@ table header belong to that table):
 poll_interval_secs = 120
 hide_unconfigured = true
 disabled = []            # e.g. ["codex"]
-theme = "midnight"       # midnight | flux | ember | aurora | chrome
+theme = "midnight"       # midnight | paper | acid | prism | slate | neon
 max_visible_collapsed = 4  # providers on the pill before folding into "+N"
 quiet_mode = false         # dim the gauges until you point at the notch
 notch_opacity = 0.60       # notch body opacity, 0.15-1.0

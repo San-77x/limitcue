@@ -259,7 +259,7 @@ pub fn rail_card(
                 tex.id(),
                 egui::Rect::from_center_size(egui::pos2(x0 + 7.5, head.center().y), Vec2::splat(15.0)),
                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                dim(Color32::WHITE),
+                dim(pal.ink),
             );
         }
         None => {
@@ -268,7 +268,7 @@ pub fn rail_card(
                 egui::Align2::CENTER_CENTER,
                 theme::monogram(&s.provider_id),
                 theme::semibold(13.0),
-                dim(Color32::WHITE),
+                dim(pal.ink),
             );
         }
     }
@@ -294,7 +294,7 @@ pub fn rail_card(
         mark,
         mark_col,
     );
-    let name_col = if stale { theme::mix(pal.text, pal.faint, 0.4) } else { Color32::WHITE };
+    let name_col = if stale { theme::mix(pal.ink, pal.faint, 0.4) } else { pal.ink };
     let arrow_w = if console { 18.0 } else { 0.0 };
     let name = widgets::elide(
         ui,
