@@ -178,7 +178,17 @@ fn wait(cfg: &Config, args: &Args) -> i32 {
     // a minute is responsive without being rude to anyone's rate limit.
     let every = cfg.poll_interval_secs.clamp(20, 60);
     loop {
-        let snaps = cached().unwrap_or_else(|| read_all(cfg));
+        // Fall back to fetching whenever the cache cannot answer the question
+        // actually being asked — including when it simply does not know about
+        // the provider named.
+        let usable = |snaps: &Vec<Snapshot>| {
+            args.provider
+                .as_deref()
+                .is_none_or(|id| snaps.iter().any(|s| s.provider_id == id))
+        };
+        let snaps = cached()
+            .filter(usable)
+            .unwrap_or_else(|| read_all(cfg));
         let lowest = snaps
             .iter()
             .filter(|s| args.provider.as_deref().is_none_or(|id| s.provider_id == id))
@@ -217,7 +227,11 @@ fn cached() -> Option<Vec<Snapshot>> {
     let mut stream = std::os::unix::net::UnixStream::connect(path).ok()?;
     let mut buf = String::new();
     stream.read_to_string(&mut buf).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&buf).ok()?;
+    parse_cached(&buf)
+}
+
+fn parse_cached(body: &str) -> Option<Vec<Snapshot>> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
     let mut out = Vec::new();
     for p in v.get("providers")?.as_array()? {
         let id = p.get("id")?.as_str()?.to_string();
@@ -243,7 +257,11 @@ fn cached() -> Option<Vec<Snapshot>> {
             fetched_at: v.get("generated_at").and_then(|x| x.as_u64()).unwrap_or(0),
         });
     }
-    Some(out)
+    // An app that has just started has published nothing yet. That is "no
+    // cache", not "the cache says there is nothing" — treating it as the
+    // latter left `wait` blocked until the app's first poll landed, which
+    // with a long poll interval is a very long time to look like a hang.
+    (!out.is_empty()).then_some(out)
 }
 
 /// Find what this machine is already signed in to, wire it up, and show the
@@ -530,6 +548,21 @@ mod tests {
     fn a_flag_missing_its_value_does_not_eat_the_command() {
         let a = parse(["limitcue", "--above", "wait"].iter().map(|s| s.to_string()));
         assert_eq!(a.above, 10.0, "unparseable value falls back to the default");
+    }
+
+    #[test]
+    fn an_empty_cache_is_no_cache() {
+        // An app that has only just started publishes this.
+        assert!(parse_cached(r#"{"generated_at":1,"providers":[]}"#).is_none());
+    }
+
+    #[test]
+    fn a_populated_cache_round_trips_the_percentages() {
+        let doc = json_doc(&[snap("claude", ok(22.0))]);
+        let back = parse_cached(&doc).expect("a reading");
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].provider_id, "claude");
+        assert_eq!(back[0].min_remaining(), Some(22.0));
     }
 
     #[test]
