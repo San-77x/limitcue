@@ -434,6 +434,8 @@ struct App {
     placed: Option<(i32, i32)>,
     /// Last window y the dock script reported, to spot a genuine move.
     reported_y: f32,
+    /// Last dock state acted on, so a move triggers a fresh placement.
+    dock_seen: dock::DockState,
     last_edge: Edge,
     cfg_next: Config,
     /// Last-seen mtime of config.toml, so an edit made in an editor is picked
@@ -523,6 +525,7 @@ impl App {
             headroom: 0.0,
             placed: None,
             reported_y: f32::NAN,
+            dock_seen: Default::default(),
             dock,
             usage,
             activity,
@@ -1811,7 +1814,13 @@ impl eframe::App for App {
         self.reload_config_if_changed(ctx);
         self.drain(ctx);
         self.tweens.retain(|_, t| t.value().is_some());
-        let stored_edge = self.dock.lock().unwrap().edge;
+        let dock_now = *self.dock.lock().unwrap();
+        // Which side the notch is on is derived from where it actually is,
+        // falling back to the stored enum only when no output has been
+        // reported. The enum is one report old at best, and a drag that does
+        // not produce one leaves it contradicting the position — which showed
+        // up as a left-docked notch opening its card leftwards, off screen.
+        let stored_edge = dock_now.side(RAIL_STRIP_W as i32).unwrap_or(dock_now.edge);
         let edge = if self.notch_mode && stored_edge == Edge::Free { Edge::Left } else { stored_edge };
         if edge != self.last_edge {
             self.last_edge = edge;
@@ -1887,7 +1896,11 @@ impl eframe::App for App {
         if card_want {
             self.rail_card_f = self.rail_card_f.max(0.02);
         }
-        let monitor_h = ctx.input(|i| i.viewport().monitor_size.map(|s| s.y)).unwrap_or(900.0);
+        // The notch's own output, which on a multi-monitor desktop is not
+        // necessarily the one starting at y=0. egui only reports a monitor
+        // *size*, so the origin has to come from the dock script.
+        let monitor_h_hint = ctx.input(|i| i.viewport().monitor_size.map(|s| s.y)).unwrap_or(900.0);
+        let (screen_top, monitor_h) = dock_now.output_span(monitor_h_hint);
         // ---- the notch's vertical band -----------------------------------
         //
         // The window's top edge is pinned once mapped, so a card can never be
@@ -1906,10 +1919,10 @@ impl eframe::App for App {
             let reported = std::env::var("LIMITCUE_UI_TOP")
                 .ok()
                 .and_then(|v| v.parse::<f32>().ok())
-                .unwrap_or_else(|| self.dock.lock().unwrap().y as f32);
+                .unwrap_or(dock_now.y as f32);
             if !self.reported_y.is_finite() || (reported - self.reported_y).abs() > 0.5 {
                 self.reported_y = reported;
-                self.notch_y = (reported + self.headroom).clamp(0.0, monitor_h);
+                self.notch_y = (reported + self.headroom).clamp(screen_top, screen_top + monitor_h);
             }
         }
         let card_max_h = snaps
@@ -1917,7 +1930,10 @@ impl eframe::App for App {
             .map(|s| ui::rail_card_height(s, self.pace_line(s, now).is_some()))
             .fold(0.0_f32, f32::max);
         let band_h = rail_h.max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0);
-        let window_y = (self.notch_y).min(monitor_h - band_h).max(0.0);
+        let window_y = self
+            .notch_y
+            .min(screen_top + monitor_h - band_h)
+            .max(screen_top);
         self.headroom = (self.notch_y - window_y).max(0.0);
         let rail_size = match self.rail_open.is_some() || self.rail_last.is_some() {
             true => Vec2::new(RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W, band_h),
@@ -1930,6 +1946,14 @@ impl eframe::App for App {
         if rail {
             if self.restore_sent < 30 {
                 self.restore_sent += 1;
+            }
+            // Re-place on a move as well as on a band change: a drag to the
+            // other side, or to another monitor, changes everything the
+            // placement depends on, and the one-shot is what reports the new
+            // output back.
+            if dock_now != self.dock_seen {
+                self.dock_seen = dock_now;
+                self.placed = None;
             }
             let want = (window_y.round() as i32, band_h.round() as i32);
             let settling = self.restore_sent < 30 && self.restore_sent.is_multiple_of(6);
@@ -2365,6 +2389,7 @@ impl App {
                 heat,
                 pal.rail_disc,
                 gauge_alpha,
+                pal.glow,
             );
             // A provider in trouble is marked on the gauge itself, so the
             // notch still says so when the labels are off — that used to be

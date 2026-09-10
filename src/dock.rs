@@ -59,12 +59,56 @@ impl Edge {
     }
 }
 
-/// The dock position as last reported by the compositor.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+/// The dock position as last reported by the compositor, and the output it
+/// landed on.
+///
+/// The output rect matters for two things the app cannot work out for itself:
+/// which side of *that* monitor the notch is against, and how much vertical
+/// room the card has on a screen whose origin is not 0,0. A Wayland client is
+/// told neither.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct DockState {
     pub edge: Edge,
     pub x: i32,
     pub y: i32,
+    /// Geometry of the output the window is on. All zero means "not reported
+    /// yet", in which case callers fall back to what egui knows.
+    #[serde(default)]
+    pub out_x: i32,
+    #[serde(default)]
+    pub out_y: i32,
+    #[serde(default)]
+    pub out_w: i32,
+    #[serde(default)]
+    pub out_h: i32,
+}
+
+impl DockState {
+    /// Which side of its own output the notch is against, worked out from the
+    /// position rather than taken on trust from `edge`.
+    ///
+    /// The stored enum is only as fresh as the last report, and a drag that
+    /// does not produce one leaves it contradicting the actual position —
+    /// which is how a left-docked notch ended up opening its card leftwards,
+    /// off the screen. A position and an output rect cannot disagree.
+    pub fn side(&self, window_w: i32) -> Option<Edge> {
+        if self.out_w <= 0 {
+            return None;
+        }
+        let from_left = self.x - self.out_x;
+        let from_right = (self.out_x + self.out_w) - (self.x + window_w);
+        Some(if from_left <= from_right { Edge::Left } else { Edge::Right })
+    }
+
+    /// The vertical span of the output, for clamping the notch's band. Falls
+    /// back to a screen starting at zero when nothing has been reported.
+    pub fn output_span(&self, fallback_h: f32) -> (f32, f32) {
+        if self.out_h > 0 {
+            (self.out_y as f32, self.out_h as f32)
+        } else {
+            (0.0, fallback_h)
+        }
+    }
 }
 
 pub type SharedDock = Arc<Mutex<DockState>>;
@@ -107,7 +151,13 @@ impl DockIface {
     /// Called by the persistent KWin script after the user finishes a drag.
     /// (`callDBus` can only marshal plain ints — no u8s, no structs.)
     fn store_position(&mut self, x: i32, y: i32, edge: i32) {
-        let st = DockState { edge: Edge::from_u8(edge.clamp(0, 4) as u8), x, y };
+        // Keep whatever output we last learned about: the persistent script
+        // does not send one, and forgetting it here would cost the app its
+        // multi-monitor bearings after every drag.
+        let mut st = *self.state.lock().unwrap();
+        st.edge = Edge::from_u8(edge.clamp(0, 4) as u8);
+        st.x = x;
+        st.y = y;
         save_dock(&st);
         *self.state.lock().unwrap() = st;
     }
@@ -123,6 +173,37 @@ impl DockIface {
             return;
         }
         self.store_position(x, y, edge);
+    }
+
+    /// Position plus the geometry of the output it landed on. Only the app's
+    /// own generated script calls this, so it can carry more than the
+    /// installed persistent script knows how to send.
+    #[allow(clippy::too_many_arguments)]
+    fn store_geometry(
+        &mut self,
+        x: i32,
+        y: i32,
+        edge: i32,
+        pid: u32,
+        out_x: i32,
+        out_y: i32,
+        out_w: i32,
+        out_h: i32,
+    ) {
+        if pid != std::process::id() {
+            return;
+        }
+        let st = DockState {
+            edge: Edge::from_u8(edge.clamp(0, 4) as u8),
+            x,
+            y,
+            out_x,
+            out_y,
+            out_w,
+            out_h,
+        };
+        save_dock(&st);
+        *self.state.lock().unwrap() = st;
     }
 }
 
@@ -184,8 +265,10 @@ if (target) {{
     ny = Math.min(Math.max(ny, a.y), a.y + a.height - nh);
     w.frameGeometry = {{ x: nx, y: ny, width: g.width, height: nh }};
     callDBus("io.limitcue", "/io/limitcue/dock", "io.limitcue.Dock",
-             "StorePositionForPid", Math.round(nx), Math.round(ny), edge, PID);
-    print("LC-PLACE pid=" + w.pid + " edge=" + edge + " " + nx + "," + ny + " h=" + nh);
+             "StoreGeometry", Math.round(nx), Math.round(ny), edge, PID,
+             Math.round(a.x), Math.round(a.y), Math.round(a.width), Math.round(a.height));
+    print("LC-PLACE pid=" + w.pid + " edge=" + edge + " " + nx + "," + ny + " h=" + nh +
+          " on " + a.x + "," + a.y + " " + a.width + "x" + a.height);
 }}
 "#,
         pid = std::process::id(),
@@ -217,4 +300,53 @@ if (target) {{
 
 pub fn shared() -> SharedDock {
     Arc::new(Mutex::new(load_dock()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn on(x: i32, out_x: i32, out_w: i32) -> DockState {
+        DockState { x, out_x, out_w, out_h: 1080, ..Default::default() }
+    }
+
+    #[test]
+    fn a_notch_against_the_left_bezel_reads_as_left() {
+        assert_eq!(on(0, 0, 1920).side(48), Some(Edge::Left));
+    }
+
+    #[test]
+    fn a_notch_against_the_right_bezel_reads_as_right() {
+        assert_eq!(on(1872, 0, 1920).side(48), Some(Edge::Right));
+    }
+
+    #[test]
+    fn the_position_wins_over_a_contradicting_edge() {
+        // This is the reported bug: dragged to the left, but the stored enum
+        // still said right, so the card opened leftwards off the screen.
+        let st = DockState { edge: Edge::Right, ..on(0, 0, 1920) };
+        assert_eq!(st.side(48), Some(Edge::Left));
+    }
+
+    #[test]
+    fn a_second_monitor_is_measured_against_its_own_bezels() {
+        // A monitor starting at x=1920: x=1920 is its *left* edge, not the
+        // desktop's right-hand side.
+        assert_eq!(on(1920, 1920, 2560).side(48), Some(Edge::Left));
+        assert_eq!(on(1920 + 2560 - 48, 1920, 2560).side(48), Some(Edge::Right));
+    }
+
+    #[test]
+    fn without_a_reported_output_it_declines_to_guess() {
+        assert_eq!(DockState { x: 0, ..Default::default() }.side(48), None);
+    }
+
+    #[test]
+    fn the_band_is_measured_against_the_monitor_it_is_on() {
+        // A monitor stacked below another starts at y=1080.
+        let st = DockState { out_y: 1080, out_h: 1440, out_w: 2560, ..Default::default() };
+        assert_eq!(st.output_span(900.0), (1080.0, 1440.0));
+        // ...and with nothing reported, fall back to a screen at the origin.
+        assert_eq!(DockState::default().output_span(900.0), (0.0, 900.0));
+    }
 }

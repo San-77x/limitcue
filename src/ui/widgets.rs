@@ -187,6 +187,7 @@ pub fn gauge(
     color: Color32,
     track: Color32,
     alpha: f32,
+    glow: f32,
 ) {
     let p = ui.painter();
     p.circle_stroke(center, r, Stroke::new(stroke, track.linear_multiply(alpha)));
@@ -217,6 +218,9 @@ pub fn gauge(
     }
     let col = color.linear_multiply(alpha);
     if frac >= 0.999 {
+        if glow > 0.0 {
+            p.circle_stroke(center, r, Stroke::new(stroke * 2.8, col.gamma_multiply(0.14 * glow)));
+        }
         p.circle_stroke(center, r, Stroke::new(stroke, col));
         return;
     }
@@ -229,6 +233,13 @@ pub fn gauge(
             egui::pos2(center.x + r * a.cos(), center.y + r * a.sin())
         })
         .collect();
+    // Bloom first, so the arc proper sits on top of its own halo.
+    if glow > 0.0 {
+        let halo = col.gamma_multiply(0.16 * glow);
+        p.add(Shape::line(pts.clone(), Stroke::new(stroke * 2.8, halo)));
+        p.circle_filled(pts[0], stroke * 1.4, halo);
+        p.circle_filled(*pts.last().unwrap(), stroke * 1.4, halo);
+    }
     p.circle_filled(pts[0], stroke / 2.0, col);
     p.circle_filled(*pts.last().unwrap(), stroke / 2.0, col);
     p.add(Shape::line(pts, Stroke::new(stroke, col)));
@@ -415,7 +426,14 @@ pub fn sheen(painter: &egui::Painter, rect: Rect, corner: f32, color: Color32) {
 
 /// Slim quota meter: rounded track with a rounded fill. Unlike [`bar`] the
 /// fill can be genuinely empty (no minimum stub), so 0 % reads as 0 %.
-pub fn meter(painter: &egui::Painter, rect: Rect, frac: f32, color: Color32, track: Color32) {
+pub fn meter(
+    painter: &egui::Painter,
+    rect: Rect,
+    frac: f32,
+    color: Color32,
+    track: Color32,
+    glow: f32,
+) {
     let r = rect.height() / 2.0;
     painter.rect_filled(rect, r, track);
     let frac = frac.clamp(0.0, 1.0);
@@ -423,7 +441,16 @@ pub fn meter(painter: &egui::Painter, rect: Rect, frac: f32, color: Color32, tra
         return;
     }
     let w = (rect.width() * frac).max(rect.height());
-    painter.rect_filled(Rect::from_min_size(rect.min, Vec2::new(w, rect.height())), r, color);
+    let filled = Rect::from_min_size(rect.min, Vec2::new(w, rect.height()));
+    if glow > 0.0 {
+        let spread = rect.height() * 0.9;
+        painter.rect_filled(
+            filled.expand(spread),
+            r + spread,
+            color.gamma_multiply(0.13 * glow),
+        );
+    }
+    painter.rect_filled(filled, r, color);
 }
 
 // ===========================================================================

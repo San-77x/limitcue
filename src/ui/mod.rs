@@ -420,6 +420,7 @@ pub fn rail_card(
             used01,
             dim(heat),
             dim(pal.track),
+            pal.glow * a,
         );
         card_footer(ui, rect, s, pal, a, now, x0, x1, w);
         return console_clicked;
@@ -595,7 +596,7 @@ fn window_row(
 
     // meter ---------------------------------------------------------------
     let meter_rect = egui::Rect::from_min_size(egui::pos2(r.left(), r.top() + 22.0), Vec2::new(r.width(), 4.0));
-    widgets::meter(p, meter_rect, used01, dim(heat), dim(pal.track));
+    widgets::meter(p, meter_rect, used01, dim(heat), dim(pal.track), pal.glow * a);
 
     // meta line -----------------------------------------------------------
     let meta_y = r.top() + 31.0;
