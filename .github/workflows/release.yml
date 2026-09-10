@@ -17,9 +17,42 @@ jobs:
       - run: cargo install cargo-appimage || true
       - name: package
         run: |
-          mkdir out
+          mkdir -p out/kwin
           cp target/x86_64-unknown-linux-gnu/release/limitcue out/
           cp misc/limitcue.desktop out/
+          cp README.md LICENSE out/
+          # The compositor integration is not optional extra: without it there
+          # is no edge docking, and on a multi-monitor desktop a docked notch
+          # cannot tell which screen it belongs to. Shipping the binary alone
+          # meant every download was missing the half that makes it a notch.
+          cp -r misc/kwin/limitcue-integrate out/kwin/
+          cp scripts/install-kwin.sh out/kwin/
+          cat > out/INSTALL.md <<'EOF'
+          # LimitCue
+
+              ./limitcue            # run it
+              ./limitcue init       # find providers you are already signed in to
+              ./limitcue --help     # everything else
+
+          ## KDE Plasma
+
+          For edge docking and correct behaviour across multiple monitors,
+          install the compositor integration:
+
+              sh kwin/install-kwin.sh
+
+          Re-run it after an update. LimitCue also refreshes an already-installed
+          copy itself on start, so this is only needed once.
+
+          ## Elsewhere
+
+          Everything works except snap-to-edge and position persistence;
+          always-on-top falls back to whatever the compositor allows.
+
+          ## Autostart
+
+              cp limitcue.desktop ~/.config/autostart/
+          EOF
           (cd out && tar czf ../limitcue-linux-x86_64.tar.gz .)
       - uses: softprops/action-gh-release@v2
         with:
