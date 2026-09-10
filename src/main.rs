@@ -148,6 +148,12 @@ const RAIL_BADGE_ANGLE: f32 = std::f32::consts::PI * 40.0 / 180.0;
 const RAIL_PULSE_R: f32 = 3.6;
 const RAIL_PULSE_ANGLE: f32 = -std::f32::consts::PI * 52.0 / 180.0;
 
+/// How close a provider is to running out; unreadable ones sort last so a
+/// broken adapter never claims the top of the notch.
+fn urgency(s: &Snapshot) -> f64 {
+    s.min_remaining().unwrap_or(f64::INFINITY)
+}
+
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
     from: f64,
@@ -400,6 +406,9 @@ struct App {
     tweens: HashMap<String, Tween>,
     /// In-memory burn-rate samples; never written to disk.
     history: history::History,
+    /// Frozen row order while a card is open, so urgency sorting cannot move
+    /// a gauge out from under the pointer mid-read.
+    row_order: std::cell::RefCell<Vec<String>>,
     rx: mpsc::Receiver<Vec<Snapshot>>,
     tx_tick: mpsc::Sender<Ctl>,
     cfg: Config,
@@ -499,6 +508,7 @@ impl App {
             snapshots,
             tweens: HashMap::new(),
             history: history::History::default(),
+            row_order: Default::default(),
             rx: rx_snap,
             tx_tick,
             cfg,
@@ -750,6 +760,14 @@ impl App {
                 "Quiet at rest",
                 "Fade the notch until the pointer is over it.",
                 &mut self.cfg_next.quiet_mode,
+                pal,
+            );
+            hairline(ui, pal);
+            dirty |= toggle_row(
+                ui,
+                "Most urgent first",
+                "Order the notch by what is closest to running out, not by config order.",
+                &mut self.cfg_next.sort_by_urgency,
                 pal,
             );
             hairline(ui, pal);
@@ -1583,6 +1601,19 @@ impl App {
             .cloned()
             .collect();
         v.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
+        if !self.cfg.sort_by_urgency {
+            return v;
+        }
+        // Rows must not move under the pointer: reordering while a card is
+        // open would slide the gauge being read out from under the cursor and
+        // dismiss it. The order is therefore frozen while one is showing, and
+        // `row_order` only re-derived when nothing is being hovered.
+        let order = self.row_order.borrow();
+        if !order.is_empty() {
+            v.sort_by_key(|s| order.iter().position(|id| *id == s.provider_id).unwrap_or(usize::MAX));
+        } else {
+            v.sort_by(|a, b| urgency(a).total_cmp(&urgency(b)));
+        }
         v
     }
 
@@ -1790,6 +1821,21 @@ impl eframe::App for App {
 
         let pal = self.pal;
         let now = now_unix();
+        // Freeze the row order for as long as a card is on screen, and let it
+        // re-derive the moment nothing is being read.
+        if self.cfg.sort_by_urgency {
+            if self.rail_open.is_none() && self.rail_card_f <= 0.0 {
+                self.row_order.borrow_mut().clear();
+            } else if self.row_order.borrow().is_empty() {
+                let mut ids: Vec<(f64, String)> = self
+                    .snapshots
+                    .values()
+                    .map(|s| (urgency(s), s.provider_id.clone()))
+                    .collect();
+                ids.sort_by(|a, b| a.0.total_cmp(&b.0));
+                *self.row_order.borrow_mut() = ids.into_iter().map(|(_, id)| id).collect();
+            }
+        }
         let snaps = self.visible();
         // Left/right dock: the pill becomes a vertical rail (rings + %).
         // In notch mode this is the only primary surface: there is no

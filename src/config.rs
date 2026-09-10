@@ -137,6 +137,10 @@ pub struct Config {
     /// Shell command run when a window refills.
     #[serde(default)]
     pub cmd_on_reset: String,
+    /// Row order in the notch: "manual" keeps config order, "urgency" puts
+    /// whatever is closest to running out at the top.
+    #[serde(default)]
+    pub sort_by_urgency: bool,
     /// Show what the current burn rate means on the hover card. Samples are
     /// held in memory only and never written anywhere.
     #[serde(default = "default_true")]
@@ -169,6 +173,7 @@ impl Default for Config {
             notify_on_reset: true,
             cmd_on_low: String::new(),
             cmd_on_reset: String::new(),
+            sort_by_urgency: false,
             projections: true,
         }
     }
@@ -237,6 +242,7 @@ hide_unconfigured = true
 # cmd_on_low = "paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
 # cmd_on_reset = ""               # $LIMITCUE_PROVIDER / _WINDOW / _PERCENT
 # projections = true              # "at this pace it runs out 40m before reset"
+# sort_by_urgency = false         # put whatever is closest to empty at the top
 
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json
