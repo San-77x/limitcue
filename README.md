@@ -103,9 +103,15 @@ still lands exactly where you put it, and paints the notch at an offset inside
 it. The band's height never changes on hover (only its width does), so opening
 a card can't disturb the notch. Without the KWin script the band is simply
 never granted and cards fall back to the room below the notch.
-- **Four dark themes** — midnight, tokyo-night, catppuccin, gruvbox — via the
-  `theme` config key. Each theme carries its own gauge heat scale; expanded
-  cards show each reading's *fidelity* badge (official / derived / manual)
+- **Five dark themes** — midnight, flux, ember, aurora, chrome — via the
+  `theme` config key or the swatches in Settings → Appearance. Each one
+  re-colours *everything*: the notch body, the card glass, the hairlines and
+  the specular lip, not just the gauge hues. (They used to share one neutral
+  black for all of those, which is why switching theme looked like it did
+  almost nothing.) Each palette also carries a **glow** weight — how much the
+  gauge arcs and meters bloom — so `flux` reads as fluorescent and `midnight`
+  stays flat and quiet. Expanded cards show each reading's *fidelity* badge
+  (official / derived / manual)
   so trust is always visible.
 - **Borrows existing credentials.** It never signs you in anywhere and never
   sends your keys anywhere but the owning provider's API:
@@ -152,7 +158,7 @@ table header belong to that table):
 poll_interval_secs = 120
 hide_unconfigured = true
 disabled = []            # e.g. ["codex"]
-theme = "midnight"       # midnight | tokyo-night | catppuccin | gruvbox
+theme = "midnight"       # midnight | flux | ember | aurora | chrome
 max_visible_collapsed = 4  # providers on the pill before folding into "+N"
 quiet_mode = false         # dim idle rail/pill surfaces until hover
 notch_opacity = 0.60       # notch body opacity, 0.15-1.0

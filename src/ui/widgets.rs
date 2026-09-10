@@ -718,6 +718,11 @@ pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette
             egui::pos2(strip.left() + seg * i as f32, strip.top()),
             Vec2::new(seg - 3.0, strip.height()),
         );
+        // Carry the theme's own bloom into the swatch: how lit a palette
+        // looks is half of what is being chosen here.
+        if other.glow > 0.0 {
+            p.rect_filled(r.expand(3.0), 5.0_f32, c.gamma_multiply(0.18 * other.glow));
+        }
         p.rect_filled(r, 2.0_f32, *c);
     }
     let label = elide(
