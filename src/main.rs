@@ -1,3 +1,4 @@
+mod activity;
 mod cli;
 mod config;
 mod notify;
@@ -142,6 +143,10 @@ const RAIL_RING_STROKE: f32 = 2.6;
 /// rather than their rings, so it has room there even in a compact cell.
 const RAIL_BADGE_R: f32 = 5.5;
 const RAIL_BADGE_ANGLE: f32 = std::f32::consts::PI * 40.0 / 180.0;
+/// Live-session pulse: same rim as the alert badge, opposite corner, so a
+/// provider can be both busy and in trouble without the two overlapping.
+const RAIL_PULSE_R: f32 = 3.6;
+const RAIL_PULSE_ANGLE: f32 = -std::f32::consts::PI * 52.0 / 180.0;
 
 /// Animates a provider's headline percentage from its old value to a fresh one.
 struct Tween {
@@ -407,6 +412,7 @@ struct App {
     logos: HashMap<String, egui::TextureHandle>,
     dock: dock::SharedDock,
     usage: service::SharedUsage,
+    activity: activity::SharedActivity,
     restore_sent: u32,
     /// Screen y the notch should be painted at — the position the user chose.
     /// The host window is taller than the notch and sits *above* this, so the
@@ -469,6 +475,7 @@ impl App {
         let (tx_tick, rx_tick) = mpsc::channel::<Ctl>();
         let snapshots = load_state();
         spawn_poller(cfg.clone(), tx_snap, rx_tick, usage.clone());
+        let activity = activity::start(cfg.clone());
         // Debug hooks: start expanded / with settings open / with a rail card
         // open (tests, screenshots).
         let expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
@@ -508,6 +515,7 @@ impl App {
             reported_y: f32::NAN,
             dock,
             usage,
+            activity,
             restore_sent: 0,
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
@@ -1515,6 +1523,26 @@ impl App {
     /// `None` until there is enough history, when nothing is draining, or when
     /// projections are switched off.
     fn pace_line(&self, s: &Snapshot, now: u64) -> Option<String> {
+        let live = self.is_live(&s.provider_id);
+        let pace = self.projection_for(s, now);
+        // One line carries both: that a session is running explains a number
+        // that is moving, and the projection says where it is heading.
+        match (live, pace) {
+            (true, Some(p)) => Some(format!("Running now · {p}")),
+            (true, None) => Some("A session is running now".into()),
+            (false, p) => p,
+        }
+    }
+
+    /// True when an agent is writing to this provider's session log.
+    fn is_live(&self, id: &str) -> bool {
+        if std::env::var_os("LIMITCUE_UI_LIVE").is_some() {
+            return true;
+        }
+        self.activity.is_live(id)
+    }
+
+    fn projection_for(&self, s: &Snapshot, now: u64) -> Option<String> {
         if !self.cfg.projections {
             return None;
         }
@@ -2290,6 +2318,24 @@ impl App {
                     pal.bg,
                     gauge_alpha,
                 );
+            }
+            // Live session: an agent is writing to this provider's log right
+            // now, which is the answer to "why did that number just move".
+            if self.is_live(&s.provider_id) {
+                let (sin, cos) = RAIL_PULSE_ANGLE.sin_cos();
+                let phase = self.started.elapsed().as_secs_f32() / 2.2;
+                ui::widgets::live_pulse(
+                    ui,
+                    egui::pos2(
+                        ring_center.x + RAIL_RING_R * cos,
+                        ring_center.y - RAIL_RING_R * sin,
+                    ),
+                    RAIL_PULSE_R,
+                    phase,
+                    pal.accent,
+                    gauge_alpha,
+                );
+                ctx.request_repaint_after(std::time::Duration::from_millis(80));
             }
             // The label line is percentages-only now: with them switched off
             // the badge carries the status on its own.

@@ -61,13 +61,19 @@ answers three questions in reading order:
    exhaustion is tinted rather than tagged. A provider with a *single*
    window skips the list entirely and shows just its meter — a one-row
    breakdown of a headline that already said the same thing is noise.
-3. **Whether it will last** — when there is enough history, a line under the
+3. **Whether something is using it right now** — the vendor CLIs each keep a
+   session log, and one written to in the last minute or so means an agent is
+   working against that plan. The gauge grows a soft pulse and the card says
+   so, which is the answer to "why did that number just move". Only
+   modification times are read; a session log's contents are none of this
+   app's business and it never opens one.
+4. **Whether it will last** — when there is enough history, a line under the
    headline turns the recent burn rate into the answer you actually want:
    *Out 1h 40m before the reset*, or *About 40% left at the reset*. Samples
    live in memory and are never written anywhere; a refill discards the old
    slope rather than averaging across it. Turn it off with
    `projections = false`.
-4. **How fresh the number is** — the footer carries the reading's age on the
+5. **How fresh the number is** — the footer carries the reading's age on the
    left and the provider's own note (a dollar balance, a window count) on the
    right; provenance (official / derived / manual, or *stale*) sits in the
    header next to the name.

@@ -708,6 +708,17 @@ pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette
     resp
 }
 
+/// A soft pulse on the gauge rim, marking a provider an agent is working
+/// against right now. Deliberately unlike the alert badge: this is
+/// information, not a problem, so it breathes rather than shouts, and sits on
+/// the opposite corner so the two can coexist.
+pub fn live_pulse(ui: &egui::Ui, center: Pos2, r: f32, phase: f32, color: Color32, alpha: f32) {
+    let breathe = 0.55 + 0.45 * (phase * std::f32::consts::TAU).sin();
+    let p = ui.painter();
+    p.circle_filled(center, r + 2.0, color.gamma_multiply(0.22 * breathe * alpha));
+    p.circle_filled(center, r, color.gamma_multiply((0.65 + 0.35 * breathe) * alpha));
+}
+
 /// Attention badge pinned to the rim of a gauge: a filled disc carrying a
 /// hand-painted exclamation mark, knocked out of the ring beneath it by a dark
 /// rim so it reads cleanly on top of the arc. This is how a rail cell reports
