@@ -148,8 +148,12 @@ pub struct Config {
     /// whatever is closest to running out at the top.
     #[serde(default)]
     pub sort_by_urgency: bool,
-    /// Show what the current burn rate means on the hover card. Samples are
-    /// held in memory only and never written anywhere.
+    /// Show what the current burn rate means on the hover card.
+    ///
+    /// Samples are kept in `history.json` — percentages and timestamps only,
+    /// the same posture as `state.json` — so a projection is available at the
+    /// first hover rather than several minutes into every session. Turning
+    /// this off deletes that file as well as hiding the line.
     #[serde(default = "default_true")]
     pub projections: bool,
 }
@@ -249,6 +253,7 @@ hide_unconfigured = true
 # cmd_on_low = "paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
 # cmd_on_reset = ""               # $LIMITCUE_PROVIDER / _WINDOW / _PERCENT
 # projections = true              # "at this pace it runs out 40m before reset"
+#                                 # keeps history.json: percentages + times only
 # sort_by_urgency = false         # put whatever is closest to empty at the top
 
 # Built-in adapters read credentials from disk automatically:

@@ -513,7 +513,7 @@ impl App {
         Self {
             snapshots,
             tweens: HashMap::new(),
-            history: history::History::default(),
+            history: if cfg.projections { history::History::load() } else { history::History::default() },
             row_order: Default::default(),
             rx: rx_snap,
             tx_tick,
@@ -571,6 +571,9 @@ impl App {
         let mut changed = false;
         while let Ok(batch) = self.rx.try_recv() {
             self.history.record(&batch);
+            if self.cfg.projections {
+                self.history.save();
+            }
             for s in batch {
                 if matches!(s.reading, Reading::Ok { .. }) {
                     if let Some(new) = s.min_remaining() {
@@ -714,6 +717,7 @@ impl App {
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if w::pill_button(ui, "Save", true, true, pal).clicked() {
+                    let projections_were_on = self.cfg.projections;
                     self.cfg = self.cfg_next.clone();
                     config::Config::save(&self.cfg);
                     self.cfg_mtime = Config::mtime();
@@ -722,6 +726,7 @@ impl App {
                     // are styled once at startup and would otherwise keep the
                     // old theme's colors until the next launch.
                     theme::apply_style(ui.ctx(), &self.pal);
+                    self.apply_projection_setting(projections_were_on);
                     self.restart_poller();
                     self.settings_open = false;
                 }
@@ -1575,6 +1580,21 @@ impl App {
         ctx.send_viewport_cmd(ViewportCommand::StartDrag);
     }
 
+    /// React to the projections setting being turned on or off. Switching it
+    /// off discards the samples on disk as well as in memory: leaving behind a
+    /// file the user has just asked us to stop keeping would be the wrong way
+    /// round.
+    fn apply_projection_setting(&mut self, was_on: bool) {
+        match (was_on, self.cfg.projections) {
+            (true, false) => {
+                self.history = history::History::default();
+                history::History::forget();
+            }
+            (false, true) => self.history = history::History::load(),
+            _ => {}
+        }
+    }
+
     /// True when an agent is writing to this provider's session log.
     fn is_live(&self, id: &str) -> bool {
         if std::env::var_os("LIMITCUE_UI_LIVE").is_some() {
@@ -1728,8 +1748,10 @@ impl App {
         if cfg_eq(&fresh, &self.cfg) {
             return;
         }
+        let projections_were_on = self.cfg.projections;
         self.cfg = fresh.clone();
         self.cfg_next = fresh;
+        self.apply_projection_setting(projections_were_on);
         self.pal = theme::palette(&self.cfg.theme);
         theme::apply_style(ctx, &self.pal);
         self.restart_poller();

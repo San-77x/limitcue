@@ -71,10 +71,13 @@ answers three questions in reading order:
    app's business and it never opens one.
 4. **Whether it will last** — when there is enough history, a line under the
    headline turns the recent burn rate into the answer you actually want:
-   *Out 1h 40m before the reset*, or *About 40% left at the reset*. Samples
-   live in memory and are never written anywhere; a refill discards the old
-   slope rather than averaging across it. Turn it off with
-   `projections = false`.
+   *Out 1h 40m before the reset*, or *About 40% left at the reset*. A refill
+   discards the old slope rather than averaging across it.
+
+   Samples are kept in `history.json` so a projection is there at the first
+   hover instead of several minutes into every session — percentages and
+   timestamps and nothing else, the same posture as `state.json`. Setting
+   `projections = false` deletes that file as well as hiding the line.
 5. **Where to go about it** — the provider's name carries a small ↗; clicking
    it opens that provider's own dashboard, which is usually the next thing you
    want when a quota has run out. The catalogue supplies the link and
@@ -412,7 +415,11 @@ and exits, `LIMITCUE_UI_RAIL=<provider_id>` pins a usage card open,
 - **No telemetry, no analytics, no update pings.** The only network traffic in
   the entire app is the usage fetch itself.
 - **Local cache is numbers-only.** `state.json` stores percentages, counts and
-  reset timestamps — never credentials or identity.
+  reset timestamps, and `history.json` stores percentages against timestamps
+  for the burn-rate line — never credentials, identity, or anything about what
+  you were doing. `projections = false` deletes the second one.
+- **Session logs are never opened.** The "a session is running" pulse reads
+  modification times and nothing else.
 - **Provider config is mode `0600`** (user-only readable) since it may contain
   inline keys.
 

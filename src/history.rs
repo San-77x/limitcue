@@ -5,14 +5,19 @@
 //! readings of the same window give a slope, and a slope plus a reset time
 //! gives an answer.
 //!
-//! Samples are held in memory only and never written to disk. History of what
-//! you were doing and when is exactly the sort of thing this app has no
-//! business keeping.
+//! Samples persist across restarts, because a projection that needs four
+//! minutes of fresh readings to appear is switched off for most of the time
+//! you would want it. What is stored is percentages and timestamps and
+//! nothing else — the same posture as `state.json` — under the same
+//! `projections` switch that governs the feature, so turning it off stops the
+//! writing too rather than merely hiding the result.
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
-use crate::types::{fmt_countdown, Reading, Snapshot};
+use serde::{Deserialize, Serialize};
+
+use crate::types::{fmt_countdown, now_unix, Reading, Snapshot};
 
 /// Ignore anything older than this: yesterday's pace says nothing about now.
 const WINDOW_SECS: u64 = 3 * 3600;
@@ -22,9 +27,53 @@ const MIN_SPAN_SECS: u64 = 240;
 const REFILL_JUMP: f64 = 10.0;
 const MAX_SAMPLES: usize = 64;
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct History {
     series: HashMap<String, VecDeque<(u64, f64)>>,
+}
+
+fn path() -> std::path::PathBuf {
+    dirs::data_dir().unwrap_or_default().join("limitcue").join("history.json")
+}
+
+impl History {
+    /// Read back what the last run saw, so a projection is available at the
+    /// first hover rather than four minutes in. Anything older than the
+    /// tracking window is dropped on the way in — a reading from yesterday
+    /// says nothing about the current pace.
+    pub fn load() -> Self {
+        let mut me: History = std::fs::read_to_string(path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        let cutoff = now_unix().saturating_sub(WINDOW_SECS);
+        for series in me.series.values_mut() {
+            while series.front().is_some_and(|(t, _)| *t < cutoff) {
+                series.pop_front();
+            }
+        }
+        me.series.retain(|_, s| !s.is_empty());
+        me
+    }
+
+    /// Write the samples out. Cheap enough to do on every poll: a handful of
+    /// numbers per window, and polls are minutes apart.
+    pub fn save(&self) {
+        let p = path();
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(j) = serde_json::to_string(self) {
+            let _ = std::fs::write(p, j);
+        }
+    }
+
+    /// Forget everything, on disk as well as in memory, for when the feature
+    /// is switched off. Leaving a file behind that the user has just asked us
+    /// to stop keeping would be the wrong way round.
+    pub fn forget() {
+        let _ = std::fs::remove_file(path());
+    }
 }
 
 pub fn key(provider: &str, window: &str) -> String {
@@ -172,6 +221,33 @@ mod tests {
         }
         h.record(&[snap(4200, 100.0)]); // window refilled
         assert!(h.burn_per_hour(&key("p", "5h")).is_none(), "history restarts at the refill");
+    }
+
+    #[test]
+    fn samples_survive_a_round_trip_through_json() {
+        let mut h = History::default();
+        for i in 0..5 {
+            h.record(&[snap(i * 600, 100.0 - i as f64 * 5.0)]);
+        }
+        let encoded = serde_json::to_string(&h).unwrap();
+        let back: History = serde_json::from_str(&encoded).unwrap();
+        let rate = back.burn_per_hour(&key("p", "5h")).expect("the trend survives");
+        assert!((rate - 30.0).abs() < 0.5, "expected ~30%/h, got {rate}");
+    }
+
+    #[test]
+    fn only_percentages_and_times_are_stored() {
+        // The privacy claim is worth a test: nothing about *what* was being
+        // done should be able to reach the file.
+        let mut h = History::default();
+        h.record(&[snap(0, 42.0)]);
+        let encoded = serde_json::to_string(&h).unwrap();
+        assert!(encoded.contains("42.0"), "{encoded}");
+        assert!(encoded.contains("p|5h"), "{encoded}");
+        // provider id and window label are the only strings; no display name,
+        // no detail, no counts.
+        assert!(!encoded.contains("display"), "{encoded}");
+        assert!(!encoded.contains('P'), "no display name leaked: {encoded}");
     }
 
     #[test]
