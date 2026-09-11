@@ -217,6 +217,34 @@ fn cfg_eq(a: &Config, b: &Config) -> bool {
     toml::to_string(a).ok() == toml::to_string(b).ok()
 }
 
+/// Whether the poll thread would behave identically under both configs.
+///
+/// Saving settings used to restart the poller unconditionally, and a fresh
+/// poller fetches every provider before its first wait — so closing the sheet
+/// after changing a colour spent a full round of API calls to redraw numbers
+/// that had not moved. That is the opposite of what the interval floor is for.
+///
+/// Written as "blank the presentation-only fields, then compare" rather than
+/// as a list of the fields that matter: a field added later then defaults to
+/// restarting, and a needless refetch is recoverable where a poller left
+/// running on stale config is not.
+fn poller_eq(a: &Config, b: &Config) -> bool {
+    let strip = |c: &Config| {
+        let mut c = c.clone();
+        c.theme = String::new();
+        c.notch_opacity = 0.0;
+        c.card_opacity = 0.0;
+        c.quiet_mode = false;
+        c.show_rail_percent = false;
+        c.max_visible_collapsed = 0;
+        c.sort_by_urgency = false;
+        c.hide_unconfigured = false;
+        c.projections = false;
+        c
+    };
+    cfg_eq(&strip(a), &strip(b))
+}
+
 /// What an editor has to ask for, decided by the entry itself rather than by
 /// looking its id up in the catalogue. Ids are free-form — a second Claude
 /// login is `claude-work` — so the config is the only reliable source.
@@ -735,6 +763,7 @@ impl App {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if w::pill_button(ui, "Save", true, true, pal).clicked() {
                     let projections_were_on = self.cfg.projections;
+                    let refetch = !poller_eq(&self.cfg, &self.cfg_next);
                     self.cfg = self.cfg_next.clone();
                     config::Config::save(&self.cfg);
                     self.cfg_mtime = Config::mtime();
@@ -744,7 +773,9 @@ impl App {
                     // old theme's colors until the next launch.
                     theme::apply_style(ui.ctx(), &self.pal);
                     self.apply_projection_setting(projections_were_on);
-                    self.restart_poller();
+                    if refetch {
+                        self.restart_poller();
+                    }
                     self.settings_open = false;
                 }
                 ui.add_space(8.0);
@@ -1782,12 +1813,15 @@ impl App {
             return;
         }
         let projections_were_on = self.cfg.projections;
+        let refetch = !poller_eq(&self.cfg, &fresh);
         self.cfg = fresh.clone();
         self.cfg_next = fresh;
         self.apply_projection_setting(projections_were_on);
         self.pal = theme::palette(&self.cfg.theme);
         theme::apply_style(ctx, &self.pal);
-        self.restart_poller();
+        if refetch {
+            self.restart_poller();
+        }
         ctx.request_repaint();
     }
 
@@ -2979,4 +3013,54 @@ fn main() -> eframe::Result<()> {
             Ok(Box::new(App::new(cfg, pal, icons, logos, dock, usage)))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Closing settings after changing how the notch *looks* must not send the
+    /// app back to every provider's API. That used to happen for any Save at
+    /// all, which is how a theme change cost a full round of quota calls.
+    #[test]
+    fn presentation_changes_do_not_restart_the_poller() {
+        let base = Config::default();
+        let mut skin = base.clone();
+        skin.theme = "acid".into();
+        skin.notch_opacity = 0.3;
+        skin.card_opacity = 0.9;
+        skin.quiet_mode = !base.quiet_mode;
+        skin.show_rail_percent = !base.show_rail_percent;
+        skin.max_visible_collapsed = base.max_visible_collapsed + 2;
+        skin.sort_by_urgency = !base.sort_by_urgency;
+        skin.hide_unconfigured = !base.hide_unconfigured;
+        skin.projections = !base.projections;
+        assert!(poller_eq(&base, &skin));
+    }
+
+    #[test]
+    fn the_poll_interval_restarts_the_poller() {
+        let base = Config::default();
+        let mut faster = base.clone();
+        faster.poll_interval_secs = base.poll_interval_secs + 60;
+        assert!(!poller_eq(&base, &faster));
+    }
+
+    #[test]
+    fn disabling_a_provider_restarts_the_poller() {
+        let base = Config::default();
+        let mut off = base.clone();
+        off.disabled = vec!["codex".into()];
+        assert!(!poller_eq(&base, &off));
+    }
+
+    /// The notifier reads its thresholds from the poll thread's own copy of
+    /// the config, so an alert change has to reach it too.
+    #[test]
+    fn alert_settings_restart_the_poller() {
+        let base = Config::default();
+        let mut loud = base.clone();
+        loud.notify_threshold = base.notify_threshold + 5.0;
+        assert!(!poller_eq(&base, &loud));
+    }
 }
