@@ -351,7 +351,7 @@ mod version_tests {
 ///
 /// Best-effort: on a compositor without the script, nothing moves and the card
 /// falls back to the space below the notch.
-pub fn request_geometry(y: i32, height: i32) {
+pub fn request_geometry(y: i32, height: i32, width: i32) {
     let dir = cache_dir();
     if std::fs::create_dir_all(&dir).is_err() {
         return;
@@ -371,6 +371,7 @@ const W = "limitcue";
 const PID = {pid};
 const WANT_Y = {y};
 const WANT_H = {height};
+const WANT_W = {width};
 let target = null;
 for (const w of workspace.windowList()) {{
     if (w.pid === PID) {{ target = w; break; }}
@@ -387,15 +388,23 @@ if (target) {{
     let g = w.frameGeometry;
     let mid = g.x + g.width / 2;
     let edge = (mid < a.x + a.width / 2) ? 3 : 4;
-    let nx = (edge === 3) ? a.x : a.x + a.width - g.width;
+    // Take the app's width rather than the one the window happens to have
+    // right now. The app resizes itself and asks to be placed in the same
+    // frame, and this script runs asynchronously -- so reading the live width
+    // here meant re-applying the *old* one, which pinned the window narrow
+    // every time a hover card or the settings sheet widened it.
+    let nw = WANT_W > 0 ? WANT_W : g.width;
     let nh = WANT_H > 0 ? WANT_H : g.height;
+    // A right-docked notch keeps its strip against the right bezel, so the
+    // window grows leftward and its x depends on the width we are about to set.
+    let nx = (edge === 3) ? a.x : a.x + a.width - nw;
     let ny = WANT_Y >= 0 ? WANT_Y : g.y;
     ny = Math.min(Math.max(ny, a.y), a.y + a.height - nh);
-    w.frameGeometry = {{ x: nx, y: ny, width: g.width, height: nh }};
+    w.frameGeometry = {{ x: nx, y: ny, width: nw, height: nh }};
     callDBus("io.limitcue", "/io/limitcue/dock", "io.limitcue.Dock",
              "StoreGeometry", Math.round(nx), Math.round(ny), edge, PID,
              Math.round(a.x), Math.round(a.y), Math.round(a.width), Math.round(a.height));
-    print("LC-PLACE pid=" + w.pid + " edge=" + edge + " " + nx + "," + ny + " h=" + nh +
+    print("LC-PLACE pid=" + w.pid + " edge=" + edge + " " + nx + "," + ny + " " + nw + "x" + nh +
           " on " + a.x + "," + a.y + " " + a.width + "x" + a.height);
 }}
 "#,

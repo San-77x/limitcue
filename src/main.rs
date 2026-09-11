@@ -534,7 +534,7 @@ struct App {
     /// a card gets to open upward.
     headroom: f32,
     /// Last (y, height) handed to the compositor, so it is asked only on change.
-    placed: Option<(i32, i32)>,
+    placed: Option<(i32, i32, i32)>,
     /// Last window y the dock script reported, to spot a genuine move.
     reported_y: f32,
     /// Last dock state acted on, so a move triggers a fresh placement.
@@ -2198,9 +2198,9 @@ impl eframe::App for App {
             // means clamping against one rectangle while KWin clamps against
             // another, and the window walks between the two answers.
             let want = if dock_now.output_known() {
-                (wanted_y.round() as i32, band_h.round() as i32)
+                (wanted_y.round() as i32, band_h.round() as i32, rail_size.x.round() as i32)
             } else {
-                (-1, -1)
+                (-1, -1, -1)
             };
             let settling = self.restore_sent < 30 && self.restore_sent.is_multiple_of(6);
             // Screenshot runs must not touch the compositor: the script picks
@@ -2213,7 +2213,7 @@ impl eframe::App for App {
             let busy = self.rail_open.is_some() || self.rail_card_f > 0.0;
             if !capturing && !busy && (settling || self.placed != Some(want)) {
                 self.placed = Some(want);
-                dock::request_geometry(want.0, want.1);
+                dock::request_geometry(want.0, want.1, want.2);
             }
         }
 
