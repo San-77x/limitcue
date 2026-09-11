@@ -759,7 +759,7 @@ impl App {
         card(ui, pal, |ui| {
             setting_row(ui, "Poll interval", "How often each provider is asked for fresh numbers.", pal, |ui| {
                 let mut v = self.cfg_next.poll_interval_secs as i64;
-                if w::slider(ui, &mut v, 30..=900, 30, "s", pal) {
+                if w::slider(ui, &mut v, config::MIN_POLL_SECS as i64..=900, 30, "s", pal) {
                     self.cfg_next.poll_interval_secs = v as u64;
                     dirty = true;
                 }

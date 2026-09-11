@@ -161,7 +161,16 @@ pub struct Config {
     pub projections: bool,
 }
 
-fn default_poll() -> u64 { 120 }
+/// Floor on how often any provider is asked for numbers.
+///
+/// Quota endpoints are not free to call. Anthropic's returns 429 well before
+/// once every 30 seconds, and a rate-limited notch shows nothing useful --
+/// worse than a number two minutes old. Nothing here moves fast enough to
+/// justify going lower either: the shortest window any adapter reports is
+/// five hours.
+pub const MIN_POLL_SECS: u64 = 120;
+
+fn default_poll() -> u64 { MIN_POLL_SECS }
 /// Defaults reproduce the surfaces' previously hard-coded translucency.
 fn default_notch_opacity() -> f32 { 0.60 }
 fn default_card_opacity() -> f32 { 0.70 }
@@ -204,13 +213,19 @@ impl Config {
     }
 
     pub fn load() -> Self {
-        match std::fs::read_to_string(Self::path()) {
+        let mut c = match std::fs::read_to_string(Self::path()) {
             Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
                 eprintln!("limitcue: bad config ({}): {e}, using defaults", Self::path().display());
                 Config::default()
             }),
             Err(_) => Config::default(),
+        };
+        // Clamp rather than trust the file: the interval used to be settable
+        // down to 30s, and a config written back then still says so.
+        if c.poll_interval_secs < MIN_POLL_SECS {
+            c.poll_interval_secs = MIN_POLL_SECS;
         }
+        c
     }
 
     /// Persist the current config back to config.toml (settings screen Apply).
@@ -241,7 +256,7 @@ impl Config {
             let _ = std::fs::create_dir_all(dir);
         }
         let example = r#"# LimitCue configuration
-poll_interval_secs = 120
+poll_interval_secs = 120         # seconds between checks; 120 is the minimum
 hide_unconfigured = true
 # disabled = ["codex"]
 # theme = "midnight"             # midnight paper acid prism slate neon

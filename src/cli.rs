@@ -174,9 +174,9 @@ fn wait(cfg: &Config, args: &Args) -> i32 {
             return 2;
         }
     }
-    // Checking every poll interval would make `wait` as slow as the widget;
-    // a minute is responsive without being rude to anyone's rate limit.
-    let every = cfg.poll_interval_secs.clamp(20, 60);
+    // This used to poll faster than the widget to stay responsive, which just
+    // moved the rate-limiting problem into `wait`: it calls the same endpoints.
+    let every = cfg.poll_interval_secs.max(crate::config::MIN_POLL_SECS);
     loop {
         // Fall back to fetching whenever the cache cannot answer the question
         // actually being asked — including when it simply does not know about
