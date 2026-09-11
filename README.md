@@ -175,7 +175,8 @@ must appear **before** any `[[provider]]` section — in TOML, keys after a
 table header belong to that table):
 
 ```toml
-poll_interval_secs = 240         # seconds between checks; 240 is the minimum
+poll_interval_secs = 240         # seconds between checks; below this, providers
+                                 # may answer 429 instead of a number (min 60)
 hide_unconfigured = true
 disabled = []            # e.g. ["codex"]
 theme = "midnight"       # see Settings -> Appearance for all ten

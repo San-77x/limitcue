@@ -161,20 +161,23 @@ pub struct Config {
     pub projections: bool,
 }
 
-/// Floor on how often any provider is asked for numbers.
+/// What the poll interval is set to unless the config says otherwise, and the
+/// point below which the settings screen starts warning.
 ///
 /// Quota endpoints are not free to call. Anthropic's returns 429 at a 30s
-/// interval; 240s is the spacing this machine's history shows succeeding
-/// consistently, so it is the one interval we have evidence for rather than
-/// a guess between the two. A rate-limited notch shows nothing useful --
-/// worse than a number four minutes old.
-///
-/// Nothing needs the speed. The shortest window any adapter reports is five
-/// hours, so even at this interval we ask 75 times per window for a number
-/// that moves once.
-pub const MIN_POLL_SECS: u64 = 240;
+/// interval; 240s is the spacing this machine's history shows succeeding every
+/// time, so it is the one value we have evidence for rather than a guess. It
+/// costs nothing in freshness either: the shortest window any adapter reports
+/// is five hours, so even here we ask 75 times per window for a number that
+/// moves once.
+pub const DEFAULT_POLL_SECS: u64 = 240;
 
-fn default_poll() -> u64 { MIN_POLL_SECS }
+/// Hard floor. Below a minute the app is generating more load than signal
+/// against every provider at once, and no window it tracks moves that fast.
+/// Between this and [`DEFAULT_POLL_SECS`] is the caller's risk to take.
+pub const MIN_POLL_SECS: u64 = 60;
+
+fn default_poll() -> u64 { DEFAULT_POLL_SECS }
 /// Defaults reproduce the surfaces' previously hard-coded translucency.
 fn default_notch_opacity() -> f32 { 0.60 }
 fn default_card_opacity() -> f32 { 0.70 }
@@ -260,7 +263,8 @@ impl Config {
             let _ = std::fs::create_dir_all(dir);
         }
         let example = r#"# LimitCue configuration
-poll_interval_secs = 240         # seconds between checks; 240 is the minimum
+poll_interval_secs = 240         # seconds between checks; below this, providers
+                                 # may answer 429 instead of a number (min 60)
 hide_unconfigured = true
 # disabled = ["codex"]
 # theme = "midnight"             # midnight paper acid prism slate neon

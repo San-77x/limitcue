@@ -309,6 +309,15 @@ fn setting_row<R>(
     out
 }
 
+/// A wrapped note under a control, in a colour of the caller's choosing.
+/// Used for the one-off warnings that only apply at some settings.
+fn hint(ui: &mut egui::Ui, text: &str, col: Color32) {
+    let galley = ui.painter().layout(text.to_owned(), theme::sans(10.0), col, avail(ui));
+    let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), galley.size().y), Sense::hover());
+    ui.painter().galley(r.left_top(), galley, col);
+    ui.add_space(9.0);
+}
+
 /// [`setting_row`] with the control right-aligned on the title line. Use it
 /// when the control is compact (a button, a switch); the full-width variant
 /// is for controls that want the whole row, like a slider.
@@ -764,6 +773,22 @@ impl App {
                     dirty = true;
                 }
             });
+            // Asking faster is allowed, but it is the one setting on this
+            // screen that can stop the notch working rather than just change
+            // how it looks: a quota endpoint under pressure answers 429
+            // instead of a number, and there is nothing to show until it
+            // relents. Say so at the moment the slider crosses over, rather
+            // than leaving it to be discovered as a bug later.
+            if self.cfg_next.poll_interval_secs < config::DEFAULT_POLL_SECS {
+                hint(
+                    ui,
+                    &format!(
+                        "Below {}s providers can start refusing — Claude answers \u{201c}rate-limited\u{201d} and the gauge holds its last reading until the limit clears. Nothing it tracks moves faster than every 5 hours.",
+                        config::DEFAULT_POLL_SECS
+                    ),
+                    pal.warn,
+                );
+            }
         });
 
         ui.add_space(16.0);
