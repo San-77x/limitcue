@@ -447,10 +447,10 @@ pub fn mono(size: f32) -> FontId {
 
 /// Inter (SIL OFL, assets/fonts) in three weights. Regular is installed as
 /// the default proportional face; Medium/SemiBold are named families.
-const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
-const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
-const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
-const HACK_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Hack-Regular.ttf");
+const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular-sub.ttf");
+const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium-sub.ttf");
+const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold-sub.ttf");
+const HACK_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Hack-Regular-sub.ttf");
 
 pub fn sans(size: f32) -> FontId {
     FontId::proportional(size)

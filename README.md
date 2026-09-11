@@ -12,7 +12,7 @@ Click it and it eases open into a detail card per provider — labelled
 quota bars, counts, and live reset countdowns — with smooth scrolling
 when you have more plans than fit on screen.
 
-Built with Rust + egui as a single ~5 MB binary — no Electron, no webview, no runtime.
+Built with Rust + egui as a single ~7 MB binary — no Electron, no webview, no runtime.
 
 ## What it does
 
@@ -415,9 +415,17 @@ Adding a first-party adapter = one file in `src/providers/` implementing the
 `Provider` trait + one registry line. Tests pinned to recorded fixtures are
 welcome and encouraged.
 
-UI text is set in [Inter](https://rsms.me/inter/) (SIL OFL; three weights
-embedded from `assets/fonts/`, ~1 MB added to the binary) with tabular Hack
-mono kept for numerals in the pill. Debug hooks for screenshot automation:
+UI text is set in [Inter](https://rsms.me/inter/) (SIL OFL; three weights),
+with [Hack](https://sourcefoundry.org/hack/) mono for numerals, whose tabular
+digits keep the card's columns aligned. Both are embedded from `assets/fonts/`
+and both are **subsetted** — `scripts/subset-fonts.sh` regenerates them from
+the full originals, which stay in the repo for exactly that reason. The subset
+is ASCII + Latin-1 + Latin Extended-A + the punctuation the layout draws, so
+185 KB is compiled in rather than 1.5 MB. eframe's `default_fonts` feature is
+off for the same reason: three of the four faces it bundles never drew a glyph
+here. The cost is that a provider you name in Greek, Cyrillic or emoji renders
+as boxes; CJK was never covered by these faces either way. Debug hooks for
+screenshot automation:
 `LIMITCUE_UI_SHOT=/path.png` captures the window after the layout settles
 and exits, `LIMITCUE_UI_RAIL=<provider_id>` pins a usage card open,
 `LIMITCUE_UI_SNAP=1` skips size animations.
