@@ -783,7 +783,7 @@ impl App {
                 hint(
                     ui,
                     &format!(
-                        "Below {}s providers can start refusing — Claude answers \u{201c}rate-limited\u{201d} and the gauge holds its last reading until the limit clears. Nothing it tracks moves faster than every 5 hours.",
+                        "Putting it below {}s can get your requests refused by a provider's server.",
                         config::DEFAULT_POLL_SECS
                     ),
                     pal.warn,
