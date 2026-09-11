@@ -2033,7 +2033,10 @@ impl eframe::App for App {
             .iter()
             .map(|s| ui::rail_card_height(s, self.pace_line(s, now).is_some()))
             .fold(0.0_f32, f32::max);
-        let band_h = rail_h.max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0);
+        // Settings is a panel beside the notch, not a replacement for it, so
+        // the band has to be tall enough to hold whichever is bigger.
+        let sheet_h = if self.settings_open { self.settings_height(ctx) } else { 0.0 };
+        let band_h = rail_h.max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0).max(sheet_h);
         // Where the window should sit for the notch to land where the user
         // put it. When the compositor has already placed it somewhere else —
         // it clamps against the real output, which is authoritative — take its
@@ -2048,9 +2051,12 @@ impl eframe::App for App {
             wanted_y
         };
         self.headroom = (self.notch_y - window_y).clamp(0.0, (band_h - rail_h).max(0.0));
-        let rail_size = match self.rail_open.is_some() || self.rail_last.is_some() {
-            true => Vec2::new(RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W, band_h),
-            false => Vec2::new(RAIL_STRIP_W, band_h),
+        let rail_size = if self.settings_open {
+            Vec2::new(RAIL_STRIP_W + RAIL_COL_GAP + SETTINGS_W, band_h)
+        } else if self.rail_open.is_some() || self.rail_last.is_some() {
+            Vec2::new(RAIL_STRIP_W + RAIL_COL_GAP + RAIL_CARD_W, band_h)
+        } else {
+            Vec2::new(RAIL_STRIP_W, band_h)
         };
 
         // Hand the band to the compositor: once the window has mapped (KWin
@@ -2182,7 +2188,10 @@ impl eframe::App for App {
         };
 
         // Settings follows its content, with only a viewport safety cap.
-        if self.settings_open {
+        // Docked, it is drawn beside the notch instead (see `render_rail`) —
+        // taking the whole window there would hide the notch, which is the one
+        // thing on screen the user asked to always be there.
+        if self.settings_open && !rail {
             // Theme changes preview live — picking a swatch that only takes
             // effect after Save makes the picker feel broken.
             let pal = theme::palette(&self.cfg_next.theme);
@@ -2338,6 +2347,20 @@ impl App {
         }
     }
 
+    /// Height the settings sheet wants. The window has to be sized before the
+    /// sheet is drawn, so this cannot live where the drawing happens.
+    fn settings_height(&self, ctx: &egui::Context) -> f32 {
+        let body = self.settings_body_h.max(140.0);
+        let chrome = SETTINGS_PAD * 2.0 + 24.0 + 12.0 + 28.0 + 14.0 + SETTINGS_ACTIONS_H;
+        // Cap against the *monitor*, not the window: capping against its own
+        // height pinned the sheet at the floor it started from and it could
+        // never grow to fit its content.
+        let screen_h = ctx
+            .input(|i| i.viewport().monitor_size.map(|s| s.y))
+            .unwrap_or(900.0);
+        (body + chrome + 10.0).min((screen_h - VIEWPORT_H_MARGIN).max(380.0))
+    }
+
     /// Vertical rail shown when docked left/right: a pure-black notch body
     /// with concave fillets where it meets the screen edge, one ring cell per
     /// provider, and a settings orb below. Hovering a cell (or the gap+card
@@ -2345,7 +2368,7 @@ impl App {
     /// that cell; it lingers through a short grace period after the pointer
     /// leaves.
     fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], rail_h: f32, rail_row_h: f32) {
-        let pal = self.pal;
+        let pal = if self.settings_open { theme::palette(&self.cfg_next.theme) } else { self.pal };
         let edge = self.last_edge;
         // While the edge is unknown the window may still be the tiny init
         // pill — don't render the notch into a rect it can't fit in.
@@ -2356,6 +2379,36 @@ impl App {
         let on_left = edge == Edge::Left;
         let ui_rect = ui.max_rect();
         let pointer = ctx.input(|i| i.pointer.hover_pos());
+
+        // ---- settings, docked beside the notch -----------------------------
+        // The sheet used to take the whole window, which meant opening it hid
+        // the notch. It is a panel next to the notch now, on the same side the
+        // tail-card opens to: away from the screen edge the notch is against.
+        if self.settings_open {
+            // The notch previews the theme too. With both on screen at once, a
+            // sheet in the new colours beside a notch in the old ones reads as
+            // a bug rather than a preview.
+            let pal = theme::palette(&self.cfg_next.theme);
+            let sheet_h = self.settings_height(ctx).min(ui_rect.height());
+            let x0 = if on_left {
+                ui_rect.left() + RAIL_STRIP_W + RAIL_COL_GAP
+            } else {
+                ui_rect.left()
+            };
+            let sheet =
+                Rect::from_min_size(egui::pos2(x0, ui_rect.top()), Vec2::new(SETTINGS_W, sheet_h));
+            let frame = egui::Frame::none()
+                .fill(pal.bg)
+                .stroke(egui::Stroke::new(1.0_f32, pal.border))
+                .rounding(egui::Rounding::same(17.0))
+                .inner_margin(egui::Margin::same(SETTINGS_PAD));
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(sheet), |ui| {
+                frame.show(ui, |ui| {
+                    ui.set_min_size(sheet.size() - Vec2::splat(SETTINGS_PAD * 2.0));
+                    self.settings_ui(ui, &pal);
+                });
+            });
+        }
 
         // ---- the notch body ----------------------------------------------
         // The strip hugs the docked edge: window-left for a left dock,
@@ -2660,7 +2713,10 @@ impl App {
         }
 
         // ---- the tail-card popup ------------------------------------------
-        if self.rail_card_f > 0.0 {
+        // Not while the sheet is open: they occupy the same strip beside the
+        // notch, and a usage card sliding out over the settings is nobody's
+        // idea of a hover.
+        if self.rail_card_f > 0.0 && !self.settings_open {
             let Some(id) = self.rail_open.clone().or_else(|| self.rail_last.clone()) else {
                 self.rail_card_f = 0.0;
                 return;
