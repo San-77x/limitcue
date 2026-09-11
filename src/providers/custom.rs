@@ -158,6 +158,7 @@ impl Provider for Custom {
             fidelity: self.fidelity(),
             reading,
             fetched_at: now,
+            fetch_error: None,
         };
         let Some(url) = &self.cfg.url else {
             return make(Reading::NotConfigured);

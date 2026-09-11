@@ -145,6 +145,7 @@ impl Provider for Kimi {
             fidelity: self.fidelity(),
             reading,
             fetched_at: now_unix(),
+            fetch_error: None,
         };
         let token = self
             .cfg

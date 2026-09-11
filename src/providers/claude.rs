@@ -143,6 +143,7 @@ impl Provider for Claude {
             fidelity: self.fidelity(),
             reading,
             fetched_at: now_unix(),
+            fetch_error: None,
         };
         let Some(token) = self.credentials() else { return make(Reading::NotConfigured) };
         let headers = [

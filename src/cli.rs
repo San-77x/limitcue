@@ -255,6 +255,7 @@ fn parse_cached(body: &str) -> Option<Vec<Snapshot>> {
                 None => Reading::NotConfigured,
             },
             fetched_at: v.get("generated_at").and_then(|x| x.as_u64()).unwrap_or(0),
+            fetch_error: None,
         });
     }
     // An app that has just started has published nothing yet. That is "no
@@ -496,6 +497,7 @@ mod tests {
             fidelity: Fidelity::Official,
             reading,
             fetched_at: 1_700_000_000,
+            fetch_error: None,
         }
     }
 

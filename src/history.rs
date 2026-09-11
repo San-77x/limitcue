@@ -185,6 +185,7 @@ mod tests {
                 detail: None,
             },
             fetched_at: t,
+            fetch_error: None,
         }
     }
 

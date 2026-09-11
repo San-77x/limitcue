@@ -47,6 +47,16 @@ pub struct Snapshot {
     pub fidelity: Fidelity,
     pub reading: Reading,
     pub fetched_at: u64,
+    /// Set when the most recent refresh attempt failed while an earlier one
+    /// had succeeded. `reading` and `fetched_at` then describe that earlier,
+    /// successful attempt: a quota does not stop existing because the server
+    /// declined to restate it, and numbers from four minutes ago answer the
+    /// question far better than "no current usage reading" does.
+    ///
+    /// Runtime only. state.json keeps the good reading and not the failure, so
+    /// a restart does not resurrect an error this run has not actually hit.
+    #[serde(skip)]
+    pub fetch_error: Option<String>,
 }
 
 impl Snapshot {

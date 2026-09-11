@@ -135,6 +135,9 @@ const HERO_H: f32 = 34.0; // headline percentage + which window it refers to
 const HERO_GAP: f32 = 13.0;
 /// The burn-rate line, when there is enough history to draw one.
 const PACE_H: f32 = 15.0;
+/// The "couldn't refresh" line, on the pace line's metrics so the two stack
+/// without the card looking assembled from different kits.
+const NOTE_H: f32 = PACE_H;
 const PACE_GAP: f32 = 11.0;
 const RULE_GAP: f32 = 12.0; // rule → first window row
 const ROW_H: f32 = 47.0; // label line + meter + meta line
@@ -184,7 +187,11 @@ fn body(s: &Snapshot) -> Body {
 
 /// Height the card wants when nothing constrains it.
 pub fn rail_card_content_height(s: &Snapshot, pace: bool) -> f32 {
-    let extra = if pace { PACE_H + PACE_GAP } else { 0.0 };
+    // Every line that can appear above the body has to be counted here as
+    // well as painted below. Budget and painter disagreeing is what clipped
+    // the footer the last time this card grew a line.
+    let extra = if pace { PACE_H + PACE_GAP } else { 0.0 }
+        + if s.fetch_error.is_some() { NOTE_H + PACE_GAP } else { 0.0 };
     extra + match body(s) {
         Body::Solo(_) => CARD_TOP_H + SOLO_METER_H + CARD_BOTTOM_H,
         Body::Rows(n) => CARD_FIXED_H + n as f32 * ROW_H + (n as f32 - 1.0) * ROW_GAP + 3.0,
@@ -400,6 +407,16 @@ pub fn rail_card(
         }
     }
     y = hero.bottom() + HERO_GAP;
+
+    // ---- why these numbers are not current -------------------------------
+    // The reading below is the last one that arrived. Say so plainly, and say
+    // what went wrong, rather than letting a stale number pass for a fresh one.
+    if let Some(err) = &s.fetch_error {
+        let note = format!("Couldn't refresh \u{00b7} {err}");
+        let g = widgets::elide(ui, &note, theme::medium(11.0), dim(pal.warn), w);
+        p.galley(egui::pos2(x0, y), g, pal.warn);
+        y += NOTE_H + PACE_GAP;
+    }
 
     // ---- what the current pace means -------------------------------------
     // A percentage says how much is left; this says whether it will last, which
@@ -696,6 +713,11 @@ pub fn chip_tooltip(ui: &mut egui::Ui, s: &Snapshot, pal: &Palette, stale: bool)
         Reading::NotConfigured => {
             ui.label("not configured");
         }
+    }
+    // Why it is stale, when we know: "· stale" alone reads as neglect rather
+    // than as a refresh the server turned down.
+    if let Some(err) = &s.fetch_error {
+        ui.colored_label(pal.warn, format!("couldn't refresh: {err}"));
     }
     let age = now_unix().saturating_sub(s.fetched_at);
     let mut age_line = format!("updated {} ago", fmt_countdown(age));

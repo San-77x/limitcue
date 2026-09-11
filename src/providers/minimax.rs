@@ -69,6 +69,7 @@ impl Provider for MiniMax {
             fidelity: self.fidelity(),
             reading,
             fetched_at: now_unix(),
+            fetch_error: None,
         };
         let Some(key) = self.key() else { return make(Reading::NotConfigured) };
         let base = self.cfg.base_url.as_deref().unwrap_or("https://api.minimax.io");

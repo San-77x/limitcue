@@ -189,6 +189,7 @@ mod tests {
                 detail: None,
             },
             fetched_at: 0,
+            fetch_error: None,
         }]
     }
 

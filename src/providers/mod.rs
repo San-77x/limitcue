@@ -110,7 +110,12 @@ pub fn http_get_json(url: &str, headers: &[(&str, String)]) -> Result<Value, Str
             Err("auth-failed".into())
         }
         Err(ureq::Error::Status(429, _)) => Err("rate-limited".into()),
-        Err(e) => Err(format!("request failed: {e}")),
+        // `ureq`'s Display for a transport error embeds the full URL, which in
+        // a card elides to "request failed: http://12…" and tells the reader
+        // nothing. The kind ("Connection Failed", "Dns Failed") is the part
+        // they can act on; the URL is in their own config.
+        Err(ureq::Error::Transport(t)) => Err(t.kind().to_string().to_lowercase()),
+        Err(ureq::Error::Status(code, _)) => Err(format!("server said {code}")),
     }
 }
 

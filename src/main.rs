@@ -217,6 +217,33 @@ fn cfg_eq(a: &Config, b: &Config) -> bool {
     toml::to_string(a).ok() == toml::to_string(b).ok()
 }
 
+/// What to publish for a provider, given what the fetch just returned and
+/// what we published for it last time.
+///
+/// A failed refresh *demotes* the previous reading rather than erasing it. The
+/// quota did not stop existing because the server declined to restate it, and
+/// "87% used, 4 minutes ago" answers the user's actual question where "no
+/// current usage reading" does not. `fetched_at` rides along with the reading
+/// it belongs to, so the card's age keeps counting from the last real fetch.
+///
+/// Only `Reading::Error` demotes. `NeedsAuth` and `NotConfigured` are states
+/// the user has to go and fix, and burying them under yesterday's numbers
+/// would hide the one thing worth showing.
+fn merge_reading(fresh: Snapshot, prev: Option<&Snapshot>) -> Snapshot {
+    let Reading::Error(ref msg) = fresh.reading else {
+        return fresh; // success, or a state worth showing on its own
+    };
+    match prev {
+        Some(p) if matches!(p.reading, Reading::Ok { .. }) => Snapshot {
+            fetch_error: Some(msg.clone()),
+            ..p.clone()
+        },
+        // Nothing good was ever seen for this provider, so the error is all
+        // there is to say.
+        _ => fresh,
+    }
+}
+
 /// Whether the poll thread would behave identically under both configs.
 ///
 /// Saving settings used to restart the poller unconditionally, and a fresh
@@ -635,9 +662,12 @@ impl App {
                         }
                     }
                     self.snapshots.insert(s.provider_id.clone(), s);
-                } else if let Some(old) = self.snapshots.get_mut(&s.provider_id) {
-                    old.reading = s.reading;
                 } else {
+                    // No second merge here. This branch used to overwrite the
+                    // stored reading with the error, destroying the windows it
+                    // had — which is what left a failed card with nothing to
+                    // show. `merge_reading` in the poller decides what a
+                    // failure means now, and it decides it once.
                     self.snapshots.insert(s.provider_id.clone(), s);
                 }
                 changed = true;
@@ -1693,8 +1723,15 @@ impl App {
     }
 
     fn is_stale(&self, s: &Snapshot, now: u64) -> bool {
-        matches!(s.reading, Reading::Ok { .. })
-            && now.saturating_sub(s.fetched_at) > self.cfg.poll_interval_secs * 3
+        if !matches!(s.reading, Reading::Ok { .. }) {
+            return false;
+        }
+        // A reading we are still showing *because* the refresh failed is stale
+        // by definition, however recent it is. Saying so here is what lights up
+        // every existing stale affordance — the `stale` header mark, the
+        // desaturated name, the muted rings — without inventing new ones.
+        s.fetch_error.is_some()
+            || now.saturating_sub(s.fetched_at) > self.cfg.poll_interval_secs * 3
     }
 
     fn visible(&self) -> Vec<Snapshot> {
@@ -2620,6 +2657,11 @@ impl App {
             // back to printing "err" under a gauge that had no percentage
             // above it.
             let status = match &s.reading {
+                // A reading being shown only because the refresh failed still
+                // warrants the badge: the gauge is drawing numbers the server
+                // has not confirmed, and the notch should say so even with the
+                // labels off. Warn rather than bad — there *is* a reading.
+                Reading::Ok { .. } if s.fetch_error.is_some() => Some(pal.warn),
                 Reading::Ok { .. } => None,
                 Reading::NeedsAuth(_) => Some(pal.warn),
                 Reading::Error(_) => Some(pal.bad),
@@ -2658,6 +2700,9 @@ impl App {
             // the badge carries the status on its own.
             if self.cfg.show_rail_percent {
                 let (label, label_col) = match (&s.reading, pct) {
+                    (Reading::Ok { .. }, Some(v)) if s.fetch_error.is_some() => {
+                        (format!("{:.0}%", 100.0 - v), pal.stale)
+                    }
                     (Reading::Ok { .. }, Some(v)) => (format!("{:.0}%", 100.0 - v), Color32::WHITE),
                     (Reading::Ok { .. }, None) => ("…".into(), Color32::WHITE),
                     (Reading::NeedsAuth(_), _) => ("auth".into(), pal.warn),
@@ -2878,7 +2923,10 @@ fn spawn_poller(
         // slow down on its own.
         let mut fails: HashMap<String, u32> = HashMap::new();
         let mut due: HashMap<String, Instant> = HashMap::new();
-        let mut last: HashMap<String, Snapshot> = HashMap::new();
+        // Seeded from disk: without this, a failure in the very first poll
+        // after a restart would have no previous reading to fall back on and
+        // would blank a card whose numbers are sitting in state.json.
+        let mut last: HashMap<String, Snapshot> = load_state();
         loop {
             let now = Instant::now();
             for p in &providers {
@@ -2896,6 +2944,7 @@ fn spawn_poller(
                 *streak = if struggling { (*streak + 1).min(5) } else { 0 };
                 let wait = poll_secs.saturating_mul(1 << *streak).min(BACKOFF_CEILING_SECS);
                 due.insert(id.clone(), now + std::time::Duration::from_secs(wait));
+                let snap = merge_reading(snap, last.get(&id));
                 last.insert(id, snap);
             }
             // Always publish the full set: a provider skipped for backoff keeps
@@ -3052,6 +3101,91 @@ mod tests {
         let mut off = base.clone();
         off.disabled = vec!["codex".into()];
         assert!(!poller_eq(&base, &off));
+    }
+
+    fn snap(reading: Reading, at: u64) -> Snapshot {
+        Snapshot {
+            provider_id: "p".into(),
+            display_name: "P".into(),
+            fidelity: types::Fidelity::Official,
+            reading,
+            fetched_at: at,
+            fetch_error: None,
+        }
+    }
+
+    fn ok_reading(pct: f64) -> Reading {
+        Reading::Ok {
+            windows: vec![types::Window {
+                label: "weekly".into(),
+                remaining_percent: Some(pct),
+                remaining_count: None,
+                total_count: None,
+                resets_at: Some(9_000),
+            }],
+            detail: None,
+        }
+    }
+
+    /// The whole point: a failed refresh must not throw away what we knew.
+    #[test]
+    fn a_failure_keeps_the_last_good_reading() {
+        let good = snap(ok_reading(87.0), 1_000);
+        let failed = snap(Reading::Error("rate-limited".into()), 2_000);
+        let merged = merge_reading(failed, Some(&good));
+
+        assert_eq!(merged.fetch_error.as_deref(), Some("rate-limited"));
+        // The numbers, and the time they were actually fetched, ride together
+        // -- the card's age has to keep counting from the last real fetch.
+        assert_eq!(merged.fetched_at, 1_000);
+        match merged.reading {
+            Reading::Ok { ref windows, .. } => {
+                assert_eq!(windows[0].remaining_percent, Some(87.0));
+                assert_eq!(windows[0].resets_at, Some(9_000));
+            }
+            other => panic!("demoted to {other:?}"),
+        }
+    }
+
+    /// Nothing good was ever seen, so the error is all there is to say.
+    #[test]
+    fn a_failure_with_no_history_is_still_an_error() {
+        let failed = snap(Reading::Error("rate-limited".into()), 2_000);
+        let merged = merge_reading(failed, None);
+        assert!(matches!(merged.reading, Reading::Error(_)));
+        assert_eq!(merged.fetch_error, None);
+    }
+
+    /// ...and a previous failure is not a previous success either.
+    #[test]
+    fn a_failure_after_a_failure_does_not_resurrect_anything() {
+        let prev = snap(Reading::Error("rate-limited".into()), 1_000);
+        let merged = merge_reading(snap(Reading::Error("boom".into()), 2_000), Some(&prev));
+        assert!(matches!(merged.reading, Reading::Error(ref m) if m == "boom"));
+        assert_eq!(merged.fetch_error, None);
+    }
+
+    #[test]
+    fn a_success_replaces_everything_and_clears_the_error() {
+        let mut stale = snap(ok_reading(87.0), 1_000);
+        stale.fetch_error = Some("rate-limited".into());
+        let merged = merge_reading(snap(ok_reading(42.0), 2_000), Some(&stale));
+
+        assert_eq!(merged.fetch_error, None);
+        assert_eq!(merged.fetched_at, 2_000);
+        match merged.reading {
+            Reading::Ok { ref windows, .. } => assert_eq!(windows[0].remaining_percent, Some(42.0)),
+            other => panic!("expected the fresh reading, got {other:?}"),
+        }
+    }
+
+    /// Needing a sign-in is something the user has to go and fix. Burying it
+    /// under yesterday's numbers would hide the one thing worth showing.
+    #[test]
+    fn needs_auth_still_replaces_the_reading() {
+        let good = snap(ok_reading(87.0), 1_000);
+        let merged = merge_reading(snap(Reading::NeedsAuth("auth-failed".into()), 2_000), Some(&good));
+        assert!(matches!(merged.reading, Reading::NeedsAuth(_)));
     }
 
     /// The notifier reads its thresholds from the poll thread's own copy of

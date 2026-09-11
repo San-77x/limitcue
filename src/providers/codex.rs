@@ -104,6 +104,7 @@ impl Provider for Codex {
             fidelity: self.fidelity(),
             reading,
             fetched_at: now_unix(),
+            fetch_error: None,
         };
         let Some(v) = read_json_file(&self.dir.join("auth.json")) else {
             return make(Reading::NotConfigured);

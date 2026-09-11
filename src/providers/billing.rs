@@ -65,6 +65,7 @@ impl Provider for Billing {
             fidelity: self.fidelity(),
             reading,
             fetched_at: now_unix(),
+            fetch_error: None,
         };
         let Some(key) = self.key() else { return make(Reading::NotConfigured) };
         let Some(base) = &self.cfg.base_url else { return make(Reading::NotConfigured) };
