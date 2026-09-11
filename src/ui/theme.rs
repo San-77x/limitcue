@@ -450,6 +450,7 @@ pub fn mono(size: f32) -> FontId {
 const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
 const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
 const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
+const HACK_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Hack-Regular.ttf");
 
 pub fn sans(size: f32) -> FontId {
     FontId::proportional(size)
@@ -465,20 +466,21 @@ pub fn semibold(size: f32) -> FontId {
 
 /// Register Inter. Called once before the first frame.
 pub fn install_fonts(ctx: &egui::Context) {
+    // eframe's `default_fonts` feature is off: nothing is registered for us, so
+    // every family the app asks for has to be defined here.
     let mut fonts = FontDefinitions::default();
     fonts.font_data.insert("inter".into(), FontData::from_static(INTER_REGULAR));
     fonts.font_data.insert("inter-medium".into(), FontData::from_static(INTER_MEDIUM));
     fonts.font_data.insert("inter-semibold".into(), FontData::from_static(INTER_SEMIBOLD));
-    // Keep egui's bundled emoji/symbol faces as fallbacks behind Inter.
-    let fallbacks = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
-    let with = |primary: &str| {
-        let mut v = vec![primary.to_string()];
-        v.extend(fallbacks.iter().cloned());
-        v
-    };
-    fonts.families.insert(FontFamily::Proportional, with("inter"));
-    fonts.families.insert(FontFamily::Name("inter-medium".into()), with("inter-medium"));
-    fonts.families.insert(FontFamily::Name("inter-semibold".into()), with("inter-semibold"));
+    fonts.font_data.insert("hack".into(), FontData::from_static(HACK_REGULAR));
+    fonts.families.insert(FontFamily::Proportional, vec!["inter".into()]);
+    fonts.families.insert(FontFamily::Monospace, vec!["hack".into()]);
+    fonts
+        .families
+        .insert(FontFamily::Name("inter-medium".into()), vec!["inter-medium".into()]);
+    fonts
+        .families
+        .insert(FontFamily::Name("inter-semibold".into()), vec!["inter-semibold".into()]);
     ctx.set_fonts(fonts);
 }
 
