@@ -118,6 +118,19 @@ const COLLAPSED_H: f32 = 38.0;
 const HEADER_H: f32 = 26.0;
 const EXPANDED_W: f32 = 380.0;
 const SETTINGS_W: f32 = 420.0;
+/// Height of the settings sheet, whatever is in it.
+///
+/// It used to follow its content, which meant the sheet jumped between 522px
+/// (the provider picker) and 851px (General) as you moved between tabs, with
+/// the action bar arriving somewhere new every time. A dialog that changes
+/// size under the pointer is harder to use than one that scrolls, and the
+/// body has always been a ScrollArea -- it simply never had to scroll, because
+/// the window kept growing to spare it.
+///
+/// Chosen so the provider list, the picker and the editor all fit outright;
+/// General and Personalization scroll a little. Clamped to the monitor below,
+/// so a short screen still gets a sheet that fits on it.
+const SETTINGS_H: f32 = 620.0;
 const VIEWPORT_H_MARGIN: f32 = 48.0;
 const TWEEN_SECS: f32 = 0.45;
 const SPIN_SECS: f32 = 0.55;
@@ -545,7 +558,6 @@ struct App {
     /// Outcome of the last "send test alert" press.
     alert_test: Option<bool>,
     /// Measured height of the settings body, used to size the sheet.
-    settings_body_h: f32,
     /// Provider whose inline usage card is open on the rail (left/right dock).
     rail_open: Option<String>,
     /// Provider whose card is fading out (kept for height budgeting).
@@ -635,7 +647,6 @@ impl App {
             probe_rx: None,
             key_revealed: false,
             alert_test: None,
-            settings_body_h: 0.0,
             rail_open,
             rail_last: None,
             rail_card_f: 0.0,
@@ -772,7 +783,7 @@ impl App {
 
         // ---- scrolling body -------------------------------------------------
         let body_h = (ui.available_height() - SETTINGS_ACTIONS_H).max(80.0);
-        let out = egui::ScrollArea::vertical()
+        egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .max_height(body_h)
             .show(ui, |ui| match self.settings_tab {
@@ -780,15 +791,6 @@ impl App {
                 SettingsTab::Providers => dirty |= self.settings_providers(ui, pal),
                 SettingsTab::Personalization => dirty |= self.settings_appearance(ui, pal),
             });
-        // Feed the measured content height back into next frame's window size.
-        // Content width is fixed, so this settles in one frame rather than
-        // oscillating.
-        let measured = out.content_size.y;
-        if (measured - self.settings_body_h).abs() > 0.5 {
-            self.settings_body_h = measured;
-            ui.ctx().request_repaint();
-        }
-
         // ---- action bar -----------------------------------------------------
         ui.add_space(10.0);
         let (rule_r, _) = ui.allocate_exact_size(Vec2::new(full, 1.0), Sense::hover());
@@ -2312,15 +2314,7 @@ impl eframe::App for App {
             // Theme changes preview live — picking a swatch that only takes
             // effect after Save makes the picker feel broken.
             let pal = theme::palette(&self.cfg_next.theme);
-            let body = self.settings_body_h.max(140.0);
-            let chrome = SETTINGS_PAD * 2.0 + 24.0 + 12.0 + 28.0 + 14.0 + SETTINGS_ACTIONS_H;
-            // Cap against the *monitor*, not the window: capping against its
-            // own height pinned the sheet at the floor it started from and it
-            // could never grow to fit its content.
-            let screen_h = ctx
-                .input(|i| i.viewport().monitor_size.map(|s| s.y))
-                .unwrap_or(900.0);
-            let settings_h = (body + chrome + 10.0).min((screen_h - VIEWPORT_H_MARGIN).max(380.0));
+            let settings_h = self.settings_height(ctx);
             self.cur_size = Vec2::new(SETTINGS_W, settings_h);
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
             let frame = egui::Frame::none()
@@ -2467,15 +2461,12 @@ impl App {
     /// Height the settings sheet wants. The window has to be sized before the
     /// sheet is drawn, so this cannot live where the drawing happens.
     fn settings_height(&self, ctx: &egui::Context) -> f32 {
-        let body = self.settings_body_h.max(140.0);
-        let chrome = SETTINGS_PAD * 2.0 + 24.0 + 12.0 + 28.0 + 14.0 + SETTINGS_ACTIONS_H;
         // Cap against the *monitor*, not the window: capping against its own
-        // height pinned the sheet at the floor it started from and it could
-        // never grow to fit its content.
+        // height would pin the sheet to whatever it happened to open at.
         let screen_h = ctx
             .input(|i| i.viewport().monitor_size.map(|s| s.y))
             .unwrap_or(900.0);
-        (body + chrome + 10.0).min((screen_h - VIEWPORT_H_MARGIN).max(380.0))
+        SETTINGS_H.min((screen_h - VIEWPORT_H_MARGIN).max(380.0))
     }
 
     /// Vertical rail shown when docked left/right: a pure-black notch body
