@@ -135,7 +135,18 @@ const RAIL_CARD_W: f32 = 264.0; // usage card width
 const RAIL_RING_R: f32 = 14.0; // compact gauge ring radius
 const RAIL_CORNER: f32 = 14.0; // convex corner radius of the notch body
 const RAIL_ORB: f32 = 20.0; // compact settings orb diameter
-const RAIL_PAD_TOP: f32 = 10.0; // breathing room above the first cell
+/// Breathing room above the first cell.
+///
+/// Bigger than the bottom pad on purpose. A gauge's ring is drawn 9px above
+/// its cell centre (room for the percentage label underneath), so in compact
+/// mode the ring overflows the top of its own cell by ~4px and an alert badge
+/// on the rim by ~5px. Padding the box equally at both ends therefore looks
+/// top-heavy: measured, the ring sat 6px from the notch edge where the orb sat
+/// 10px. This puts the two marks the same distance from their edges, which is
+/// what the eye actually reads as balanced.
+const RAIL_PAD_TOP: f32 = 14.0;
+/// Breathing room below the settings orb, which fills its box exactly.
+const RAIL_PAD_BOT: f32 = 10.0;
 /// Gauge ring stroke width in a rail cell.
 const RAIL_RING_STROKE: f32 = 2.6;
 /// Status badge radius, and where it sits on the gauge rim: up and to the
@@ -2081,7 +2092,11 @@ impl eframe::App for App {
         // horizontal pill.
         let rail_rows = snaps.len().max(1) as f32;
         let rail_row_h = if self.cfg.show_rail_percent { RAIL_ROW_H } else { RAIL_ROW_H_COMPACT };
-        let rail_h = RAIL_PAD_TOP + rail_rows * rail_row_h + (rail_rows - 1.0) * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        let rail_h = RAIL_PAD_TOP
+            + rail_rows * rail_row_h
+            + (rail_rows - 1.0) * RAIL_ROW_GAP
+            + RAIL_ORB
+            + RAIL_PAD_BOT;
         let card_want = self.rail_open.is_some();
         let card_f_target = if card_want { 1.0 } else { 0.0 };
         let previous_card_f = self.rail_card_f;
@@ -3069,7 +3084,8 @@ fn main() -> eframe::Result<()> {
     let init_size = if notch_mode {
         // Resting notch: exactly the spine; height matches the rail's own
         // layout math.
-        let rail_h = RAIL_PAD_TOP + 4.0 * RAIL_ROW_H_COMPACT + 3.0 * RAIL_ROW_GAP + RAIL_ORB + 10.0;
+        let rail_h =
+            RAIL_PAD_TOP + 4.0 * RAIL_ROW_H_COMPACT + 3.0 * RAIL_ROW_GAP + RAIL_ORB + RAIL_PAD_BOT;
         Vec2::new(RAIL_STRIP_W, rail_h)
     } else if start_expanded {
         Vec2::new(EXPANDED_W, 420.0)
