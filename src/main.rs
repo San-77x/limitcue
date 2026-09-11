@@ -499,6 +499,9 @@ struct App {
     replay_drag_release: bool,
     /// Where the pointer was when that drag started.
     drag_release_at: Option<egui::Pos2>,
+    /// Set while the compositor is moving the window for us: the report count
+    /// when the drag began, and when it began. See `dragging`.
+    drag_from: Option<(u64, Instant)>,
     /// Screen y the notch should be painted at — the position the user chose.
     /// The host window is taller than the notch and sits *above* this, so the
     /// window's own y (what the dock script reports) is `notch_y - headroom`.
@@ -608,6 +611,7 @@ impl App {
             restore_sent: 0,
             replay_drag_release: false,
             drag_release_at: None,
+            drag_from: None,
             last_edge: if notch_mode { Edge::Left } else { Edge::Free },
             cfg_next,
             cfg_mtime: Config::mtime(),
@@ -1671,7 +1675,34 @@ impl App {
     fn start_window_drag(&mut self, ctx: &egui::Context) {
         self.drag_release_at = ctx.input(|i| i.pointer.hover_pos());
         self.replay_drag_release = true;
+        self.drag_from = Some((self.dock.lock().unwrap().reports, Instant::now()));
         ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+    }
+
+    /// Whether the user is dragging the notch right now.
+    ///
+    /// KWin holds a pointer grab for the whole interactive move, so there is
+    /// no release event to watch for — the drag ends when the script reports
+    /// the drop, which bumps `DockState::reports`.
+    ///
+    /// The elapsed cap is for a desktop with no compositor integration
+    /// installed: `StartDrag` still works there, but nothing ever reports, and
+    /// without a backstop the notch would keep its dragging shape forever.
+    fn dragging(&mut self, dock_now: &dock::DockState) -> bool {
+        // Debug hook, alongside LIMITCUE_UI_TOP: a screenshot run cannot hold
+        // a compositor drag, so there is otherwise no way to see this shape
+        // without a hand on the mouse.
+        if std::env::var_os("LIMITCUE_UI_DRAG").is_some() {
+            return true;
+        }
+        let Some((reports_at_start, since)) = self.drag_from else {
+            return false;
+        };
+        if dock_now.reports != reports_at_start || since.elapsed().as_secs() > 30 {
+            self.drag_from = None;
+            return false;
+        }
+        true
     }
 
     /// React to the projections setting being turned on or off. Switching it
@@ -2494,11 +2525,23 @@ impl App {
             Vec2::new(RAIL_STRIP_W, rail_h),
         );
         let r = RAIL_CORNER.min(body.height() / 2.0);
-        // body with two square edge-corners and two 15px rounded corners
+        // Docked: two square corners against the screen edge and two rounded
+        // ones facing in, so the notch reads as part of the edge.
+        //
+        // Being dragged: round all four. Mid-drag the notch is not against
+        // anything, and a shape still pretending to be flush with an edge it
+        // has left looks stuck rather than picked up. It eases back to the
+        // docked shape on drop, which is also the cue that the drop landed.
+        let dock_now = *self.dock.lock().unwrap();
+        let dragging = self.dragging(&dock_now);
+        let lift = ui
+            .ctx()
+            .animate_bool_with_time(egui::Id::new("notch-lift"), dragging, 0.12);
+        let edge_r = r * lift;
         let body_rounding = if on_left {
-            egui::Rounding { nw: 0.0, sw: 0.0, ne: r, se: r }
+            egui::Rounding { nw: edge_r, sw: edge_r, ne: r, se: r }
         } else {
-            egui::Rounding { nw: r, sw: r, ne: 0.0, se: 0.0 }
+            egui::Rounding { nw: r, sw: r, ne: edge_r, se: edge_r }
         };
         // Quiet mode fades what is *on* the notch, not the notch itself.
         //

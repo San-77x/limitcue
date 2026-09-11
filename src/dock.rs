@@ -90,6 +90,13 @@ pub struct DockState {
     /// screen. That is the jumping.
     #[serde(skip)]
     pub self_placed: bool,
+    /// Bumped every time the compositor reports the end of an interactive
+    /// move. The KWin script only calls StorePosition from
+    /// `interactiveMoveResizeFinished`, so a bump *is* "the user just dropped
+    /// it" — including a drag that ends exactly where it started, which no
+    /// comparison of coordinates could detect.
+    #[serde(skip)]
+    pub reports: u64,
 }
 
 impl DockState {
@@ -192,6 +199,7 @@ impl DockIface {
         st.x = x;
         st.y = y;
         st.self_placed = false; // the persistent script only reports drags
+        st.reports = st.reports.wrapping_add(1);
         save_dock(&st);
         *self.state.lock().unwrap() = st;
     }
@@ -236,6 +244,9 @@ impl DockIface {
             out_w,
             out_h,
             self_placed: true,
+            // Carried, not reset: this is the app placing its own window, not
+            // the user finishing a drag, and it must not read as one.
+            reports: self.state.lock().unwrap().reports,
         };
         save_dock(&st);
         *self.state.lock().unwrap() = st;
@@ -480,6 +491,7 @@ mod tests {
             out_w: 2048,
             out_h: 1280,
             self_placed: true,
+            reports: 0,
         };
         assert_eq!(st.side(48), Some(Edge::Left));
         assert_eq!(st.output_span(900.0), (0.0, 1280.0));

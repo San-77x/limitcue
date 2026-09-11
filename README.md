@@ -429,7 +429,9 @@ as boxes; CJK was never covered by these faces either way. Debug hooks for
 screenshot automation:
 `LIMITCUE_UI_SHOT=/path.png` captures the window after the layout settles
 and exits, `LIMITCUE_UI_RAIL=<provider_id>` pins a usage card open,
-`LIMITCUE_UI_SNAP=1` skips size animations.
+`LIMITCUE_UI_SNAP=1` skips size animations, `LIMITCUE_UI_DRAG=1` holds the
+notch in its being-dragged shape (a screenshot run cannot hold a real
+compositor drag).
 
 ## Privacy
 
