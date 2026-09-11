@@ -163,12 +163,16 @@ pub struct Config {
 
 /// Floor on how often any provider is asked for numbers.
 ///
-/// Quota endpoints are not free to call. Anthropic's returns 429 well before
-/// once every 30 seconds, and a rate-limited notch shows nothing useful --
-/// worse than a number two minutes old. Nothing here moves fast enough to
-/// justify going lower either: the shortest window any adapter reports is
-/// five hours.
-pub const MIN_POLL_SECS: u64 = 120;
+/// Quota endpoints are not free to call. Anthropic's returns 429 at a 30s
+/// interval; 240s is the spacing this machine's history shows succeeding
+/// consistently, so it is the one interval we have evidence for rather than
+/// a guess between the two. A rate-limited notch shows nothing useful --
+/// worse than a number four minutes old.
+///
+/// Nothing needs the speed. The shortest window any adapter reports is five
+/// hours, so even at this interval we ask 75 times per window for a number
+/// that moves once.
+pub const MIN_POLL_SECS: u64 = 240;
 
 fn default_poll() -> u64 { MIN_POLL_SECS }
 /// Defaults reproduce the surfaces' previously hard-coded translucency.
@@ -256,7 +260,7 @@ impl Config {
             let _ = std::fs::create_dir_all(dir);
         }
         let example = r#"# LimitCue configuration
-poll_interval_secs = 120         # seconds between checks; 120 is the minimum
+poll_interval_secs = 240         # seconds between checks; 240 is the minimum
 hide_unconfigured = true
 # disabled = ["codex"]
 # theme = "midnight"             # midnight paper acid prism slate neon
