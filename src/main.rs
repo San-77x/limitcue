@@ -2366,7 +2366,8 @@ impl App {
         //
         // Being quiet should mean drawing less attention, not becoming a
         // window onto the desktop.
-        let quiet = if self.cfg.quiet_mode && !pointer.map(|p| body.contains(p)).unwrap_or(false) {
+        let on_notch = pointer.map(|p| body.contains(p)).unwrap_or(false);
+        let quiet = if self.cfg.quiet_mode && !on_notch {
             QUIET_CONTENT_ALPHA
         } else {
             1.0
@@ -2534,7 +2535,17 @@ impl App {
             // now, which is the answer to "why did that number just move".
             if self.is_live(&s.provider_id) {
                 let (sin, cos) = RAIL_PULSE_ANGLE.sin_cos();
-                let phase = self.started.elapsed().as_secs_f32() / 2.2;
+                // Breathe only while the notch is actually being looked at.
+                // egui has no partial redraw, so animating this 3 px dot
+                // re-tessellates and re-uploads the entire window; asking for
+                // that 6 times a second for as long as an agent is running —
+                // which for this app is most of the time — was costing about
+                // 1% of a core around the clock to move something nobody was
+                // watching. Away from the pointer the dot holds at the
+                // mid-point of its own breathe, which reads identically at a
+                // glance, and the notch drops back to its 30 s idle tick.
+                let watched = on_notch || self.rail_open.is_some();
+                let phase = watched.then(|| self.started.elapsed().as_secs_f32() / 2.2);
                 ui::widgets::live_pulse(
                     ui,
                     egui::pos2(
@@ -2546,14 +2557,15 @@ impl App {
                     pal.accent,
                     gauge_alpha,
                 );
-                // A slow breathe needs far fewer frames than it was asking
-                // for. At a 2.2 s period this is still ~15 steps a cycle and
-                // looks identical, but it is the difference between repainting
-                // 12 times a second and 6 — for the whole time an agent is
-                // running, which for this app is most of the time.
-                ctx.request_repaint_after(std::time::Duration::from_millis(
-                    PULSE_FRAME_MS,
-                ));
+                if phase.is_some() {
+                    // A slow breathe needs far fewer frames than it was asking
+                    // for. At a 2.2 s period this is still ~15 steps a cycle
+                    // and looks identical, but it is the difference between
+                    // repainting 12 times a second and 6.
+                    ctx.request_repaint_after(std::time::Duration::from_millis(
+                        PULSE_FRAME_MS,
+                    ));
+                }
             }
             // The label line is percentages-only now: with them switched off
             // the badge carries the status on its own.

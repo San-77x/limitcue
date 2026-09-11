@@ -759,8 +759,15 @@ pub fn open_arrow(p: &egui::Painter, c: Pos2, color: Color32) {
 /// against right now. Deliberately unlike the alert badge: this is
 /// information, not a problem, so it breathes rather than shouts, and sits on
 /// the opposite corner so the two can coexist.
-pub fn live_pulse(ui: &egui::Ui, center: Pos2, r: f32, phase: f32, color: Color32, alpha: f32) {
-    let breathe = 0.55 + 0.45 * (phase * std::f32::consts::TAU).sin();
+/// `phase` drives the breathe. `None` paints the settled mid-point of that
+/// breathe instead — the same dot, holding still — so the caller can stop
+/// asking for frames when nobody is watching the notch.
+pub fn live_pulse(ui: &egui::Ui, center: Pos2, r: f32, phase: Option<f32>, color: Color32, alpha: f32) {
+    let breathe = match phase {
+        Some(t) => 0.55 + 0.45 * (t * std::f32::consts::TAU).sin(),
+        // The DC term of the sine above: what the breathe averages out to.
+        None => 0.55,
+    };
     let p = ui.painter();
     p.circle_filled(center, r + 2.0, color.gamma_multiply(0.22 * breathe * alpha));
     p.circle_filled(center, r, color.gamma_multiply((0.65 + 0.35 * breathe) * alpha));
