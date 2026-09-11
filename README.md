@@ -12,7 +12,7 @@ Click it and it eases open into a detail card per provider — labelled
 quota bars, counts, and live reset countdowns — with smooth scrolling
 when you have more plans than fit on screen.
 
-Built with Rust + egui as a single ~7 MB binary — no Electron, no webview, no runtime.
+Built with Rust + egui as a single ~6.5 MB binary — no Electron, no webview, no runtime.
 
 ## What it does
 
