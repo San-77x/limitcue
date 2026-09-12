@@ -419,6 +419,7 @@ fn short(id: &str) -> String {
     match id {
         "claude" => "CL".into(),
         "codex" => "CX".into(),
+        "grok" => "GK".into(),
         "minimax" => "M3".into(),
         "openrouter" => "OR".into(),
         other => other.chars().take(2).collect::<String>().to_uppercase(),

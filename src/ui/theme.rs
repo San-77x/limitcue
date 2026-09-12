@@ -424,6 +424,7 @@ pub fn brand(id: &str, pal: &Palette) -> Color32 {
     match id {
         "claude" => Color32::from_rgb(0xD9, 0x77, 0x57),
         "codex" => Color32::from_rgb(0x10, 0xA3, 0x7F),
+        "grok" => Color32::from_rgb(0x1A, 0x1A, 0x1A),
         "minimax" => Color32::from_rgb(0xFF, 0x5A, 0x5F),
         "kimi" => Color32::from_rgb(0x7C, 0x8C, 0xFF),
         _ => pal.accent,
@@ -435,6 +436,7 @@ pub fn monogram(id: &str) -> String {
     match id {
         "claude" => "C".into(),
         "codex" => "X".into(),
+        "grok" => "G".into(),
         "minimax" => "M".into(),
         "kimi" => "K".into(),
         other => other.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into()),

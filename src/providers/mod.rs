@@ -3,6 +3,7 @@ pub mod catalog;
 pub mod claude;
 pub mod codex;
 pub mod custom;
+pub mod grok;
 pub mod kimi;
 pub mod minimax;
 
@@ -26,7 +27,11 @@ pub trait Provider: Send {
 /// Every adapter the config asks for, in display order: the compiled-in ones
 /// first, then user entries, with `priority` overriding file order.
 pub fn build_all(cfg: &Config) -> Vec<Box<dyn Provider>> {
-    let mut v: Vec<Box<dyn Provider>> = vec![Box::new(claude::Claude::default()), Box::new(codex::Codex::default())];
+    let mut v: Vec<Box<dyn Provider>> = vec![
+        Box::new(claude::Claude::default()),
+        Box::new(codex::Codex::default()),
+        Box::new(grok::Grok::default()),
+    ];
     for p in &cfg.provider {
         if p.enabled == Some(false) {
             continue;
@@ -71,6 +76,7 @@ pub fn adapter_for(cfg: &ProviderConfig) -> Box<dyn Provider> {
         "billing" => Box::new(billing::Billing::new(cfg.clone())),
         "claude" => Box::new(claude::Claude::new(Some(cfg))),
         "codex" => Box::new(codex::Codex::new(Some(cfg))),
+        "grok" => Box::new(grok::Grok::new(Some(cfg))),
         "kimi" => Box::new(kimi::Kimi::new(Some(cfg.clone()))),
         "minimax" => Box::new(minimax::MiniMax::new(cfg.clone())),
         _ => Box::new(custom::Custom::new(cfg.clone())),

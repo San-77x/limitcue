@@ -20,6 +20,7 @@ done <<'EOF'
 claude:claude
 codex:openai
 gemini:googlegemini
+grok:grok
 kimi:kimi
 minimax:minimax
 agentrouter:moonshotai

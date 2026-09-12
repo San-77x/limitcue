@@ -32,10 +32,11 @@ const ICON_PNGS: [(&str, &[u8]); 5] = [
 
 /// White brand logos (64px RGBA PNGs, see assets/logos/README.md). Unknown
 /// providers simply aren't in the map and fall back to the monogram letter.
-const LOGO_PNGS: [(&str, &[u8]); 6] = [
+const LOGO_PNGS: [(&str, &[u8]); 7] = [
     ("claude", include_bytes!("../assets/logos/claude.png")),
     ("codex", include_bytes!("../assets/logos/codex.png")),
     ("gemini", include_bytes!("../assets/logos/gemini.png")),
+    ("grok", include_bytes!("../assets/logos/grok.png")),
     ("kimi", include_bytes!("../assets/logos/kimi.png")),
     ("minimax", include_bytes!("../assets/logos/minimax.png")),
     ("agentrouter", include_bytes!("../assets/logos/agentrouter.png")),

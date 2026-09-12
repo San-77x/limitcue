@@ -4,6 +4,7 @@ Provider brand logos, pre-rasterized 64px white RGBA PNGs
   claude.png       Claude (Anthropic)
   codex.png        OpenAI / Codex
   gemini.png       Google Gemini
+  grok.png         Grok (xAI)
   kimi.png         Kimi (Moonshot)
   minimax.png      MiniMax
   agentrouter.png  AgentRouter (Moonshot logo)

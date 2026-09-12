@@ -69,7 +69,7 @@ pub struct ProviderConfig {
     /// provider moves its console.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub console_url: Option<String>,
-    /// Which compiled-in adapter to run: "claude", "codex", "kimi",
+    /// Which compiled-in adapter to run: "claude", "codex", "grok", "kimi",
     /// "minimax", "billing", or "json". Absent means "guess from the id",
     /// which is what every config written before this key did.
     ///
@@ -286,6 +286,7 @@ hide_unconfigured = true
 # Built-in adapters read credentials from disk automatically:
 #   claude  -> ~/.claude/.credentials.json
 #   codex   -> ~/.codex/auth.json
+#   grok    -> ~/.grok/auth.json (or XAI_API_KEY)
 #   minimax -> provide the token-plan key below (or MINIMAX_API_KEY env)
 
 [[provider]]

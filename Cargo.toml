@@ -2,7 +2,7 @@
 name = "limitcue"
 version = "0.1.0"
 edition = "2021"
-description = "Floating quota pill for AI coding subscriptions — see remaining usage for Claude, Codex, MiniMax, Kimi, OpenCode Go and more, right on your desktop."
+description = "Floating quota pill for AI coding subscriptions — see remaining usage for Claude, Codex, Grok, MiniMax, Kimi, OpenCode Go and more, right on your desktop."
 license = "MIT"
 repository = "https://github.com/San-77x/limitcue"
 readme = "README.md"

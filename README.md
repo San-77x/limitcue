@@ -37,8 +37,8 @@ Built with Rust + egui as a single ~6.5 MB binary — no Electron, no webview, n
 Docked left or right, the pill becomes a black notch welded to the screen
 edge: a pure-`#000` strip, square where it meets the bezel and rounded on
 the card side. Each tracked provider gets its own cell — a clean **gauge**: the
-provider's white mark (real logo for Claude, Codex/OpenAI, Gemini, Kimi,
-MiniMax and AgentRouter; a monogram letter otherwise) framed by a track
+provider's white mark (real logo for Claude, Codex/OpenAI, Gemini, Grok, Kimi,
+  MiniMax and AgentRouter; a monogram letter otherwise) framed by a track
 ring and a heat-colored arc showing the share *used* — green while
 plenty remains, warming through yellow and orange to red as the window
 empties. A provider that needs attention — expired credentials, a failed
@@ -140,6 +140,7 @@ never granted and cards fall back to the room below the notch.
   |---|---|---|
   | Claude (Max/Pro) | `~/.claude/.credentials.json` | Anthropic OAuth usage API (what `/usage` uses) |
   | ChatGPT / Codex | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
+  | Grok / xAI | `~/.grok/auth.json`, `XAI_API_KEY`, or Grok Build login | `cli-chat-proxy.grok.com/v1/billing` |
   | MiniMax (Coding/Token plan) | `MINIMAX_API_KEY` or config | `api.minimax.io/v1/token_plan/remains` |
   | Kimi For Coding | `~/.kimi/config.toml`, `KIMI_API_KEY`, or Kimi Code CLI creds | `api.kimi.com/coding/v1/usages` |
   | New-API gateways (AgentRouter etc.) | `sk-` key in config | `…/v1/dashboard/billing/{subscription,usage}` |
@@ -382,7 +383,7 @@ than stock widgets. Three tabs:
   provider can then be edited in place, reordered, disabled or removed, and a
   **Test** button takes one live reading and tells you what it found before
   you save. Keys are masked until you ask to see them. The built-in adapters
-  (Claude, Codex, Kimi) are toggles, and each shows which credential file it
+  (Claude, Codex, Grok, Kimi) are toggles, and each shows which credential file it
   borrows from — nothing is read that isn't named on screen.
 
   Two logins to the same provider is just two entries: *Claude — another

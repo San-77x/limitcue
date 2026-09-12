@@ -61,6 +61,9 @@ fn session_dirs(cfg: &Config) -> Vec<(String, PathBuf)> {
     if !cfg.disabled.iter().any(|d| d == "codex") {
         add("codex", home.join(".codex"), "sessions");
     }
+    if !cfg.disabled.iter().any(|d| d == "grok") {
+        add("grok", home.join(".grok"), "sessions");
+    }
     for p in &cfg.provider {
         if p.enabled == Some(false) {
             continue;
@@ -69,6 +72,7 @@ fn session_dirs(cfg: &Config) -> Vec<(String, PathBuf)> {
         match (p.adapter.as_deref(), dir) {
             (Some("claude"), Some(d)) => add(&p.id, d, "projects"),
             (Some("codex"), Some(d)) => add(&p.id, d, "sessions"),
+            (Some("grok"), Some(d)) => add(&p.id, d, "sessions"),
             _ => {}
         }
     }
