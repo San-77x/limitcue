@@ -9,7 +9,7 @@ mod service;
 mod types;
 mod ui;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
@@ -280,6 +280,24 @@ fn merge_reading(fresh: Snapshot, prev: Option<&Snapshot>) -> Snapshot {
 /// as a list of the fields that matter: a field added later then defaults to
 /// restarting, and a needless refetch is recoverable where a poller left
 /// running on stale config is not.
+/// Snapshots the notch should actually paint for this config.
+///
+/// The poller publishes the live set, but `drain` only inserts — turning a
+/// provider off used to leave its last reading in the map, so the gauge
+/// stayed on the notch until the next launch. Filter here, against the
+/// same `build_all` list the poller uses, so a switch matches what is shown.
+fn shown_snapshots<'a>(cfg: &Config, snaps: impl Iterator<Item = &'a Snapshot>) -> Vec<Snapshot> {
+    let tracked: HashSet<String> = build_all(cfg).into_iter().map(|p| p.id()).collect();
+    snaps
+        .filter(|s| tracked.contains(&s.provider_id))
+        .filter(|s| match &s.reading {
+            Reading::NotConfigured => !cfg.hide_unconfigured,
+            _ => true,
+        })
+        .cloned()
+        .collect()
+}
+
 fn poller_eq(a: &Config, b: &Config) -> bool {
     let strip = |c: &Config| {
         let mut c = c.clone();
@@ -1780,17 +1798,12 @@ impl App {
     }
 
     fn visible(&self) -> Vec<Snapshot> {
-        let mut v: Vec<_> = self
-            .snapshots
-            .values()
-            .filter(|s| match &s.reading {
-                Reading::NotConfigured => !self.cfg.hide_unconfigured,
-                _ => true,
-            })
-            .cloned()
-            .collect();
+        // The sheet previews like theme does: a switch off the notch this
+        // frame, Save persists it, Cancel puts the gauge back.
+        let cfg = if self.settings_open { &self.cfg_next } else { &self.cfg };
+        let mut v = shown_snapshots(cfg, self.snapshots.values());
         v.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
-        if !self.cfg.sort_by_urgency {
+        if !cfg.sort_by_urgency {
             return v;
         }
         // Rows must not move under the pointer: reordering while a card is
@@ -2060,6 +2073,9 @@ impl eframe::App for App {
             }
         }
         let snaps = self.visible();
+        if self.rail_open.as_ref().is_some_and(|id| snaps.iter().all(|s| s.provider_id != *id)) {
+            self.rail_open = None;
+        }
         // Left/right dock: the pill becomes a vertical rail (rings + %).
         // In notch mode this is the only primary surface: there is no
         // dashboard-style expand state. Details are revealed by hovering a
@@ -3152,6 +3168,40 @@ mod tests {
         let mut off = base.clone();
         off.disabled = vec!["codex".into()];
         assert!(!poller_eq(&base, &off));
+    }
+
+    fn snap_id(id: &str) -> Snapshot {
+        Snapshot {
+            provider_id: id.into(),
+            display_name: id.into(),
+            fidelity: types::Fidelity::Official,
+            reading: ok_reading(50.0),
+            fetched_at: 1,
+            fetch_error: None,
+        }
+    }
+
+    #[test]
+    fn a_disabled_built_in_leaves_the_notch() {
+        let cfg = Config { disabled: vec!["codex".into()], ..Config::default() };
+        let snaps = [snap_id("claude"), snap_id("codex")];
+        let shown = shown_snapshots(&cfg, snaps.iter());
+        let ids: Vec<_> = shown.iter().map(|s| s.provider_id.as_str()).collect();
+        assert!(ids.contains(&"claude"));
+        assert!(!ids.contains(&"codex"));
+    }
+
+    #[test]
+    fn a_disabled_config_provider_leaves_the_notch() {
+        let mut cfg = Config::default();
+        cfg.provider.push(config::ProviderConfig {
+            id: "minimax".into(),
+            name: "MiniMax".into(),
+            enabled: Some(false),
+            ..Default::default()
+        });
+        let snaps = [snap_id("minimax")];
+        assert!(shown_snapshots(&cfg, snaps.iter()).is_empty());
     }
 
     fn snap(reading: Reading, at: u64) -> Snapshot {
