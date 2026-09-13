@@ -350,6 +350,9 @@ pub fn overflow_chip(ui: &mut egui::Ui, n: usize, pal: &Palette) -> egui::Respon
         galley,
         if hover { pal.text } else { pal.muted },
     );
+    resp.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "show all providers")
+    });
     resp.on_hover_text("show all providers")
 }
 
@@ -429,6 +432,7 @@ pub fn icon_button(
         }
     }
     if alpha > 0.9 {
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tip));
         resp.on_hover_text(tip)
     } else {
         resp
@@ -529,7 +533,7 @@ pub fn meter(
 // ===========================================================================
 
 /// iOS-style switch. Animated, and the whole row-height rect is clickable.
-pub fn switch(ui: &mut egui::Ui, on: &mut bool, pal: &Palette) -> egui::Response {
+pub fn switch(ui: &mut egui::Ui, on: &mut bool, label: &str, pal: &Palette) -> egui::Response {
     let size = Vec2::new(34.0, 20.0);
     let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.clicked() {
@@ -558,6 +562,7 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool, pal: &Palette) -> egui::Response
         pal.muted
     };
     p.circle_filled(egui::pos2(cx, rect.center().y), knob_r, knob);
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, *on, label));
     resp
 }
 
@@ -569,6 +574,7 @@ pub fn slider(
     range: std::ops::RangeInclusive<i64>,
     step: i64,
     suffix: &str,
+    label: &str,
     pal: &Palette,
 ) -> bool {
     let value_w = 54.0;
@@ -614,6 +620,7 @@ pub fn slider(
         theme::mono(11.5),
         pal.text,
     );
+    resp.widget_info(|| egui::WidgetInfo::slider(true, *value as f64, label));
     changed
 }
 
@@ -643,6 +650,9 @@ pub fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize, pal: &Pale
             Vec2::new(seg_w, h),
         );
         let resp = ui.interact(seg, ui.id().with(("seg", i)), Sense::click());
+        resp.widget_info(|| {
+            egui::WidgetInfo::selected(egui::WidgetType::RadioButton, true, i == selected, *label)
+        });
         if resp.clicked() {
             out = i;
         }
@@ -819,6 +829,7 @@ pub fn glyph_button(
         }
     }
     if enabled {
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tip));
         resp.on_hover_text(tip)
     } else {
         resp
@@ -881,6 +892,9 @@ pub fn theme_swatch(
         label,
         other.text,
     );
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::RadioButton, true, selected, name)
+    });
     resp
 }
 

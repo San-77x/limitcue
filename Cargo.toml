@@ -11,6 +11,23 @@ rust-version = "1.95"
 keywords = ["quota", "usage", "ai", "desktop", "linux"]
 categories = ["gui", "command-line-utilities", "development-tools"]
 
+# What ships to crates.io: the source and the assets the binary embeds. The
+# web app, packaging, docs, screenshots and the full (unsubsetted) font
+# originals are repository-only.
+exclude = [
+    "/.github",
+    "/docs",
+    "/misc",
+    "/packaging",
+    "/scripts",
+    "/web",
+    "/assets/screenshots",
+    "/assets/fonts/Inter-Regular.ttf",
+    "/assets/fonts/Inter-Medium.ttf",
+    "/assets/fonts/Inter-SemiBold.ttf",
+    "/assets/fonts/Hack-Regular.ttf",
+]
+
 # Prebuilt-install metadata for `cargo binstall limitcue`. The release asset
 # is Linux x86_64 only, which is the only target shipped today.
 [package.metadata.binstall]
@@ -19,7 +36,7 @@ pkg-fmt = "tgz"
 bin-dir = "."
 
 [dependencies]
-eframe = { version = "0.36", default-features = false, features = ["glow", "wayland", "x11"] }
+eframe = { version = "0.36", default-features = false, features = ["glow", "wayland", "x11", "accesskit"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"

@@ -502,7 +502,7 @@ fn toggle_row(ui: &mut egui::Ui, title: &str, desc: &str, value: &mut bool, pal:
             pal.faint,
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            changed = ui::widgets::switch(ui, value, pal).changed();
+            changed = ui::widgets::switch(ui, value, title, pal).changed();
         });
     });
     ui.add_space(9.0);
@@ -930,7 +930,15 @@ impl App {
                 pal,
                 |ui| {
                     let mut v = self.cfg_next.poll_interval_secs as i64;
-                    if w::slider(ui, &mut v, config::MIN_POLL_SECS as i64..=900, 30, "s", pal) {
+                    if w::slider(
+                        ui,
+                        &mut v,
+                        config::MIN_POLL_SECS as i64..=900,
+                        30,
+                        "s",
+                        "Poll interval",
+                        pal,
+                    ) {
                         self.cfg_next.poll_interval_secs = v as u64;
                         dirty = true;
                     }
@@ -1048,7 +1056,7 @@ impl App {
                     pal,
                     |ui| {
                         let mut v = self.cfg_next.notify_threshold.round() as i64;
-                        if w::slider(ui, &mut v, 5..=50, 5, "%", pal) {
+                        if w::slider(ui, &mut v, 5..=50, 5, "%", "Warn at", pal) {
                             self.cfg_next.notify_threshold = v as f64;
                             dirty = true;
                         }
@@ -1172,11 +1180,11 @@ impl App {
                     );
                     // The row is the way in to the editor, so the whole title
                     // block is clickable, not just the pencil.
-                    if ui
-                        .interact(r, ui.id().with(("prow", i)), Sense::click())
-                        .on_hover_text("edit this provider")
-                        .clicked()
-                    {
+                    let row = ui.interact(r, ui.id().with(("prow", i)), Sense::click());
+                    row.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
+                    });
+                    if row.on_hover_text("edit this provider").clicked() {
                         action = Some((i, 2));
                     }
                     let title_col = if enabled { pal.text } else { pal.faint };
@@ -1188,7 +1196,8 @@ impl App {
                     ui.painter()
                         .galley(egui::pos2(r.left(), r.top() + 18.0), g2, pal.faint);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if w::switch(ui, &mut enabled, pal).changed() {
+                        let name = self.cfg_next.provider[i].name.clone();
+                        if w::switch(ui, &mut enabled, &name, pal).changed() {
                             self.cfg_next.provider[i].enabled = Some(enabled);
                             dirty = true;
                         }
@@ -1285,7 +1294,7 @@ impl App {
                     ui.painter()
                         .galley(egui::pos2(r.left(), r.top() + 18.0), g, pal.faint);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if w::switch(ui, &mut on, pal).changed() {
+                        if w::switch(ui, &mut on, p.name, pal).changed() {
                             if on {
                                 self.cfg_next.disabled.retain(|d| d != p.id);
                             } else {
@@ -1349,10 +1358,11 @@ impl App {
                     ui.add_space(9.0);
                     let (r, _) =
                         ui.allocate_exact_size(Vec2::new(avail(ui), row_h), Sense::click());
-                    if ui
-                        .interact(r, ui.id().with(("pick", p.id)), Sense::click())
-                        .clicked()
-                    {
+                    let row = ui.interact(r, ui.id().with(("pick", p.id)), Sense::click());
+                    row.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, p.name)
+                    });
+                    if row.clicked() {
                         chosen = Some(p);
                     }
                     let tag = match p.fidelity {
@@ -1836,7 +1846,7 @@ impl App {
                 pal,
                 |ui| {
                     let mut v = (self.cfg_next.notch_opacity * 100.0).round() as i64;
-                    if w::slider(ui, &mut v, 15..=100, 5, "%", pal) {
+                    if w::slider(ui, &mut v, 15..=100, 5, "%", "Notch opacity", pal) {
                         self.cfg_next.notch_opacity = v as f32 / 100.0;
                         dirty = true;
                     }
@@ -1850,7 +1860,7 @@ impl App {
                 pal,
                 |ui| {
                     let mut v = (self.cfg_next.card_opacity * 100.0).round() as i64;
-                    if w::slider(ui, &mut v, 15..=100, 5, "%", pal) {
+                    if w::slider(ui, &mut v, 15..=100, 5, "%", "Card opacity", pal) {
                         self.cfg_next.card_opacity = v as f32 / 100.0;
                         dirty = true;
                     }
@@ -1868,7 +1878,7 @@ impl App {
                 pal,
                 |ui| {
                     let mut v = self.cfg_next.max_visible_collapsed as i64;
-                    if w::slider(ui, &mut v, 1..=8, 1, "", pal) {
+                    if w::slider(ui, &mut v, 1..=8, 1, "", "Providers when collapsed", pal) {
                         self.cfg_next.max_visible_collapsed = v.max(1) as usize;
                         dirty = true;
                     }
@@ -2736,6 +2746,9 @@ impl App {
                     pal.muted.linear_multiply(0.75 + 0.25 * f),
                 );
                 let grip = ui.interact(grect.expand(4.0), ui.id().with("grip"), Sense::drag());
+                grip.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Drag LimitCue")
+                });
                 if grip.drag_started() {
                     self.start_window_drag(ctx);
                 }
@@ -2753,6 +2766,17 @@ impl App {
                     );
                     let resp =
                         ui.interact(rect, ui.id().with(("chip", &s.provider_id)), Sense::hover());
+                    let chip_name = match pct {
+                        Some(p) => format!("{}: {p:.0}% remaining", s.display_name),
+                        None => s.display_name.clone(),
+                    };
+                    resp.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Button,
+                            true,
+                            chip_name.as_str(),
+                        )
+                    });
                     let chip_alpha = if self.cfg.quiet_mode && !resp.hovered() {
                         0.58
                     } else {
@@ -2833,6 +2857,9 @@ impl App {
                     ui.id().with("body"),
                     Sense::click(),
                 );
+                body.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "LimitCue notch")
+                });
                 if body.clicked() {
                     self.expanded = true;
                 }
@@ -3054,6 +3081,9 @@ impl App {
                 Vec2::new(RAIL_STRIP_W, rail_row_h),
             );
             let resp = ui.interact(cell, ui.id().with("rail-empty"), Sense::click());
+            resp.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Add a provider")
+            });
             let c = egui::pos2(cell.center().x, cell.center().y - 9.0);
             let col = if resp.hovered() { pal.ink } else { pal.muted };
             ui.painter()
@@ -3215,6 +3245,7 @@ impl App {
         // Click-drag on the orb also moves the window (it's part of the
         // notch surface); a plain click still opens settings.
         let orb = ui.allocate_rect(orb_rect, Sense::click_and_drag());
+        orb.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Settings"));
         let orb_hover = orb.hovered();
         ui.painter().circle_filled(
             orb_rect.center(),
