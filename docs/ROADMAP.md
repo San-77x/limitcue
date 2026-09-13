@@ -17,7 +17,8 @@ request; nothing here is a promise.
 
 - **Wayland layer-shell** — portable edge pinning and a true notch on
   compositors other than KDE Plasma, replacing the KWin-script dependency
-  for placement. This is the largest remaining piece.
+  for placement. This is the largest remaining piece. The approach and its
+  costs are worked through in [LAYER_SHELL.md](LAYER_SHELL.md).
 - **Packaging** — AUR (`limitcue-bin`), AppImage, Flatpak, Nix flake, and
   `cargo-binstall` metadata, so installing does not mean compiling.
 - **Tray fallback** — a StatusNotifierItem for compositors that refuse
