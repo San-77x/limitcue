@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/San-77x/limitcue/actions/workflows/ci.yml/badge.svg)](https://github.com/San-77x/limitcue/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust 1.76+](https://img.shields.io/badge/rust-1.76%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust 1.95+](https://img.shields.io/badge/rust-1.95%2B-orange.svg)](https://www.rust-lang.org)
 
 A tiny always-on-top quota pill for your Linux desktop. See how much usage is
 left on every AI coding plan you're signed into — without opening a browser,
@@ -178,7 +178,7 @@ never granted and cards fall back to the room below the notch.
 Prebuilt Linux x86_64 binaries are on the
 [Releases](https://github.com/San-77x/limitcue/releases) page.
 
-Build from source with Rust 1.76 or newer:
+Build from source with Rust 1.95 or newer:
 
 ```sh
 git clone https://github.com/San-77x/limitcue

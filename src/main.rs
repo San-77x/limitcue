@@ -376,11 +376,11 @@ fn section(ui: &mut egui::Ui, title: &str, pal: &Palette) {
 
 /// Rounded well that holds a group of rows.
 fn card<R>(ui: &mut egui::Ui, pal: &Palette, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    egui::Frame::none()
+    egui::Frame::NONE
         .fill(pal.control)
         .stroke(egui::Stroke::new(1.0_f32, pal.border))
-        .rounding(egui::Rounding::same(11.0))
-        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+        .corner_radius(egui::CornerRadius::same(11))
+        .inner_margin(egui::Margin::symmetric(12, 8))
         .show(ui, |ui| {
             ui.style_mut().spacing.item_spacing = Vec2::new(8.0, 0.0);
             add(ui)
@@ -789,9 +789,9 @@ impl App {
             v.selection.bg_fill = pal.accent.gamma_multiply(0.30);
             v.selection.stroke = egui::Stroke::new(1.0_f32, pal.accent);
             v.text_cursor.stroke = egui::Stroke::new(1.4_f32, pal.accent);
-            v.widgets.inactive.rounding = egui::Rounding::same(8.0);
-            v.widgets.hovered.rounding = egui::Rounding::same(8.0);
-            v.widgets.active.rounding = egui::Rounding::same(8.0);
+            v.widgets.inactive.corner_radius = egui::CornerRadius::same(8);
+            v.widgets.hovered.corner_radius = egui::CornerRadius::same(8);
+            v.widgets.active.corner_radius = egui::CornerRadius::same(8);
             v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, pal.border);
             v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, pal.muted);
             v.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, pal.accent);
@@ -2215,7 +2215,7 @@ fn debug_shot(ctx: &egui::Context, started: Instant, requested: &mut bool) {
     }
     if !*requested && started.elapsed().as_secs_f32() > 1.5 {
         *requested = true;
-        ctx.send_viewport_cmd(ViewportCommand::Screenshot);
+        ctx.send_viewport_cmd(ViewportCommand::Screenshot(egui::UserData::default()));
     }
     ctx.request_repaint_after(std::time::Duration::from_millis(50));
 }
@@ -2233,7 +2233,7 @@ impl eframe::App for App {
         // Where the pointer last was; the compositor reports its own position
         // again as soon as the grab ends, so this only has to hold until then.
         let pos = self.drag_release_at.unwrap_or_default();
-        let modifiers = raw_input.modifiers;
+        let modifiers = egui::Modifiers::default();
         for button in [egui::PointerButton::Primary, egui::PointerButton::Middle] {
             raw_input.events.push(egui::Event::PointerButton {
                 pos,
@@ -2251,7 +2251,11 @@ impl eframe::App for App {
         [0.0, 0.0, 0.0, 0.0]
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // eframe 0.36 hands the root `Ui`; the rest of this method is written
+        // against the `Context`, which is the same object.
+        let ctx = ui.ctx().clone();
+        let ctx = &ctx;
         debug_shot(ctx, self.started, &mut self.shot_requested);
         // Someone asked for a fresh reading over D-Bus.
         if self.usage.take_refresh() {
@@ -2469,7 +2473,7 @@ impl eframe::App for App {
             } else {
                 (-1, -1, -1)
             };
-            let settling = self.restore_sent < 30 && self.restore_sent % 6 == 0;
+            let settling = self.restore_sent < 30 && self.restore_sent.is_multiple_of(6);
             // Screenshot runs must not touch the compositor: the script picks
             // the first limitcue window it finds, which would be whatever
             // instance the user already has open.
@@ -2555,49 +2559,49 @@ impl eframe::App for App {
         // *up* (header/pill stays nearest the screen edge).
         let rounding = if rail {
             // the notch body paints its own corners; keep the frame square
-            egui::Rounding::ZERO
+            egui::CornerRadius::ZERO
         } else {
             match edge {
-                Edge::Top => egui::Rounding {
-                    nw: 0.0,
-                    ne: 0.0,
-                    sw: 17.0,
-                    se: 17.0,
+                Edge::Top => egui::CornerRadius {
+                    nw: 0,
+                    ne: 0,
+                    sw: 17,
+                    se: 17,
                 },
-                Edge::Bottom => egui::Rounding {
-                    nw: 17.0,
-                    ne: 17.0,
-                    sw: 0.0,
-                    se: 0.0,
+                Edge::Bottom => egui::CornerRadius {
+                    nw: 17,
+                    ne: 17,
+                    sw: 0,
+                    se: 0,
                 },
-                Edge::Left => egui::Rounding {
-                    nw: 0.0,
-                    sw: 0.0,
-                    ne: 17.0,
-                    se: 17.0,
+                Edge::Left => egui::CornerRadius {
+                    nw: 0,
+                    sw: 0,
+                    ne: 17,
+                    se: 17,
                 },
-                Edge::Right => egui::Rounding {
-                    nw: 17.0,
-                    sw: 17.0,
-                    ne: 0.0,
-                    se: 0.0,
+                Edge::Right => egui::CornerRadius {
+                    nw: 17,
+                    sw: 17,
+                    ne: 0,
+                    se: 0,
                 },
-                Edge::Free => egui::Rounding::same(17.0),
+                Edge::Free => egui::CornerRadius::same(17),
             }
         };
         let flip = edge == Edge::Bottom;
 
         let frame = if rail {
             // Transparent host: the notch paints its own black body and fillets.
-            egui::Frame::none()
+            egui::Frame::NONE
         } else {
-            egui::Frame::none()
+            egui::Frame::NONE
                 .fill(pal.bg)
                 .stroke(egui::Stroke::new(1.0_f32, pal.border))
-                .rounding(rounding)
+                .corner_radius(rounding)
                 .inner_margin(egui::Margin::symmetric(
-                    11.0,
-                    if self.expanded { 8.0 } else { 5.0 },
+                    11,
+                    if self.expanded { 8 } else { 5 },
                 ))
         };
 
@@ -2612,12 +2616,12 @@ impl eframe::App for App {
             let settings_h = self.settings_height(ctx);
             self.cur_size = Vec2::new(SETTINGS_W, settings_h);
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
-            let frame = egui::Frame::none()
+            let frame = egui::Frame::NONE
                 .fill(pal.bg)
                 .stroke(egui::Stroke::new(1.0_f32, pal.border))
-                .rounding(egui::Rounding::same(17.0))
-                .inner_margin(egui::Margin::same(SETTINGS_PAD));
-            egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+                .corner_radius(egui::CornerRadius::same(17))
+                .inner_margin(egui::Margin::same(SETTINGS_PAD as i8));
+            egui::CentralPanel::default().frame(frame).show(ui, |ui| {
                 self.settings_ui(ui, &pal);
             });
             return;
@@ -2640,7 +2644,7 @@ impl eframe::App for App {
             }
         };
 
-        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+        egui::CentralPanel::default().frame(frame).show(ui, |ui| {
             if flip {
                 detail(ui, self);
                 header(ui, self);
@@ -2867,12 +2871,12 @@ impl App {
                 egui::pos2(x0, ui_rect.top()),
                 Vec2::new(SETTINGS_W, sheet_h),
             );
-            let frame = egui::Frame::none()
+            let frame = egui::Frame::NONE
                 .fill(pal.bg)
                 .stroke(egui::Stroke::new(1.0_f32, pal.border))
-                .rounding(egui::Rounding::same(17.0))
-                .inner_margin(egui::Margin::same(SETTINGS_PAD));
-            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(sheet), |ui| {
+                .corner_radius(egui::CornerRadius::same(17))
+                .inner_margin(egui::Margin::same(SETTINGS_PAD as i8));
+            ui.scope_builder(egui::UiBuilder::new().max_rect(sheet), |ui| {
                 frame.show(ui, |ui| {
                     ui.set_min_size(sheet.size() - Vec2::splat(SETTINGS_PAD * 2.0));
                     self.settings_ui(ui, &pal);
@@ -2911,18 +2915,18 @@ impl App {
             .animate_bool_with_time(egui::Id::new("notch-lift"), dragging, 0.12);
         let edge_r = r * lift;
         let body_rounding = if on_left {
-            egui::Rounding {
-                nw: edge_r,
-                sw: edge_r,
-                ne: r,
-                se: r,
+            egui::CornerRadius {
+                nw: edge_r as u8,
+                sw: edge_r as u8,
+                ne: r as u8,
+                se: r as u8,
             }
         } else {
-            egui::Rounding {
-                nw: r,
-                sw: r,
-                ne: edge_r,
-                se: edge_r,
+            egui::CornerRadius {
+                nw: r as u8,
+                sw: r as u8,
+                ne: edge_r as u8,
+                se: edge_r as u8,
             }
         };
         // Quiet mode fades what is *on* the notch, not the notch itself.
@@ -3345,7 +3349,7 @@ impl App {
         egui::ScrollArea::vertical()
             .max_height((self.cur_size.y - HEADER_H - 34.0).max(60.0))
             .auto_shrink([false, true])
-            .drag_to_scroll(true)
+            .scroll_source(egui::containers::scroll_area::ScrollSource::ALL)
             .show(ui, |ui| {
                 for s in snaps {
                     let pct = self.render_pct(s);
