@@ -60,3 +60,14 @@ jobs:
           ./target/debug/limitcue --help > /dev/null
           ./target/debug/limitcue --json | python3 -c "import json,sys; json.load(sys.stdin)"
           echo "CLI surfaces respond and emit valid JSON"
+
+  deny:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+      # Advisories, licenses, duplicate/banned crates and unknown sources.
+      # Policy lives in deny.toml.
+      - name: cargo deny
+        run: cargo deny check
