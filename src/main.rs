@@ -2175,6 +2175,9 @@ impl App {
         let refetch = !poller_eq(&self.cfg, &fresh);
         self.cfg = fresh.clone();
         self.cfg_next = fresh;
+        // A direct edit to config.toml must switch the surface too, not only
+        // the version saved from the settings sheet.
+        self.notch_mode = resolved_notch_mode(&self.cfg);
         self.apply_projection_setting(projections_were_on);
         self.pal = theme::palette(&self.cfg.theme);
         theme::apply_style(ctx, &self.pal);
