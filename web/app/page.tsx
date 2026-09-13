@@ -4,13 +4,16 @@ import { useState } from 'react';
 
 const RELEASES = 'https://github.com/San-77x/limitcue/releases';
 
+// Empty in development; set by the Pages workflow for a project site.
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+
 const providers = [
   ['claude', 'Claude'], ['codex', 'Codex'], ['grok', 'Grok'], ['minimax', 'MiniMax'],
   ['kimi', 'Kimi'], ['gemini', 'Gemini'], ['agentrouter', 'AgentRouter'],
 ];
 
 function Logo({ id }: { id: string }) {
-  return <img className="provider-logo" src={`/providers/${id}.png`} alt="" />;
+  return <img className="provider-logo" src={`${BASE_PATH}/providers/${id}.png`} alt="" />;
 }
 
 function Gauge({ id, used, muted = false }: { id: string; used: number; muted?: boolean }) {
