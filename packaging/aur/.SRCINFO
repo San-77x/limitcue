@@ -1,0 +1,18 @@
+pkgbase = limitcue-bin
+	pkgdesc = Always-on-top quota pill for AI coding plans (prebuilt)
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/San-77x/limitcue
+	arch = x86_64
+	license = MIT
+	depends = glibc
+	depends = gcc-libs
+	depends = libxcb
+	depends = libxkbcommon
+	depends = wayland
+	provides = limitcue
+	conflicts = limitcue
+	source = limitcue-bin-0.1.0.tar.gz::https://github.com/San-77x/limitcue/releases/download/v0.1.0/limitcue-linux-x86_64.tar.gz
+	sha256sums = 7220f8a671dcbb45088ba01952c29d750cf528bb089b1794b2be13b104f3f95f
+
+pkgname = limitcue-bin
