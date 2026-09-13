@@ -21,8 +21,6 @@ request; nothing here is a promise.
   costs are worked through in [LAYER_SHELL.md](LAYER_SHELL.md).
 - **Packaging** — AUR (`limitcue-bin`), AppImage, Flatpak, Nix flake, and
   `cargo-binstall` metadata, so installing does not mean compiling.
-- **Tray fallback** — a StatusNotifierItem for compositors that refuse
-  always-on-top, or for people who would rather have a tray.
 - **More first-party adapters** — GLM / Z.ai, GitHub Copilot, Windsurf,
   Gemini CLI. The generic custom-provider path already covers endpoints
   that report usage as JSON; first-party adapters are for vendors whose

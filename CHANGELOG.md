@@ -6,7 +6,26 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Optional system-tray icon (`tray = true`): a StatusNotifierItem whose ring
+  takes the colour of the tightest window, with a per-provider tooltip and a
+  menu to show the notch, refresh, or quit.
+- `hide_when_idle`: hide the notch while the session is idle or locked.
+- `io.limitcue.Usage.Changed`: a D-Bus signal per new reading, carrying the
+  same JSON as `Get`, so a frequent reader can subscribe instead of polling.
+- Materially better screen-reader support: eframe's accesskit integration is
+  on, and hand-painted controls carry labels, roles and states.
+
+### Changed
+
+- Dependency majors: toml 1, ureq 3, zbus 5, eframe/egui 0.36, React 19 and
+  TypeScript 7. Minimum Rust is now 1.95.
+
+### Packaging
+
+- AUR `PKGBUILD`/`.SRCINFO` for `limitcue-bin` and `cargo-binstall` metadata;
+  releases now publish a `.sha256` beside the tarball.
 
 ## [0.1.0] - 2026-09-13
 

@@ -208,6 +208,7 @@ notch_opacity = 0.60       # notch body opacity, 0.15-1.0
 card_opacity = 0.70        # hover usage card opacity, 0.15-1.0
 show_rail_percent = false  # show used percentages beneath notch gauges
 hide_when_idle = false     # hide the notch while the session is idle or locked
+tray = false               # also publish a system-tray icon
 
 [[provider]]
 id = "minimax"
@@ -246,6 +247,12 @@ cp misc/limitcue.desktop ~/.config/autostart/
 Always-on-top and borderless work on KDE/GNOME. Programmatic window drag
 honours the compositor's rules; if your compositor ignores it, you can still
 move the window via its window-operations menu (usually Super+left-drag).
+
+If a compositor will not keep the notch on top, or you would simply rather
+have a tray, set `tray = true`: LimitCue publishes a StatusNotifierItem whose
+ring takes the colour of the tightest window, with a per-provider tooltip and
+a menu to show the notch, refresh, or quit. It is off by default, and a desktop
+with no tray host is not an error — the notch is unaffected.
 
 ## Edge docking (KDE Plasma)
 
