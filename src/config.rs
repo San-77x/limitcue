@@ -133,6 +133,10 @@ pub struct Config {
     /// compositor refuses always-on-top, or when a tray is simply preferred.
     #[serde(default)]
     pub tray: bool,
+    /// Show the wide horizontal pill instead of the vertical notch. The notch
+    /// is the primary surface; this is for anyone who prefers the pill.
+    #[serde(default)]
+    pub floating_pill: bool,
     /// Opacity of the notch body, 0..1. The desktop shows through below 1.
     #[serde(default = "default_notch_opacity")]
     pub notch_opacity: f32,
@@ -219,6 +223,7 @@ impl Default for Config {
             show_rail_percent: false,
             hide_when_idle: false,
             tray: false,
+            floating_pill: false,
             notch_opacity: default_notch_opacity(),
             card_opacity: default_card_opacity(),
             notify: false,
@@ -303,6 +308,7 @@ hide_unconfigured = true
 # show_rail_percent = false       # show used percentages beneath rail gauges
 # hide_when_idle = false          # hide the notch while the session is idle/locked
 # tray = false                    # also publish a system-tray icon
+# floating_pill = false           # horizontal pill instead of the vertical notch
 # notch_opacity = 0.60            # notch body opacity, 0.15-1.0
 # card_opacity = 0.70             # hover usage card opacity, 0.15-1.0
 # notify = true                   # desktop alert when a window runs low

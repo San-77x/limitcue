@@ -209,6 +209,7 @@ card_opacity = 0.70        # hover usage card opacity, 0.15-1.0
 show_rail_percent = false  # show used percentages beneath notch gauges
 hide_when_idle = false     # hide the notch while the session is idle or locked
 tray = false               # also publish a system-tray icon
+floating_pill = false      # true shows the wide pill instead of the vertical notch
 
 [[provider]]
 id = "minimax"
@@ -253,6 +254,10 @@ have a tray, set `tray = true`: LimitCue publishes a StatusNotifierItem whose
 ring takes the colour of the tightest window, with a per-provider tooltip and
 a menu to show the notch, refresh, or quit. It is off by default, and a desktop
 with no tray host is not an error — the notch is unaffected.
+
+The vertical notch is the default surface. For the wide horizontal pill
+instead, turn on **Settings → Appearance → Horizontal pill** (or set
+`floating_pill = true`).
 
 ## Edge docking (KDE Plasma)
 
@@ -432,7 +437,9 @@ than stock widgets. Three tabs:
   editor with the field mapping exposed: point it at a URL, say which fields
   hold the numbers, and it derives the rest. See `config.toml` for the full
   list of mapping keys.
-- **Appearance** — the theme, picked from swatches that show each palette's
+- **Appearance** — the surface to show (**Horizontal pill** or the vertical
+  notch; the notch is the default), the theme, picked from swatches that show
+  each palette's
   own background and heat scale (and previewed live while the sheet is open);
   notch and card opacity; and the collapsed provider count for the undocked
   pill.

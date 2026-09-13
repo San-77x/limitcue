@@ -102,6 +102,15 @@ fn load_logos(ctx: &egui::Context) -> HashMap<String, egui::TextureHandle> {
         .collect()
 }
 
+/// The surface to show: the `LIMITCUE_FLOAT` environment override wins (the
+/// screenshot and script hooks depend on it), otherwise the config decides.
+fn resolved_notch_mode(cfg: &Config) -> bool {
+    match std::env::var("LIMITCUE_FLOAT") {
+        Ok(v) => v == "0",
+        Err(_) => !cfg.floating_pill,
+    }
+}
+
 fn state_path() -> std::path::PathBuf {
     dirs::data_dir()
         .unwrap_or_default()
@@ -665,9 +674,7 @@ impl App {
         let rail_open = std::env::var("LIMITCUE_UI_RAIL")
             .ok()
             .filter(|v| !v.is_empty());
-        let notch_mode = std::env::var("LIMITCUE_FLOAT")
-            .map(|v| v == "0")
-            .unwrap_or(true);
+        let notch_mode = resolved_notch_mode(&cfg);
         let cfg_next = cfg.clone();
         Self {
             snapshots,
@@ -908,6 +915,10 @@ impl App {
                     let projections_were_on = self.cfg.projections;
                     let refetch = !poller_eq(&self.cfg, &self.cfg_next);
                     self.cfg = self.cfg_next.clone();
+                    // A surface change is a live relayout, not a restart: the
+                    // window is resized on the next frame from `notch_mode`.
+                    self.notch_mode = resolved_notch_mode(&self.cfg);
+                    ui.ctx().request_repaint();
                     config::Config::save(&self.cfg);
                     self.cfg_mtime = Config::mtime();
                     self.pal = theme::palette(&self.cfg.theme);
@@ -1830,6 +1841,34 @@ impl App {
     fn settings_appearance(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
         use ui::widgets as w;
         let mut dirty = false;
+        section(ui, "Surface", pal);
+        card(ui, pal, |ui| {
+            if toggle_row(
+                ui,
+                "Horizontal pill",
+                "Show the wide pill instead of the vertical notch.",
+                &mut self.cfg_next.floating_pill,
+                pal,
+            ) {
+                dirty = true;
+            }
+            hairline(ui, pal);
+            setting_row(
+                ui,
+                "Providers when collapsed",
+                "The rest fold into a +N chip. Only affects the undocked pill.",
+                pal,
+                |ui| {
+                    let mut v = self.cfg_next.max_visible_collapsed as i64;
+                    if w::slider(ui, &mut v, 1..=8, 1, "", "Providers when collapsed", pal) {
+                        self.cfg_next.max_visible_collapsed = v.max(1) as usize;
+                        dirty = true;
+                    }
+                },
+            );
+        });
+
+        ui.add_space(16.0);
         section(ui, "Theme", pal);
         card(ui, pal, |ui| {
             ui.add_space(2.0);
@@ -1885,23 +1924,6 @@ impl App {
             );
         });
 
-        ui.add_space(16.0);
-        section(ui, "Floating pill", pal);
-        card(ui, pal, |ui| {
-            setting_row(
-                ui,
-                "Providers when collapsed",
-                "The rest fold into a +N chip. Only affects the undocked pill.",
-                pal,
-                |ui| {
-                    let mut v = self.cfg_next.max_visible_collapsed as i64;
-                    if w::slider(ui, &mut v, 1..=8, 1, "", "Providers when collapsed", pal) {
-                        self.cfg_next.max_visible_collapsed = v.max(1) as usize;
-                        dirty = true;
-                    }
-                },
-            );
-        });
         ui.add_space(8.0);
         dirty
     }
@@ -3607,9 +3629,7 @@ fn main() -> eframe::Result<()> {
     let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED")
         .map(|v| v != "0")
         .unwrap_or(false);
-    let notch_mode = std::env::var("LIMITCUE_FLOAT")
-        .map(|v| v == "0")
-        .unwrap_or(true);
+    let notch_mode = resolved_notch_mode(&cfg);
     let init_size = if notch_mode {
         // Resting notch: exactly the spine; height matches the rail's own
         // layout math.
