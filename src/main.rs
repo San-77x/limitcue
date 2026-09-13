@@ -2388,7 +2388,11 @@ impl eframe::App for App {
         // not produce one leaves it contradicting the position — which showed
         // up as a left-docked notch opening its card leftwards, off screen.
         let stored_edge = dock_now.side(RAIL_STRIP_W as i32).unwrap_or(dock_now.edge);
-        let edge = if self.notch_mode && stored_edge == Edge::Free {
+        // The chosen surface wins. In pill mode the dock edge is ignored, so a
+        // position saved by an earlier notch run cannot keep forcing the rail.
+        let edge = if !self.notch_mode {
+            Edge::Free
+        } else if stored_edge == Edge::Free {
             Edge::Left
         } else {
             stored_edge
@@ -2427,7 +2431,7 @@ impl eframe::App for App {
         // In notch mode this is the only primary surface: there is no
         // dashboard-style expand state. Details are revealed by hovering a
         // provider socket and live in the adjacent contextual card.
-        let rail = self.notch_mode || matches!(edge, Edge::Left | Edge::Right);
+        let rail = self.notch_mode;
         if self.notch_mode {
             self.expanded = false;
         }
@@ -2507,7 +2511,7 @@ impl eframe::App for App {
         //
         // The band's height does not change on hover — only its width does —
         // so opening a card can no longer disturb the notch's position.
-        if self.notch_mode || matches!(edge, Edge::Left | Edge::Right) {
+        if rail {
             // The script reports the *window's* top; the notch is `headroom`
             // below it. Debug hook: LIMITCUE_UI_TOP parks the notch at a given
             // screen y without dragging the real window.
