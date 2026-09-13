@@ -68,7 +68,13 @@ pub fn parse<I: Iterator<Item = String>>(argv: I) -> Args {
             _ => {}
         }
     }
-    Args { cmd, watch, provider, above, timeout }
+    Args {
+        cmd,
+        watch,
+        provider,
+        above,
+        timeout,
+    }
 }
 
 pub const HELP: &str = "\
@@ -155,7 +161,9 @@ pub fn run(cmd: Cmd, cfg: &Config, args: &Args) {
         }
         use std::io::Write;
         let _ = std::io::stdout().flush();
-        std::thread::sleep(std::time::Duration::from_secs(cfg.poll_interval_secs.max(5)));
+        std::thread::sleep(std::time::Duration::from_secs(
+            cfg.poll_interval_secs.max(5),
+        ));
     }
 }
 
@@ -168,7 +176,9 @@ fn wait(cfg: &Config, args: &Args) -> i32 {
     let started = std::time::Instant::now();
     let target = args.above;
     if let Some(id) = &args.provider {
-        let known = crate::providers::build_all(cfg).iter().any(|p| p.id() == *id);
+        let known = crate::providers::build_all(cfg)
+            .iter()
+            .any(|p| p.id() == *id);
         if !known {
             eprintln!("limitcue: no provider called {id:?} is configured");
             return 2;
@@ -186,12 +196,14 @@ fn wait(cfg: &Config, args: &Args) -> i32 {
                 .as_deref()
                 .map_or(true, |id| snaps.iter().any(|s| s.provider_id == id))
         };
-        let snaps = cached()
-            .filter(usable)
-            .unwrap_or_else(|| read_all(cfg));
+        let snaps = cached().filter(usable).unwrap_or_else(|| read_all(cfg));
         let lowest = snaps
             .iter()
-            .filter(|s| args.provider.as_deref().map_or(true, |id| s.provider_id == id))
+            .filter(|s| {
+                args.provider
+                    .as_deref()
+                    .map_or(true, |id| s.provider_id == id)
+            })
             .filter_map(worst)
             .fold(f64::INFINITY, f64::min);
         if lowest.is_finite() && lowest >= target {
@@ -211,7 +223,11 @@ fn wait(cfg: &Config, args: &Args) -> i32 {
             eprintln!("limitcue: still below {target:.0}% after {limit}s");
             return 1;
         }
-        let shown = if lowest.is_finite() { format!("{lowest:.0}%") } else { "no reading".into() };
+        let shown = if lowest.is_finite() {
+            format!("{lowest:.0}%")
+        } else {
+            "no reading".into()
+        };
         println!("{shown} — waiting for {target:.0}%");
         use std::io::Write;
         let _ = std::io::stdout().flush();
@@ -285,7 +301,11 @@ fn init(cfg: &Config) {
     let mut added = Vec::new();
     println!("Found on this machine:\n");
     for f in &found {
-        let mark = if f.already { "already tracked" } else { "adding" };
+        let mark = if f.already {
+            "already tracked"
+        } else {
+            "adding"
+        };
         println!("  {:<16} {:<28} {}", f.preset.name, f.because, mark);
         if f.already {
             continue;
@@ -306,7 +326,11 @@ fn init(cfg: &Config) {
         println!("\nEverything found is already tracked — nothing to change.");
     } else {
         Config::save(&next);
-        println!("\nAdded {} to {}.", added.join(", "), Config::path().display());
+        println!(
+            "\nAdded {} to {}.",
+            added.join(", "),
+            Config::path().display()
+        );
     }
     println!("\nReading now:\n");
     print_table(&read_all(&next));
@@ -436,8 +460,13 @@ fn status_line(snaps: &[Snapshot]) -> String {
                 bar_color(p),
                 p
             ),
-            (Reading::NeedsAuth(_), _) => format!("{} <span color='#f6be51'>auth</span>", short(&s.provider_id)),
-            (Reading::Error(_), _) => format!("{} <span color='#f86c68'>err</span>", short(&s.provider_id)),
+            (Reading::NeedsAuth(_), _) => format!(
+                "{} <span color='#f6be51'>auth</span>",
+                short(&s.provider_id)
+            ),
+            (Reading::Error(_), _) => {
+                format!("{} <span color='#f86c68'>err</span>", short(&s.provider_id))
+            }
             _ => format!("{} —", short(&s.provider_id)),
         })
         .collect();
@@ -464,7 +493,10 @@ fn waybar(snaps: &[Snapshot]) -> String {
             Reading::Ok { windows, .. } => {
                 tip.push_str(&esc(&s.display_name));
                 for w in windows {
-                    let pct = w.remaining_percent.map(|p| format!("{p:.0}%")).unwrap_or_else(|| "—".into());
+                    let pct = w
+                        .remaining_percent
+                        .map(|p| format!("{p:.0}%"))
+                        .unwrap_or_else(|| "—".into());
                     let reset = w
                         .resets_at
                         .map(|t| format!(", resets in {}", fmt_countdown(t.saturating_sub(now))))
@@ -472,9 +504,15 @@ fn waybar(snaps: &[Snapshot]) -> String {
                     tip.push_str(&format!("\\n  {} {pct}{reset}", esc(&w.label)));
                 }
             }
-            Reading::NeedsAuth(m) => tip.push_str(&format!("{}: needs auth ({})", esc(&s.display_name), esc(m))),
+            Reading::NeedsAuth(m) => tip.push_str(&format!(
+                "{}: needs auth ({})",
+                esc(&s.display_name),
+                esc(m)
+            )),
             Reading::Error(m) => tip.push_str(&format!("{}: {}", esc(&s.display_name), esc(m))),
-            Reading::NotConfigured => tip.push_str(&format!("{}: not configured", esc(&s.display_name))),
+            Reading::NotConfigured => {
+                tip.push_str(&format!("{}: not configured", esc(&s.display_name)))
+            }
         }
     }
     format!(
@@ -529,9 +567,18 @@ mod tests {
     #[test]
     fn wait_takes_its_target_from_the_arguments() {
         let a = parse(
-            ["limitcue", "wait", "-p", "claude", "--above", "35", "--timeout", "600"]
-                .iter()
-                .map(|s| s.to_string()),
+            [
+                "limitcue",
+                "wait",
+                "-p",
+                "claude",
+                "--above",
+                "35",
+                "--timeout",
+                "600",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
         );
         assert_eq!(a.cmd, Cmd::Wait);
         assert_eq!(a.provider.as_deref(), Some("claude"));
@@ -549,7 +596,11 @@ mod tests {
 
     #[test]
     fn a_flag_missing_its_value_does_not_eat_the_command() {
-        let a = parse(["limitcue", "--above", "wait"].iter().map(|s| s.to_string()));
+        let a = parse(
+            ["limitcue", "--above", "wait"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
         assert_eq!(a.above, 10.0, "unparseable value falls back to the default");
     }
 

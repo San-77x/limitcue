@@ -1,9 +1,9 @@
 mod activity;
 mod cli;
 mod config;
-mod notify;
 mod dock;
 mod history;
+mod notify;
 mod providers;
 mod service;
 mod types;
@@ -39,7 +39,10 @@ const LOGO_PNGS: [(&str, &[u8]); 7] = [
     ("grok", include_bytes!("../assets/logos/grok.png")),
     ("kimi", include_bytes!("../assets/logos/kimi.png")),
     ("minimax", include_bytes!("../assets/logos/minimax.png")),
-    ("agentrouter", include_bytes!("../assets/logos/agentrouter.png")),
+    (
+        "agentrouter",
+        include_bytes!("../assets/logos/agentrouter.png"),
+    ),
 ];
 
 #[derive(Clone)]
@@ -57,12 +60,19 @@ fn decode_png(bytes: &[u8]) -> egui::ColorImage {
     let mut buf = vec![0u8; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf).expect("icon png frame");
     assert_eq!(info.color_type, png::ColorType::Rgba, "icons must be RGBA");
-    egui::ColorImage::from_rgba_unmultiplied([info.width as usize, info.height as usize], &buf[..info.buffer_size()])
+    egui::ColorImage::from_rgba_unmultiplied(
+        [info.width as usize, info.height as usize],
+        &buf[..info.buffer_size()],
+    )
 }
 
 fn load_icons(ctx: &egui::Context) -> Icons {
     let get = |name: &str| {
-        let bytes = ICON_PNGS.iter().find(|(n, _)| *n == name).map(|(_, b)| *b).unwrap();
+        let bytes = ICON_PNGS
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, b)| *b)
+            .unwrap();
         ctx.load_texture(name, decode_png(bytes), egui::TextureOptions::LINEAR)
     };
     Icons {
@@ -80,14 +90,21 @@ fn load_logos(ctx: &egui::Context) -> HashMap<String, egui::TextureHandle> {
         .map(|(name, bytes)| {
             (
                 name.to_string(),
-                ctx.load_texture(format!("logo-{name}"), decode_png(bytes), egui::TextureOptions::LINEAR),
+                ctx.load_texture(
+                    format!("logo-{name}"),
+                    decode_png(bytes),
+                    egui::TextureOptions::LINEAR,
+                ),
             )
         })
         .collect()
 }
 
 fn state_path() -> std::path::PathBuf {
-    dirs::data_dir().unwrap_or_default().join("limitcue").join("state.json")
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join("limitcue")
+        .join("state.json")
 }
 
 fn save_state(snaps: &HashMap<String, Snapshot>) {
@@ -104,7 +121,8 @@ fn save_state(snaps: &HashMap<String, Snapshot>) {
 }
 
 fn load_state() -> HashMap<String, Snapshot> {
-    serde_json::from_str(&std::fs::read_to_string(state_path()).unwrap_or_default()).unwrap_or_default()
+    serde_json::from_str(&std::fs::read_to_string(state_path()).unwrap_or_default())
+        .unwrap_or_default()
 }
 
 // Header-row geometry, shared by the collapsed pill (whose window width is
@@ -351,7 +369,8 @@ fn section(ui: &mut egui::Ui, title: &str, pal: &Palette) {
     let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 16.0), Sense::hover());
     let col = theme::mix(pal.faint, pal.muted, 0.55);
     let g = ui.painter().layout_job(theme::caps_job(title, 9.5, col));
-    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+    ui.painter()
+        .galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
     ui.add_space(7.0);
 }
 
@@ -398,7 +417,8 @@ fn setting_row<R>(
     let (d, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 13.0), Sense::hover());
     ui.painter().galley(
         egui::pos2(d.left(), d.top()),
-        ui.painter().layout(desc.to_owned(), theme::sans(10.0), pal.faint, d.width()),
+        ui.painter()
+            .layout(desc.to_owned(), theme::sans(10.0), pal.faint, d.width()),
         pal.faint,
     );
     ui.add_space(8.0);
@@ -410,7 +430,9 @@ fn setting_row<R>(
 /// A wrapped note under a control, in a colour of the caller's choosing.
 /// Used for the one-off warnings that only apply at some settings.
 fn hint(ui: &mut egui::Ui, text: &str, col: Color32) {
-    let galley = ui.painter().layout(text.to_owned(), theme::sans(10.0), col, avail(ui));
+    let galley = ui
+        .painter()
+        .layout(text.to_owned(), theme::sans(10.0), col, avail(ui));
     let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), galley.size().y), Sense::hover());
     ui.painter().galley(r.left_top(), galley, col);
     ui.add_space(9.0);
@@ -443,7 +465,8 @@ fn control_row<R>(
         );
         ui.painter().galley(
             egui::pos2(r.left(), r.top() + 16.0),
-            ui.painter().layout(desc.to_owned(), theme::sans(10.0), pal.faint, r.width()),
+            ui.painter()
+                .layout(desc.to_owned(), theme::sans(10.0), pal.faint, r.width()),
             pal.faint,
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -473,7 +496,8 @@ fn toggle_row(ui: &mut egui::Ui, title: &str, desc: &str, value: &mut bool, pal:
         );
         ui.painter().galley(
             egui::pos2(r.left(), r.top() + 16.0),
-            ui.painter().layout(desc.to_owned(), theme::sans(10.0), pal.faint, r.width()),
+            ui.painter()
+                .layout(desc.to_owned(), theme::sans(10.0), pal.faint, r.width()),
             pal.faint,
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -610,7 +634,9 @@ impl App {
         let activity = activity::start(cfg.clone());
         // Debug hooks: start expanded / with settings open / with a rail card
         // open (tests, screenshots).
-        let expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
+        let expanded = std::env::var("LIMITCUE_UI_EXPANDED")
+            .map(|v| v != "0")
+            .unwrap_or(false);
         let settings_var = std::env::var("LIMITCUE_UI_SETTINGS").unwrap_or_default();
         let settings_open = !settings_var.is_empty() && settings_var != "0";
         let settings_tab = match settings_var.as_str() {
@@ -624,13 +650,21 @@ impl App {
             "editor" => SettingsView::Editor(0),
             _ => SettingsView::List,
         };
-        let rail_open = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
-        let notch_mode = std::env::var("LIMITCUE_FLOAT").map(|v| v == "0").unwrap_or(true);
+        let rail_open = std::env::var("LIMITCUE_UI_RAIL")
+            .ok()
+            .filter(|v| !v.is_empty());
+        let notch_mode = std::env::var("LIMITCUE_FLOAT")
+            .map(|v| v == "0")
+            .unwrap_or(true);
         let cfg_next = cfg.clone();
         Self {
             snapshots,
             tweens: HashMap::new(),
-            history: if cfg.projections { history::History::load() } else { history::History::default() },
+            history: if cfg.projections {
+                history::History::load()
+            } else {
+                history::History::default()
+            },
             row_order: Default::default(),
             rx: rx_snap,
             tx_tick,
@@ -695,13 +729,20 @@ impl App {
                 if matches!(s.reading, Reading::Ok { .. }) {
                     if let Some(new) = s.min_remaining() {
                         let shown = self.tweens.get(&s.provider_id).and_then(|t| t.value());
-                        let from = shown
-                            .or_else(|| self.snapshots.get(&s.provider_id).and_then(|old| old.min_remaining()));
+                        let from = shown.or_else(|| {
+                            self.snapshots
+                                .get(&s.provider_id)
+                                .and_then(|old| old.min_remaining())
+                        });
                         if let Some(from) = from {
                             if (from - new).abs() > f64::EPSILON {
                                 self.tweens.insert(
                                     s.provider_id.clone(),
-                                    Tween { from, to: new, start: Instant::now() },
+                                    Tween {
+                                        from,
+                                        to: new,
+                                        start: Instant::now(),
+                                    },
                                 );
                             }
                         }
@@ -758,7 +799,8 @@ impl App {
 
         // ---- title band --------------------------------------------------
         ui.horizontal(|ui| {
-            let (r, _) = ui.allocate_exact_size(Vec2::new((full - 26.0).max(1.0), 24.0), Sense::hover());
+            let (r, _) =
+                ui.allocate_exact_size(Vec2::new((full - 26.0).max(1.0), 24.0), Sense::hover());
             ui.painter().text(
                 egui::pos2(r.left(), r.center().y),
                 egui::Align2::LEFT_CENTER,
@@ -766,9 +808,14 @@ impl App {
                 theme::semibold(16.0),
                 pal.text,
             );
-            let name = ui.painter().layout_job(theme::caps_job("limitcue", 9.0, pal.faint));
+            let name = ui
+                .painter()
+                .layout_job(theme::caps_job("limitcue", 9.0, pal.faint));
             ui.painter().galley(
-                egui::pos2(r.right() - name.rect.width(), r.center().y - name.rect.height() / 2.0),
+                egui::pos2(
+                    r.right() - name.rect.width(),
+                    r.center().y - name.rect.height() / 2.0,
+                ),
                 name,
                 pal.faint,
             );
@@ -817,8 +864,13 @@ impl App {
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             let changed = !cfg_eq(&self.cfg, &self.cfg_next);
-            let hint = if changed { "Unsaved changes" } else { "All changes saved" };
-            let (r, _) = ui.allocate_exact_size(Vec2::new((full - 150.0).max(1.0), 28.0), Sense::hover());
+            let hint = if changed {
+                "Unsaved changes"
+            } else {
+                "All changes saved"
+            };
+            let (r, _) =
+                ui.allocate_exact_size(Vec2::new((full - 150.0).max(1.0), 28.0), Sense::hover());
             ui.painter().text(
                 egui::pos2(r.left(), r.center().y),
                 egui::Align2::LEFT_CENTER,
@@ -863,13 +915,19 @@ impl App {
         let mut dirty = false;
         section(ui, "Updates", pal);
         card(ui, pal, |ui| {
-            setting_row(ui, "Poll interval", "How often each provider is asked for fresh numbers.", pal, |ui| {
-                let mut v = self.cfg_next.poll_interval_secs as i64;
-                if w::slider(ui, &mut v, config::MIN_POLL_SECS as i64..=900, 30, "s", pal) {
-                    self.cfg_next.poll_interval_secs = v as u64;
-                    dirty = true;
-                }
-            });
+            setting_row(
+                ui,
+                "Poll interval",
+                "How often each provider is asked for fresh numbers.",
+                pal,
+                |ui| {
+                    let mut v = self.cfg_next.poll_interval_secs as i64;
+                    if w::slider(ui, &mut v, config::MIN_POLL_SECS as i64..=900, 30, "s", pal) {
+                        self.cfg_next.poll_interval_secs = v as u64;
+                        dirty = true;
+                    }
+                },
+            );
             // Asking faster is allowed, but it is the one setting on this
             // screen that can stop the notch working rather than just change
             // how it looks: a quota endpoint under pressure answers 429
@@ -962,22 +1020,32 @@ impl App {
                     let (msg, col) = if ok {
                         ("Sent — it should be on screen now.", pal.ok)
                     } else {
-                        ("No session bus here, so notifications cannot be delivered.", pal.bad)
+                        (
+                            "No session bus here, so notifications cannot be delivered.",
+                            pal.bad,
+                        )
                     };
                     ui.painter().galley(
                         egui::pos2(r.left() + 2.0, r.top()),
-                        ui.painter().layout(msg.to_owned(), theme::sans(10.0), col, r.width()),
+                        ui.painter()
+                            .layout(msg.to_owned(), theme::sans(10.0), col, r.width()),
                         col,
                     );
                 }
                 hairline(ui, pal);
-                setting_row(ui, "Warn at", "Percent remaining that trips the alert.", pal, |ui| {
-                    let mut v = self.cfg_next.notify_threshold.round() as i64;
-                    if w::slider(ui, &mut v, 5..=50, 5, "%", pal) {
-                        self.cfg_next.notify_threshold = v as f64;
-                        dirty = true;
-                    }
-                });
+                setting_row(
+                    ui,
+                    "Warn at",
+                    "Percent remaining that trips the alert.",
+                    pal,
+                    |ui| {
+                        let mut v = self.cfg_next.notify_threshold.round() as i64;
+                        if w::slider(ui, &mut v, 5..=50, 5, "%", pal) {
+                            self.cfg_next.notify_threshold = v as f64;
+                            dirty = true;
+                        }
+                    },
+                );
                 hairline(ui, pal);
                 dirty |= toggle_row(
                     ui,
@@ -989,12 +1057,24 @@ impl App {
                 hairline(ui, pal);
                 ui.add_space(9.0);
                 let mut low = self.cfg_next.cmd_on_low.clone();
-                if w::field(ui, "Run on low (optional)", "paplay warning.oga", &mut low, pal) {
+                if w::field(
+                    ui,
+                    "Run on low (optional)",
+                    "paplay warning.oga",
+                    &mut low,
+                    pal,
+                ) {
                     self.cfg_next.cmd_on_low = low;
                     dirty = true;
                 }
                 let mut reset = self.cfg_next.cmd_on_reset.clone();
-                if w::field(ui, "Run on refill (optional)", "notify-send \"go\"", &mut reset, pal) {
+                if w::field(
+                    ui,
+                    "Run on refill (optional)",
+                    "notify-send \"go\"",
+                    &mut reset,
+                    pal,
+                ) {
                     self.cfg_next.cmd_on_reset = reset;
                     dirty = true;
                 }
@@ -1065,7 +1145,11 @@ impl App {
                     let p = &self.cfg_next.provider[i];
                     (
                         p.id.clone(),
-                        if p.name.is_empty() { p.id.clone() } else { p.name.clone() },
+                        if p.name.is_empty() {
+                            p.id.clone()
+                        } else {
+                            p.name.clone()
+                        },
                         p.enabled.unwrap_or(true),
                     )
                 };
@@ -1089,20 +1173,25 @@ impl App {
                     }
                     let title_col = if enabled { pal.text } else { pal.faint };
                     let g = w::elide(ui, &name, theme::medium(12.5), title_col, r.width());
-                    ui.painter().galley(egui::pos2(r.left(), r.top() + 3.0), g, title_col);
+                    ui.painter()
+                        .galley(egui::pos2(r.left(), r.top() + 3.0), g, title_col);
                     let sub = self.provider_summary(i);
                     let g2 = w::elide(ui, &sub, theme::sans(10.0), pal.faint, r.width());
-                    ui.painter().galley(egui::pos2(r.left(), r.top() + 18.0), g2, pal.faint);
+                    ui.painter()
+                        .galley(egui::pos2(r.left(), r.top() + 18.0), g2, pal.faint);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if w::switch(ui, &mut enabled, pal).changed() {
                             self.cfg_next.provider[i].enabled = Some(enabled);
                             dirty = true;
                         }
                         ui.add_space(6.0);
-                        if w::glyph_button(ui, w::Mark::Cross, true, "remove provider", pal).clicked() {
+                        if w::glyph_button(ui, w::Mark::Cross, true, "remove provider", pal)
+                            .clicked()
+                        {
                             action = Some((i, 0));
                         }
-                        if w::glyph_button(ui, w::Mark::Down, i + 1 < n, "move down", pal).clicked() {
+                        if w::glyph_button(ui, w::Mark::Down, i + 1 < n, "move down", pal).clicked()
+                        {
                             action = Some((i, 1));
                         }
                         if w::glyph_button(ui, w::Mark::Up, i > 0, "move up", pal).clicked() {
@@ -1185,7 +1274,8 @@ impl App {
                         _ => "",
                     };
                     let g = w::elide(ui, source, theme::sans(10.0), pal.faint, r.width());
-                    ui.painter().galley(egui::pos2(r.left(), r.top() + 18.0), g, pal.faint);
+                    ui.painter()
+                        .galley(egui::pos2(r.left(), r.top() + 18.0), g, pal.faint);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if w::switch(ui, &mut on, pal).changed() {
                             if on {
@@ -1209,7 +1299,9 @@ impl App {
     fn provider_summary(&self, i: usize) -> String {
         let p = &self.cfg_next.provider[i];
         let where_ = if p.billing {
-            p.base_url.clone().unwrap_or_else(|| "no base URL yet".into())
+            p.base_url
+                .clone()
+                .unwrap_or_else(|| "no base URL yet".into())
         } else if let Some(u) = &p.url {
             u.clone()
         } else if let Some(b) = &p.base_url {
@@ -1247,11 +1339,12 @@ impl App {
                 ui.horizontal(|ui| {
                     provider_mark(ui, p.id, &self.logos, pal, true);
                     ui.add_space(9.0);
-                    let (r, _) = ui.allocate_exact_size(
-                        Vec2::new(avail(ui), row_h),
-                        Sense::click(),
-                    );
-                    if ui.interact(r, ui.id().with(("pick", p.id)), Sense::click()).clicked() {
+                    let (r, _) =
+                        ui.allocate_exact_size(Vec2::new(avail(ui), row_h), Sense::click());
+                    if ui
+                        .interact(r, ui.id().with(("pick", p.id)), Sense::click())
+                        .clicked()
+                    {
                         chosen = Some(p);
                     }
                     let tag = match p.fidelity {
@@ -1261,7 +1354,8 @@ impl App {
                     };
                     let g = ui.painter().layout_job(theme::caps_job(tag.0, 8.5, tag.1));
                     let tag_w = g.rect.width();
-                    ui.painter().galley(egui::pos2(r.right() - tag_w, r.top() + 3.0), g, tag.1);
+                    ui.painter()
+                        .galley(egui::pos2(r.right() - tag_w, r.top() + 3.0), g, tag.1);
                     let name = w::elide(
                         ui,
                         p.name,
@@ -1269,10 +1363,16 @@ impl App {
                         pal.text,
                         (r.width() - tag_w - 10.0).max(20.0),
                     );
-                    ui.painter().galley(egui::pos2(r.left(), r.top() + 2.0), name, pal.text);
+                    ui.painter()
+                        .galley(egui::pos2(r.left(), r.top() + 2.0), name, pal.text);
                     ui.painter().galley(
                         egui::pos2(r.left(), r.top() + 17.0),
-                        ui.painter().layout(p.blurb.to_owned(), theme::sans(10.0), pal.faint, r.width()),
+                        ui.painter().layout(
+                            p.blurb.to_owned(),
+                            theme::sans(10.0),
+                            pal.faint,
+                            r.width(),
+                        ),
                         pal.faint,
                     );
                 });
@@ -1286,7 +1386,12 @@ impl App {
             let mut cfg = p.to_config();
             if self.cfg_next.provider.iter().any(|e| e.id == cfg.id) {
                 let mut n = 2;
-                while self.cfg_next.provider.iter().any(|e| e.id == format!("{}-{n}", p.id)) {
+                while self
+                    .cfg_next
+                    .provider
+                    .iter()
+                    .any(|e| e.id == format!("{}-{n}", p.id))
+                {
                     n += 1;
                 }
                 cfg.id = format!("{}-{n}", p.id);
@@ -1312,8 +1417,14 @@ impl App {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let busy = matches!(self.probe, Probe::Running);
-                if w::pill_button(ui, if busy { "Testing…" } else { "Test" }, false, !busy, pal)
-                    .clicked()
+                if w::pill_button(
+                    ui,
+                    if busy { "Testing…" } else { "Test" },
+                    false,
+                    !busy,
+                    pal,
+                )
+                .clicked()
                 {
                     self.start_probe(i);
                 }
@@ -1337,13 +1448,24 @@ impl App {
         });
 
         ui.add_space(16.0);
-        section(ui, if shape == EditorShape::Cli { "Credentials" } else { "Endpoint" }, pal);
+        section(
+            ui,
+            if shape == EditorShape::Cli {
+                "Credentials"
+            } else {
+                "Endpoint"
+            },
+            pal,
+        );
         card(ui, pal, |ui| {
             ui.add_space(6.0);
             if shape == EditorShape::Cli {
                 // A CLI-based login has no endpoint to configure: the only
                 // question is which config directory this account lives in.
-                let mut dir = self.cfg_next.provider[i].credentials_dir.clone().unwrap_or_default();
+                let mut dir = self.cfg_next.provider[i]
+                    .credentials_dir
+                    .clone()
+                    .unwrap_or_default();
                 if w::field(ui, "CLI config directory", "~/.claude-work", &mut dir, pal) {
                     self.cfg_next.provider[i].credentials_dir =
                         (!dir.trim().is_empty()).then_some(dir);
@@ -1361,56 +1483,94 @@ impl App {
                     pal.faint,
                 );
             } else if shape == EditorShape::Billing || shape == EditorShape::Keyed {
-                let mut base = self.cfg_next.provider[i].base_url.clone().unwrap_or_default();
-                if w::field(ui, "Base URL", "https://gateway.example.com/v1", &mut base, pal) {
+                let mut base = self.cfg_next.provider[i]
+                    .base_url
+                    .clone()
+                    .unwrap_or_default();
+                if w::field(
+                    ui,
+                    "Base URL",
+                    "https://gateway.example.com/v1",
+                    &mut base,
+                    pal,
+                ) {
                     self.cfg_next.provider[i].base_url = (!base.trim().is_empty()).then_some(base);
                     dirty = true;
                 }
             } else {
                 let mut url = self.cfg_next.provider[i].url.clone().unwrap_or_default();
-                if w::field(ui, "Usage URL", "https://api.example.com/v1/usage", &mut url, pal) {
+                if w::field(
+                    ui,
+                    "Usage URL",
+                    "https://api.example.com/v1/usage",
+                    &mut url,
+                    pal,
+                ) {
                     self.cfg_next.provider[i].url = (!url.trim().is_empty()).then_some(url);
                     dirty = true;
                 }
-                let mut auth = self.cfg_next.provider[i].auth_header.clone().unwrap_or_default();
-                if w::field(ui, "Auth header", "Authorization: Bearer {key}", &mut auth, pal) {
-                    self.cfg_next.provider[i].auth_header = (!auth.trim().is_empty()).then_some(auth);
+                let mut auth = self.cfg_next.provider[i]
+                    .auth_header
+                    .clone()
+                    .unwrap_or_default();
+                if w::field(
+                    ui,
+                    "Auth header",
+                    "Authorization: Bearer {key}",
+                    &mut auth,
+                    pal,
+                ) {
+                    self.cfg_next.provider[i].auth_header =
+                        (!auth.trim().is_empty()).then_some(auth);
                     dirty = true;
                 }
             }
         });
 
         if shape != EditorShape::Cli {
-        ui.add_space(16.0);
-        section(ui, "Key", pal);
-        card(ui, pal, |ui| {
-            ui.add_space(6.0);
-            let mut key = self.cfg_next.provider[i].api_key.clone().unwrap_or_default();
-            let mut shown = self.key_revealed;
-            if w::secret_field(ui, "API key", "paste it here", &mut key, &mut shown, pal) {
-                self.cfg_next.provider[i].api_key = (!key.trim().is_empty()).then_some(key);
-                dirty = true;
-            }
-            self.key_revealed = shown;
-            let mut env = self.cfg_next.provider[i].key_env.clone().unwrap_or_default();
-            if w::field(ui, "…or read from env var", "MINIMAX_API_KEY", &mut env, pal) {
-                self.cfg_next.provider[i].key_env = (!env.trim().is_empty()).then_some(env);
-                dirty = true;
-            }
-            let note = match &self.cfg_next.provider[i].key_hint {
-                Some(h) if !h.is_empty() => format!(
+            ui.add_space(16.0);
+            section(ui, "Key", pal);
+            card(ui, pal, |ui| {
+                ui.add_space(6.0);
+                let mut key = self.cfg_next.provider[i]
+                    .api_key
+                    .clone()
+                    .unwrap_or_default();
+                let mut shown = self.key_revealed;
+                if w::secret_field(ui, "API key", "paste it here", &mut key, &mut shown, pal) {
+                    self.cfg_next.provider[i].api_key = (!key.trim().is_empty()).then_some(key);
+                    dirty = true;
+                }
+                self.key_revealed = shown;
+                let mut env = self.cfg_next.provider[i]
+                    .key_env
+                    .clone()
+                    .unwrap_or_default();
+                if w::field(
+                    ui,
+                    "…or read from env var",
+                    "MINIMAX_API_KEY",
+                    &mut env,
+                    pal,
+                ) {
+                    self.cfg_next.provider[i].key_env = (!env.trim().is_empty()).then_some(env);
+                    dirty = true;
+                }
+                let note = match &self.cfg_next.provider[i].key_hint {
+                    Some(h) if !h.is_empty() => format!(
                     "Get it from {h}. It is written to config.toml, which stays user-only (0600)."
                 ),
-                _ => "The key is written to config.toml, which stays user-only (0600).".to_string(),
-            };
-            let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 30.0), Sense::hover());
-            ui.painter().galley(
-                egui::pos2(r.left() + 2.0, r.top()),
-                ui.painter().layout(note, theme::sans(10.0), pal.faint, r.width() - 4.0),
-                pal.faint,
-            );
-        });
-
+                    _ => "The key is written to config.toml, which stays user-only (0600)."
+                        .to_string(),
+                };
+                let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 30.0), Sense::hover());
+                ui.painter().galley(
+                    egui::pos2(r.left() + 2.0, r.top()),
+                    ui.painter()
+                        .layout(note, theme::sans(10.0), pal.faint, r.width() - 4.0),
+                    pal.faint,
+                );
+            });
         }
         if shape == EditorShape::Json {
             ui.add_space(16.0);
@@ -1427,7 +1587,8 @@ impl App {
                 let (r, _) = ui.allocate_exact_size(Vec2::new(avail(ui), 34.0), Sense::hover());
                 ui.painter().galley(
                     egui::pos2(r.left(), r.top()),
-                    ui.painter().layout(text.clone(), theme::sans(11.0), col, r.width()),
+                    ui.painter()
+                        .layout(text.clone(), theme::sans(11.0), col, r.width()),
                     col,
                 );
                 ui.add_space(6.0);
@@ -1458,12 +1619,16 @@ impl App {
                         Sense::hover(),
                     );
                     let col = theme::mix(pal.faint, pal.muted, 0.55);
-                    let g = ui
-                        .painter()
-                        .layout_job(theme::caps_job(&format!("window {}", j + 1), 9.0, col));
-                    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+                    let g = ui.painter().layout_job(theme::caps_job(
+                        &format!("window {}", j + 1),
+                        9.0,
+                        col,
+                    ));
+                    ui.painter()
+                        .galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if w::glyph_button(ui, w::Mark::Cross, true, "remove window", pal).clicked() {
+                        if w::glyph_button(ui, w::Mark::Cross, true, "remove window", pal).clicked()
+                        {
                             remove = Some(j);
                         }
                     });
@@ -1476,9 +1641,12 @@ impl App {
                 }
                 // Percentage or count-of-total. Anything else the mapping
                 // supports is a variation on one of these two.
-                let counted = self.cfg_next.provider[i].windows[j].remaining_count_path.is_some()
+                let counted = self.cfg_next.provider[i].windows[j]
+                    .remaining_count_path
+                    .is_some()
                     || self.cfg_next.provider[i].windows[j].total_const.is_some();
-                let pick = w::segmented(ui, &["Percentage", "N of total"], usize::from(counted), pal);
+                let pick =
+                    w::segmented(ui, &["Percentage", "N of total"], usize::from(counted), pal);
                 if pick != usize::from(counted) {
                     let win = &mut self.cfg_next.provider[i].windows[j];
                     if pick == 0 {
@@ -1492,7 +1660,10 @@ impl App {
                 }
                 ui.add_space(10.0);
                 if pick == 0 {
-                    let mut p = self.cfg_next.provider[i].windows[j].remaining_path.clone().unwrap_or_default();
+                    let mut p = self.cfg_next.provider[i].windows[j]
+                        .remaining_path
+                        .clone()
+                        .unwrap_or_default();
                     if w::field(ui, "Percent remaining", "usage.percent_left", &mut p, pal) {
                         self.cfg_next.provider[i].windows[j].remaining_path =
                             (!p.trim().is_empty()).then_some(p);
@@ -1516,7 +1687,13 @@ impl App {
                         .map(|v| format!("{v}"))
                         .or_else(|| win.total_count_path.clone())
                         .unwrap_or_default();
-                    if w::field(ui, "Total (a path, or a number you know)", "data.limit  ·  50", &mut total, pal) {
+                    if w::field(
+                        ui,
+                        "Total (a path, or a number you know)",
+                        "data.limit  ·  50",
+                        &mut total,
+                        pal,
+                    ) {
                         let win = &mut self.cfg_next.provider[i].windows[j];
                         let t = total.trim();
                         match (t.is_empty(), t.parse::<f64>()) {
@@ -1536,7 +1713,10 @@ impl App {
                         dirty = true;
                     }
                 }
-                let mut rs = self.cfg_next.provider[i].windows[j].resets_at_path.clone().unwrap_or_default();
+                let mut rs = self.cfg_next.provider[i].windows[j]
+                    .resets_at_path
+                    .clone()
+                    .unwrap_or_default();
                 if w::field(ui, "Resets at (optional)", "usage.reset_at", &mut rs, pal) {
                     self.cfg_next.provider[i].windows[j].resets_at_path =
                         (!rs.trim().is_empty()).then_some(rs);
@@ -1559,10 +1739,12 @@ impl App {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if w::pill_button(ui, "Add window", false, true, pal).clicked() {
-                    self.cfg_next.provider[i].windows.push(config::WindowConfig {
-                        label: "quota".into(),
-                        ..Default::default()
-                    });
+                    self.cfg_next.provider[i]
+                        .windows
+                        .push(config::WindowConfig {
+                            label: "quota".into(),
+                            ..Default::default()
+                        });
                     dirty = true;
                 }
             });
@@ -1593,13 +1775,17 @@ impl App {
                             None => w.label.clone(),
                         })
                         .collect();
-                    (true, format!("Read {} window(s): {}", windows.len(), parts.join(" · ")))
+                    (
+                        true,
+                        format!("Read {} window(s): {}", windows.len(), parts.join(" · ")),
+                    )
                 }
                 Reading::NeedsAuth(m) => (false, format!("The key was not accepted — {m}")),
                 Reading::Error(m) => (false, format!("No reading — {m}")),
-                Reading::NotConfigured => {
-                    (false, "Still missing something — check the URL and key above.".to_string())
-                }
+                Reading::NotConfigured => (
+                    false,
+                    "Still missing something — check the URL and key above.".to_string(),
+                ),
             };
             let _ = tx.send(msg);
         });
@@ -1614,7 +1800,11 @@ impl App {
             ui.add_space(2.0);
             // Swatches, not a dropdown: a theme is a set of colors, so it
             // should be chosen by looking at the colors.
-            let current = if self.cfg_next.theme.is_empty() { "midnight" } else { &self.cfg_next.theme };
+            let current = if self.cfg_next.theme.is_empty() {
+                "midnight"
+            } else {
+                &self.cfg_next.theme
+            };
             let current = current.to_string();
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
@@ -1769,20 +1959,27 @@ impl App {
         if let Ok(forced) = std::env::var("LIMITCUE_UI_PACE") {
             return (!forced.is_empty()).then_some(forced);
         }
-        let Reading::Ok { windows, .. } = &s.reading else { return None };
+        let Reading::Ok { windows, .. } = &s.reading else {
+            return None;
+        };
         let (i, remaining) = windows
             .iter()
             .enumerate()
             .filter_map(|(i, w)| w.remaining_percent.map(|p| (i, p)))
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())?;
         let w = &windows[i];
-        let rate = self.history.burn_per_hour(&history::key(&s.provider_id, &w.label))?;
+        let rate = self
+            .history
+            .burn_per_hour(&history::key(&s.provider_id, &w.label))?;
         history::projection(remaining, rate, w.resets_at.map(|t| t.saturating_sub(now)))
     }
 
     /// Headline percent to draw: mid-tween value if animating, else the snapshot's.
     fn render_pct(&self, s: &Snapshot) -> Option<f64> {
-        self.tweens.get(&s.provider_id).and_then(|t| t.value()).or_else(|| s.min_remaining())
+        self.tweens
+            .get(&s.provider_id)
+            .and_then(|t| t.value())
+            .or_else(|| s.min_remaining())
     }
 
     fn is_stale(&self, s: &Snapshot, now: u64) -> bool {
@@ -1800,7 +1997,11 @@ impl App {
     fn visible(&self) -> Vec<Snapshot> {
         // The sheet previews like theme does: a switch off the notch this
         // frame, Save persists it, Cancel puts the gauge back.
-        let cfg = if self.settings_open { &self.cfg_next } else { &self.cfg };
+        let cfg = if self.settings_open {
+            &self.cfg_next
+        } else {
+            &self.cfg
+        };
         let mut v = shown_snapshots(cfg, self.snapshots.values());
         v.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
         if !cfg.sort_by_urgency {
@@ -1812,7 +2013,12 @@ impl App {
         // `row_order` only re-derived when nothing is being hovered.
         let order = self.row_order.borrow();
         if !order.is_empty() {
-            v.sort_by_key(|s| order.iter().position(|id| *id == s.provider_id).unwrap_or(usize::MAX));
+            v.sort_by_key(|s| {
+                order
+                    .iter()
+                    .position(|id| *id == s.provider_id)
+                    .unwrap_or(usize::MAX)
+            });
         } else {
             v.sort_by(|a, b| urgency(a).total_cmp(&urgency(b)));
         }
@@ -1857,7 +2063,8 @@ impl App {
         let mut w = H_MARGIN * 2.0 // frame margins
             + GRIP_W + GRIP_GAP; // grip + gap
         for s in snaps.iter().take(max_vis) {
-            w += HEADER_ROW_SPACING + ui::chip_width(ui::chip_text_w(ctx, s, self.render_pct(s), &self.pal, 1.0));
+            w += HEADER_ROW_SPACING
+                + ui::chip_width(ui::chip_text_w(ctx, s, self.render_pct(s), &self.pal, 1.0));
         }
         if snaps.len() > max_vis {
             w += HEADER_ROW_SPACING + 32.0; // +N chip
@@ -1959,11 +2166,17 @@ fn rail_card_layout(
     pace: bool,
 ) -> Option<ui::RailCardLayout> {
     let s = snaps.iter().find(|s| s.provider_id == id)?;
-    let anchor_cy = snaps.iter().position(|p| p.provider_id == id)
+    let anchor_cy = snaps
+        .iter()
+        .position(|p| p.provider_id == id)
         .map(|i| rail_row_cy(i, body_top, row_h))
         .unwrap_or_else(|| ui_rect.center().y);
     let mut layout = ui::rail_card_layout(s, pace, anchor_cy, ui_rect.height(), RAIL_CARD_W, 8.0);
-    let x0 = if on_left { RAIL_STRIP_W + RAIL_COL_GAP } else { 0.0 };
+    let x0 = if on_left {
+        RAIL_STRIP_W + RAIL_COL_GAP
+    } else {
+        0.0
+    };
     layout.rect = layout.rect.translate(egui::vec2(x0, 0.0));
     Some(layout)
 }
@@ -1973,7 +2186,9 @@ fn rail_card_layout(
 /// feature this waits for the notch to size itself and reads the frame
 /// before the buffer swap, so transparent windows capture correctly.
 fn debug_shot(ctx: &egui::Context, started: Instant, requested: &mut bool) {
-    let Ok(path) = std::env::var("LIMITCUE_UI_SHOT") else { return };
+    let Ok(path) = std::env::var("LIMITCUE_UI_SHOT") else {
+        return;
+    };
     if path.is_empty() {
         return;
     }
@@ -1985,7 +2200,11 @@ fn debug_shot(ctx: &egui::Context, started: Instant, requested: &mut bool) {
     });
     if let Some(img) = shot {
         let file = std::fs::File::create(&path).expect("screenshot path");
-        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), img.width() as u32, img.height() as u32);
+        let mut enc = png::Encoder::new(
+            std::io::BufWriter::new(file),
+            img.width() as u32,
+            img.height() as u32,
+        );
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
         let mut w = enc.write_header().expect("png header");
@@ -2048,12 +2267,15 @@ impl eframe::App for App {
         // not produce one leaves it contradicting the position — which showed
         // up as a left-docked notch opening its card leftwards, off screen.
         let stored_edge = dock_now.side(RAIL_STRIP_W as i32).unwrap_or(dock_now.edge);
-        let edge = if self.notch_mode && stored_edge == Edge::Free { Edge::Left } else { stored_edge };
+        let edge = if self.notch_mode && stored_edge == Edge::Free {
+            Edge::Left
+        } else {
+            stored_edge
+        };
         if edge != self.last_edge {
             self.last_edge = edge;
             ctx.request_repaint();
         }
-
 
         let pal = self.pal;
         let now = now_unix();
@@ -2073,7 +2295,11 @@ impl eframe::App for App {
             }
         }
         let snaps = self.visible();
-        if self.rail_open.as_ref().is_some_and(|id| snaps.iter().all(|s| s.provider_id != *id)) {
+        if self
+            .rail_open
+            .as_ref()
+            .is_some_and(|id| snaps.iter().all(|s| s.provider_id != *id))
+        {
             self.rail_open = None;
         }
         // Left/right dock: the pill becomes a vertical rail (rings + %).
@@ -2087,17 +2313,25 @@ impl eframe::App for App {
 
         // Expanded height follows content. Only clamp to the available
         // screen height so a long provider list scrolls instead of clipping.
-        let ideal_h = HEADER_H + 42.0
-            + snaps.iter().map(|s| {
-                let rows_h = match &s.reading {
-                    Reading::Ok { windows, .. } => windows.len().max(1) as f32 * 24.0,
-                    _ => 56.0,
-                };
-                38.0 + rows_h
-            }).sum::<f32>();
-        let viewport_h = ctx.input(|i| i.viewport().inner_rect.map(|r| r.height()))
+        let ideal_h = HEADER_H
+            + 42.0
+            + snaps
+                .iter()
+                .map(|s| {
+                    let rows_h = match &s.reading {
+                        Reading::Ok { windows, .. } => windows.len().max(1) as f32 * 24.0,
+                        _ => 56.0,
+                    };
+                    38.0 + rows_h
+                })
+                .sum::<f32>();
+        let viewport_h = ctx
+            .input(|i| i.viewport().inner_rect.map(|r| r.height()))
             .unwrap_or(720.0);
-        let expanded_size = Vec2::new(EXPANDED_W, (ideal_h + 10.0).min((viewport_h - VIEWPORT_H_MARGIN).max(220.0)));
+        let expanded_size = Vec2::new(
+            EXPANDED_W,
+            (ideal_h + 10.0).min((viewport_h - VIEWPORT_H_MARGIN).max(220.0)),
+        );
         if self.expanded {
             self.last_expanded_h = expanded_size.y;
         }
@@ -2110,7 +2344,11 @@ impl eframe::App for App {
         // cell per provider — max_visible_collapsed only limits the
         // horizontal pill.
         let rail_rows = snaps.len().max(1) as f32;
-        let rail_row_h = if self.cfg.show_rail_percent { RAIL_ROW_H } else { RAIL_ROW_H_COMPACT };
+        let rail_row_h = if self.cfg.show_rail_percent {
+            RAIL_ROW_H
+        } else {
+            RAIL_ROW_H_COMPACT
+        };
         let rail_h = RAIL_PAD_TOP
             + rail_rows * rail_row_h
             + (rail_rows - 1.0) * RAIL_ROW_GAP
@@ -2133,7 +2371,9 @@ impl eframe::App for App {
         // The notch's own output, which on a multi-monitor desktop is not
         // necessarily the one starting at y=0. egui only reports a monitor
         // *size*, so the origin has to come from the dock script.
-        let monitor_h_hint = ctx.input(|i| i.viewport().monitor_size.map(|s| s.y)).unwrap_or(900.0);
+        let monitor_h_hint = ctx
+            .input(|i| i.viewport().monitor_size.map(|s| s.y))
+            .unwrap_or(900.0);
         let (screen_top, monitor_h) = dock_now.output_span(monitor_h_hint);
         // ---- the notch's vertical band -----------------------------------
         //
@@ -2171,8 +2411,14 @@ impl eframe::App for App {
             .fold(0.0_f32, f32::max);
         // Settings is a panel beside the notch, not a replacement for it, so
         // the band has to be tall enough to hold whichever is bigger.
-        let sheet_h = if self.settings_open { self.settings_height(ctx) } else { 0.0 };
-        let band_h = rail_h.max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0).max(sheet_h);
+        let sheet_h = if self.settings_open {
+            self.settings_height(ctx)
+        } else {
+            0.0
+        };
+        let band_h = rail_h
+            .max(card_max_h + ui::RAIL_CARD_GAP_Y * 2.0)
+            .max(sheet_h);
         // Where the window should sit for the notch to land where the user
         // put it. When the compositor has already placed it somewhere else —
         // it clamps against the real output, which is authoritative — take its
@@ -2215,7 +2461,11 @@ impl eframe::App for App {
             // means clamping against one rectangle while KWin clamps against
             // another, and the window walks between the two answers.
             let want = if dock_now.output_known() {
-                (wanted_y.round() as i32, band_h.round() as i32, rail_size.x.round() as i32)
+                (
+                    wanted_y.round() as i32,
+                    band_h.round() as i32,
+                    rail_size.x.round() as i32,
+                )
             } else {
                 (-1, -1, -1)
             };
@@ -2244,7 +2494,9 @@ impl eframe::App for App {
         // Debug hook: jump to the final size instead of animating (screenshot automation).
         // Sends the size unconditionally — snapping makes cur==target, which would
         // otherwise never trip the `animating` branch below.
-        let snap = std::env::var("LIMITCUE_UI_SNAP").map(|v| v != "0").unwrap_or(false);
+        let snap = std::env::var("LIMITCUE_UI_SNAP")
+            .map(|v| v != "0")
+            .unwrap_or(false);
         let prev = self.cur_size;
         let mut animating = false;
         if rail {
@@ -2263,7 +2515,10 @@ impl eframe::App for App {
                 ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
             }
             let t = 1.0 - (-18.0 * dt).exp();
-            self.cur_size = Vec2::new(prev.x + (target.x - prev.x) * t, prev.y + (target.y - prev.y) * t);
+            self.cur_size = Vec2::new(
+                prev.x + (target.x - prev.x) * t,
+                prev.y + (target.y - prev.y) * t,
+            );
             animating = (self.cur_size - prev).length() > 0.08 && !snap;
             if animating {
                 ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
@@ -2303,10 +2558,30 @@ impl eframe::App for App {
             egui::Rounding::ZERO
         } else {
             match edge {
-                Edge::Top => egui::Rounding { nw: 0.0, ne: 0.0, sw: 17.0, se: 17.0 },
-                Edge::Bottom => egui::Rounding { nw: 17.0, ne: 17.0, sw: 0.0, se: 0.0 },
-                Edge::Left => egui::Rounding { nw: 0.0, sw: 0.0, ne: 17.0, se: 17.0 },
-                Edge::Right => egui::Rounding { nw: 17.0, sw: 17.0, ne: 0.0, se: 0.0 },
+                Edge::Top => egui::Rounding {
+                    nw: 0.0,
+                    ne: 0.0,
+                    sw: 17.0,
+                    se: 17.0,
+                },
+                Edge::Bottom => egui::Rounding {
+                    nw: 17.0,
+                    ne: 17.0,
+                    sw: 0.0,
+                    se: 0.0,
+                },
+                Edge::Left => egui::Rounding {
+                    nw: 0.0,
+                    sw: 0.0,
+                    ne: 17.0,
+                    se: 17.0,
+                },
+                Edge::Right => egui::Rounding {
+                    nw: 17.0,
+                    sw: 17.0,
+                    ne: 0.0,
+                    se: 0.0,
+                },
                 Edge::Free => egui::Rounding::same(17.0),
             }
         };
@@ -2320,7 +2595,10 @@ impl eframe::App for App {
                 .fill(pal.bg)
                 .stroke(egui::Stroke::new(1.0_f32, pal.border))
                 .rounding(rounding)
-                .inner_margin(egui::Margin::symmetric(11.0, if self.expanded { 8.0 } else { 5.0 }))
+                .inner_margin(egui::Margin::symmetric(
+                    11.0,
+                    if self.expanded { 8.0 } else { 5.0 },
+                ))
         };
 
         // Settings follows its content, with only a viewport safety cap.
@@ -2375,7 +2653,14 @@ impl eframe::App for App {
 }
 
 impl App {
-    fn render_header(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], f: f32, now: u64) {
+    fn render_header(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        snaps: &[Snapshot],
+        f: f32,
+        now: u64,
+    ) {
         let pal = self.pal;
         {
             // The header row is grip+buttons (RTL) plus chips (LTR) sharing one
@@ -2403,7 +2688,8 @@ impl App {
             };
             ui.horizontal(|ui| {
                 // grip
-                let (grect, _gr) = ui.allocate_exact_size(Vec2::new(18.0, HEADER_H), Sense::hover());
+                let (grect, _gr) =
+                    ui.allocate_exact_size(Vec2::new(18.0, HEADER_H), Sense::hover());
                 ui.painter().image(
                     self.icons.grip.id(),
                     egui::Rect::from_center_size(grect.center(), Vec2::splat(15.0)),
@@ -2422,10 +2708,28 @@ impl App {
                     let pct = self.render_pct(s);
                     let stale = self.is_stale(s, now);
                     let text_w = ui::chip_text_w(ctx, s, pct, &pal, 1.0);
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui::chip_width(text_w), HEADER_H), Sense::hover());
-                    let resp = ui.interact(rect, ui.id().with(("chip", &s.provider_id)), Sense::hover());
-                    let chip_alpha = if self.cfg.quiet_mode && !resp.hovered() { 0.58 } else { 1.0 };
-                    ui::draw_chip(ui, rect, s, pct, &pal, chip_alpha, stale, resp.hovered(), &self.logos);
+                    let (rect, _) = ui.allocate_exact_size(
+                        Vec2::new(ui::chip_width(text_w), HEADER_H),
+                        Sense::hover(),
+                    );
+                    let resp =
+                        ui.interact(rect, ui.id().with(("chip", &s.provider_id)), Sense::hover());
+                    let chip_alpha = if self.cfg.quiet_mode && !resp.hovered() {
+                        0.58
+                    } else {
+                        1.0
+                    };
+                    ui::draw_chip(
+                        ui,
+                        rect,
+                        s,
+                        pct,
+                        &pal,
+                        chip_alpha,
+                        stale,
+                        resp.hovered(),
+                        &self.logos,
+                    );
                     resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
                 }
                 if snaps.len() > max_vis
@@ -2435,25 +2739,49 @@ impl App {
                 }
                 if snaps.is_empty() {
                     ui.label(
-                        RichText::new("no providers — edit config.toml").color(pal.faint).size(12.0),
+                        RichText::new("no providers — edit config.toml")
+                            .color(pal.faint)
+                            .size(12.0),
                     );
                 }
 
                 if self.expanded {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let spin = self
-                            .refresh_at
-                            .map(|t0| t0.elapsed().as_secs_f32() / SPIN_SECS * std::f32::consts::TAU * 1.5);
-                        if ui::widgets::icon_button(ui, &self.icons.min, "minimize (or press Esc)", f, &pal, None).clicked() {
+                        let spin = self.refresh_at.map(|t0| {
+                            t0.elapsed().as_secs_f32() / SPIN_SECS * std::f32::consts::TAU * 1.5
+                        });
+                        if ui::widgets::icon_button(
+                            ui,
+                            &self.icons.min,
+                            "minimize (or press Esc)",
+                            f,
+                            &pal,
+                            None,
+                        )
+                        .clicked()
+                        {
                             self.expanded = false;
                         }
-                        if ui::widgets::icon_button(ui, &self.icons.gear, "settings", f, &pal, None).clicked() {
+                        if ui::widgets::icon_button(ui, &self.icons.gear, "settings", f, &pal, None)
+                            .clicked()
+                        {
                             self.settings_open = true;
                         }
-                        if ui::widgets::icon_button(ui, &self.icons.refresh, "refresh now", f, &pal, spin).clicked() {
+                        if ui::widgets::icon_button(
+                            ui,
+                            &self.icons.refresh,
+                            "refresh now",
+                            f,
+                            &pal,
+                            spin,
+                        )
+                        .clicked()
+                        {
                             self.refresh(ctx);
                         }
-                        if ui::widgets::icon_button(ui, &self.icons.close, "quit", f, &pal, None).clicked() {
+                        if ui::widgets::icon_button(ui, &self.icons.close, "quit", f, &pal, None)
+                            .clicked()
+                        {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     });
@@ -2461,7 +2789,11 @@ impl App {
             });
 
             if f < 0.05 {
-                let body = ui.interact(ui.max_rect().shrink(2.0), ui.id().with("body"), Sense::click());
+                let body = ui.interact(
+                    ui.max_rect().shrink(2.0),
+                    ui.id().with("body"),
+                    Sense::click(),
+                );
                 if body.clicked() {
                     self.expanded = true;
                 }
@@ -2492,8 +2824,19 @@ impl App {
     /// while the card is open) slides the tail-card usage popup out beside
     /// that cell; it lingers through a short grace period after the pointer
     /// leaves.
-    fn render_rail(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, snaps: &[Snapshot], rail_h: f32, rail_row_h: f32) {
-        let pal = if self.settings_open { theme::palette(&self.cfg_next.theme) } else { self.pal };
+    fn render_rail(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        snaps: &[Snapshot],
+        rail_h: f32,
+        rail_row_h: f32,
+    ) {
+        let pal = if self.settings_open {
+            theme::palette(&self.cfg_next.theme)
+        } else {
+            self.pal
+        };
         let edge = self.last_edge;
         // While the edge is unknown the window may still be the tiny init
         // pill — don't render the notch into a rect it can't fit in.
@@ -2520,8 +2863,10 @@ impl App {
             } else {
                 ui_rect.left()
             };
-            let sheet =
-                Rect::from_min_size(egui::pos2(x0, ui_rect.top()), Vec2::new(SETTINGS_W, sheet_h));
+            let sheet = Rect::from_min_size(
+                egui::pos2(x0, ui_rect.top()),
+                Vec2::new(SETTINGS_W, sheet_h),
+            );
             let frame = egui::Frame::none()
                 .fill(pal.bg)
                 .stroke(egui::Stroke::new(1.0_f32, pal.border))
@@ -2538,7 +2883,11 @@ impl App {
         // ---- the notch body ----------------------------------------------
         // The strip hugs the docked edge: window-left for a left dock,
         // window-right for a right dock (the card then fills the remainder).
-        let body_x = if on_left { ui_rect.left() } else { ui_rect.right() - RAIL_STRIP_W };
+        let body_x = if on_left {
+            ui_rect.left()
+        } else {
+            ui_rect.right() - RAIL_STRIP_W
+        };
         // The host is a band taller than the notch, positioned so that painting
         // the notch `headroom` below the window's top lands it exactly where
         // the user parked it. Everything above that offset is room for a card
@@ -2562,9 +2911,19 @@ impl App {
             .animate_bool_with_time(egui::Id::new("notch-lift"), dragging, 0.12);
         let edge_r = r * lift;
         let body_rounding = if on_left {
-            egui::Rounding { nw: edge_r, sw: edge_r, ne: r, se: r }
+            egui::Rounding {
+                nw: edge_r,
+                sw: edge_r,
+                ne: r,
+                se: r,
+            }
         } else {
-            egui::Rounding { nw: r, sw: r, ne: edge_r, se: edge_r }
+            egui::Rounding {
+                nw: r,
+                sw: r,
+                ne: edge_r,
+                se: edge_r,
+            }
         };
         // Quiet mode fades what is *on* the notch, not the notch itself.
         //
@@ -2618,17 +2977,23 @@ impl App {
         let dt_focus = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
         let mut focus_animating = false;
         for s in snaps {
-            let target = if Some(s.provider_id.as_str()) == focused_id { 1.0 } else { 0.0 };
-            let weight = self.rail_focus_weights.entry(s.provider_id.clone()).or_insert(0.0);
+            let target = if Some(s.provider_id.as_str()) == focused_id {
+                1.0
+            } else {
+                0.0
+            };
+            let weight = self
+                .rail_focus_weights
+                .entry(s.provider_id.clone())
+                .or_insert(0.0);
             let step = 1.0 - (-dt_focus / 0.32).exp();
             *weight += (target - *weight) * step;
             if (*weight - target).abs() > 0.005 {
                 focus_animating = true;
             }
         }
-        self.rail_focus_weights.retain(|id, weight| {
-            snaps.iter().any(|s| s.provider_id == *id) || *weight > 0.005
-        });
+        self.rail_focus_weights
+            .retain(|id, weight| snaps.iter().any(|s| s.provider_id == *id) || *weight > 0.005);
         if focus_animating {
             ctx.request_repaint();
         }
@@ -2652,10 +3017,13 @@ impl App {
             let resp = ui.interact(cell, ui.id().with("rail-empty"), Sense::click());
             let c = egui::pos2(cell.center().x, cell.center().y - 9.0);
             let col = if resp.hovered() { pal.ink } else { pal.muted };
-            ui.painter().circle_stroke(c, RAIL_RING_R, egui::Stroke::new(1.4_f32, pal.track));
+            ui.painter()
+                .circle_stroke(c, RAIL_RING_R, egui::Stroke::new(1.4_f32, pal.track));
             let s = egui::Stroke::new(1.8_f32, col);
-            ui.painter().line_segment([egui::pos2(c.x - 5.0, c.y), egui::pos2(c.x + 5.0, c.y)], s);
-            ui.painter().line_segment([egui::pos2(c.x, c.y - 5.0), egui::pos2(c.x, c.y + 5.0)], s);
+            ui.painter()
+                .line_segment([egui::pos2(c.x - 5.0, c.y), egui::pos2(c.x + 5.0, c.y)], s);
+            ui.painter()
+                .line_segment([egui::pos2(c.x, c.y - 5.0), egui::pos2(c.x, c.y + 5.0)], s);
             resp.clone().on_hover_text("Add a provider");
             if resp.clicked() {
                 self.settings_open = true;
@@ -2668,7 +3036,10 @@ impl App {
         }
 
         for s in snaps.iter() {
-            let row_rect = Rect::from_min_size(egui::pos2(body.left(), next_y), Vec2::new(cell_w, rail_row_h));
+            let row_rect = Rect::from_min_size(
+                egui::pos2(body.left(), next_y),
+                Vec2::new(cell_w, rail_row_h),
+            );
             next_y = row_rect.bottom() + RAIL_ROW_GAP;
             let pct = self.render_pct(s);
             let stale = self.is_stale(s, now);
@@ -2690,7 +3061,11 @@ impl App {
             // A hovered gauge is the focus: each provider owns an independent
             // weight, so rapid A -> B -> C switches never discard an in-flight
             // fade from the previous provider.
-            let focus_mix = self.rail_focus_weights.get(&s.provider_id).copied().unwrap_or(0.0);
+            let focus_mix = self
+                .rail_focus_weights
+                .get(&s.provider_id)
+                .copied()
+                .unwrap_or(0.0);
             let gauge_alpha = quiet
                 * if any_row_hovered {
                     ambient_alpha + (1.0 - ambient_alpha) * focus_mix
@@ -2700,8 +3075,16 @@ impl App {
             let gauge_stroke = RAIL_RING_STROKE + 0.7 * focus_mix;
             // gauge: track ring + heat arc (share used) around the bare mark
             let used01 = pct.map(|v| 1.0 - (v / 100.0) as f32).unwrap_or(0.0);
-            let heat = if ok { ui::theme::heat(used01, &pal) } else { ring_col };
-            let heat = if stale { ui::theme::mix(heat, pal.stale, 0.6) } else { heat };
+            let heat = if ok {
+                ui::theme::heat(used01, &pal)
+            } else {
+                ring_col
+            };
+            let heat = if stale {
+                ui::theme::mix(heat, pal.stale, 0.6)
+            } else {
+                heat
+            };
             let ring_center = egui::pos2(row_rect.center().x, row_rect.center().y - 9.0);
             ui::widgets::gauge(
                 ui,
@@ -2801,8 +3184,7 @@ impl App {
         );
         // Neutral three-dot menu mark: this control is navigation/settings,
         // not another quota gauge. The dots brighten together on hover.
-        let dot_color =
-            if orb_hover { pal.ink } else { pal.muted }.linear_multiply(quiet);
+        let dot_color = if orb_hover { pal.ink } else { pal.muted }.linear_multiply(quiet);
         let dot_radius = if orb_hover { 2.0 } else { 1.7 };
         for offset in [-6.0_f32, 0.0, 6.0] {
             ui.painter().circle_filled(
@@ -2832,15 +3214,22 @@ impl App {
                 .find(|s| s.provider_id == id)
                 .and_then(|s| self.pace_line(s, now))
                 .is_some();
-            rail_card_layout(id, snaps, ui_rect, on_left, body.top(), rail_row_h, pace).map(|l| l.rect)
+            rail_card_layout(id, snaps, ui_rect, on_left, body.top(), rail_row_h, pace)
+                .map(|l| l.rect)
         });
         let card_hovered = card_rect_now.is_some_and(|rect| {
-            ui.interact(rect, ui.id().with(("rail-card", self.rail_open.as_deref())), Sense::hover())
-                .contains_pointer()
+            ui.interact(
+                rect,
+                ui.id().with(("rail-card", self.rail_open.as_deref())),
+                Sense::hover(),
+            )
+            .contains_pointer()
         });
         // Screenshot hook: pin only when there is no pointer at all. Normal
         // desktop interaction never uses this path.
-        let seeded = std::env::var("LIMITCUE_UI_RAIL").ok().filter(|v| !v.is_empty());
+        let seeded = std::env::var("LIMITCUE_UI_RAIL")
+            .ok()
+            .filter(|v| !v.is_empty());
         // Pin while there is no pointer at all, and unconditionally when a
         // screenshot is being captured (the capture window is long enough for
         // a stray pointer to drift over the notch and dismiss the card).
@@ -2873,19 +3262,24 @@ impl App {
             let stale = self.is_stale(s, now);
             let a = self.rail_card_f.clamp(0.0, 1.0);
             let pace = self.pace_line(s, now);
-            let Some(card_layout) =
-                rail_card_layout(&id, snaps, ui_rect, on_left, body.top(), rail_row_h, pace.is_some())
-            else {
+            let Some(card_layout) = rail_card_layout(
+                &id,
+                snaps,
+                ui_rect,
+                on_left,
+                body.top(),
+                rail_row_h,
+                pace.is_some(),
+            ) else {
                 return;
             };
             // Slide the card out from the notch while it fades in; reverse
             // on exit. `rail_card` owns the whole panel — glass, content and
             // shadow — so the rect it is handed is the rect it fills.
             let slide = (1.0 - a) * 10.0;
-            let card_rect = card_layout.rect.translate(Vec2::new(
-                if on_left { -slide } else { slide },
-                0.0,
-            ));
+            let card_rect = card_layout
+                .rect
+                .translate(Vec2::new(if on_left { -slide } else { slide }, 0.0));
             let console = self
                 .cfg
                 .provider
@@ -3004,19 +3398,22 @@ fn spawn_poller(
                     continue; // still backing off; its previous reading stands
                 }
                 let snap = p.snapshot();
-                let struggling =
-                    matches!(snap.reading, Reading::Error(_) | Reading::NeedsAuth(_));
+                let struggling = matches!(snap.reading, Reading::Error(_) | Reading::NeedsAuth(_));
                 let streak = fails.entry(id.clone()).or_insert(0);
                 *streak = if struggling { (*streak + 1).min(5) } else { 0 };
-                let wait = poll_secs.saturating_mul(1 << *streak).min(BACKOFF_CEILING_SECS);
+                let wait = poll_secs
+                    .saturating_mul(1 << *streak)
+                    .min(BACKOFF_CEILING_SECS);
                 due.insert(id.clone(), now + std::time::Duration::from_secs(wait));
                 let snap = merge_reading(snap, last.get(&id));
                 last.insert(id, snap);
             }
             // Always publish the full set: a provider skipped for backoff keeps
             // its last reading rather than vanishing from the JSON and the notch.
-            let out: Vec<Snapshot> =
-                providers.iter().filter_map(|p| last.get(&p.id()).cloned()).collect();
+            let out: Vec<Snapshot> = providers
+                .iter()
+                .filter_map(|p| last.get(&p.id()).cloned())
+                .collect();
             notifier.review(&out, &cfg);
             // Publish before handing to the UI: a reader asking over D-Bus or
             // the socket should not have to wait for a repaint.
@@ -3087,8 +3484,12 @@ fn main() -> eframe::Result<()> {
     service::start_socket(usage.clone());
     // Match the initial window size to the starting state (debug/screenshot aid:
     // LIMITCUE_UI_EXPANDED=1 opens already expanded at full size).
-    let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED").map(|v| v != "0").unwrap_or(false);
-    let notch_mode = std::env::var("LIMITCUE_FLOAT").map(|v| v == "0").unwrap_or(true);
+    let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED")
+        .map(|v| v != "0")
+        .unwrap_or(false);
+    let notch_mode = std::env::var("LIMITCUE_FLOAT")
+        .map(|v| v == "0")
+        .unwrap_or(true);
     let init_size = if notch_mode {
         // Resting notch: exactly the spine; height matches the rail's own
         // layout math.
@@ -3107,7 +3508,13 @@ fn main() -> eframe::Result<()> {
             let (x, y) = v.split_once(',')?;
             Some(egui::pos2(x.parse().ok()?, y.parse().ok()?))
         })
-        .unwrap_or_else(|| if notch_mode { egui::pos2(0.0, 120.0) } else { egui::pos2(60.0, 40.0) });
+        .unwrap_or_else(|| {
+            if notch_mode {
+                egui::pos2(0.0, 120.0)
+            } else {
+                egui::pos2(60.0, 40.0)
+            }
+        });
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_decorations(false)
@@ -3183,7 +3590,10 @@ mod tests {
 
     #[test]
     fn a_disabled_built_in_leaves_the_notch() {
-        let cfg = Config { disabled: vec!["codex".into()], ..Config::default() };
+        let cfg = Config {
+            disabled: vec!["codex".into()],
+            ..Config::default()
+        };
         let snaps = [snap_id("claude"), snap_id("codex")];
         let shown = shown_snapshots(&cfg, snaps.iter());
         let ids: Vec<_> = shown.iter().map(|s| s.provider_id.as_str()).collect();
@@ -3285,7 +3695,10 @@ mod tests {
     #[test]
     fn needs_auth_still_replaces_the_reading() {
         let good = snap(ok_reading(87.0), 1_000);
-        let merged = merge_reading(snap(Reading::NeedsAuth("auth-failed".into()), 2_000), Some(&good));
+        let merged = merge_reading(
+            snap(Reading::NeedsAuth("auth-failed".into()), 2_000),
+            Some(&good),
+        );
         assert!(matches!(merged.reading, Reading::NeedsAuth(_)));
     }
 

@@ -177,13 +177,25 @@ pub const DEFAULT_POLL_SECS: u64 = 240;
 /// Between this and [`DEFAULT_POLL_SECS`] is the caller's risk to take.
 pub const MIN_POLL_SECS: u64 = 60;
 
-fn default_poll() -> u64 { DEFAULT_POLL_SECS }
+fn default_poll() -> u64 {
+    DEFAULT_POLL_SECS
+}
 /// Defaults reproduce the surfaces' previously hard-coded translucency.
-fn default_notch_opacity() -> f32 { 0.60 }
-fn default_card_opacity() -> f32 { 0.70 }
-fn default_threshold() -> f64 { 15.0 }
-fn default_true() -> bool { true }
-fn default_max_visible() -> usize { 4 }
+fn default_notch_opacity() -> f32 {
+    0.60
+}
+fn default_card_opacity() -> f32 {
+    0.70
+}
+fn default_threshold() -> f64 {
+    15.0
+}
+fn default_true() -> bool {
+    true
+}
+fn default_max_visible() -> usize {
+    4
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -211,7 +223,10 @@ impl Default for Config {
 
 impl Config {
     pub fn path() -> PathBuf {
-        dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("limitcue").join("config.toml")
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("limitcue")
+            .join("config.toml")
     }
 
     /// When the file was last written, for spotting edits made outside the app.
@@ -222,7 +237,10 @@ impl Config {
     pub fn load() -> Self {
         let mut c = match std::fs::read_to_string(Self::path()) {
             Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
-                eprintln!("limitcue: bad config ({}): {e}, using defaults", Self::path().display());
+                eprintln!(
+                    "limitcue: bad config ({}): {e}, using defaults",
+                    Self::path().display()
+                );
                 Config::default()
             }),
             Err(_) => Config::default(),

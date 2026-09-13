@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::{home, http_get_json, read_json_file, Provider};
-use crate::types::{Fidelity, Reading, Snapshot, Window, now_unix};
+use crate::types::{now_unix, Fidelity, Reading, Snapshot, Window};
 
 /// One Claude login. `dir` is the CLI's config directory, so a second
 /// account is just a second instance pointed at `~/.claude-work`.
@@ -35,7 +35,10 @@ impl Claude {
 
     fn credentials(&self) -> Option<String> {
         let v = read_json_file(&self.dir.join(".credentials.json"))?;
-        v.get("claudeAiOauth")?.get("accessToken")?.as_str().map(String::from)
+        v.get("claudeAiOauth")?
+            .get("accessToken")?
+            .as_str()
+            .map(String::from)
     }
 }
 
@@ -93,7 +96,9 @@ fn label_for(key: &str) -> String {
 /// or has a reset scheduled, which is the point at which it means something to
 /// the person reading it.
 fn worth_showing(key: &str, util: f64, resets_at: Option<u64>) -> bool {
-    key == "five_hour" || key == "seven_day" || key.starts_with("seven_day_")
+    key == "five_hour"
+        || key == "seven_day"
+        || key.starts_with("seven_day_")
         || util > 0.0
         || resets_at.is_some()
 }
@@ -112,8 +117,13 @@ fn parse(v: &Value) -> Reading {
     for (key, block) in map {
         // `extra_usage` and friends are objects without a utilisation; they
         // are not quota windows.
-        let Some(w) = window(&label_for(key), block) else { continue };
-        let util = block.get("utilization").and_then(|u| u.as_f64()).unwrap_or(0.0);
+        let Some(w) = window(&label_for(key), block) else {
+            continue;
+        };
+        let util = block
+            .get("utilization")
+            .and_then(|u| u.as_f64())
+            .unwrap_or(0.0);
         if worth_showing(key, util, w.resets_at) {
             windows.push(w);
         }
@@ -127,14 +137,23 @@ fn parse(v: &Value) -> Reading {
     if windows.is_empty() {
         Reading::Error("no windows in response".into())
     } else {
-        Reading::Ok { windows, detail: None }
+        Reading::Ok {
+            windows,
+            detail: None,
+        }
     }
 }
 
 impl Provider for Claude {
-    fn id(&self) -> String { self.id.clone() }
-    fn fidelity(&self) -> Fidelity { Fidelity::Official }
-    fn is_present(&self) -> bool { self.dir.join(".credentials.json").exists() }
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+    fn fidelity(&self) -> Fidelity {
+        Fidelity::Official
+    }
+    fn is_present(&self) -> bool {
+        self.dir.join(".credentials.json").exists()
+    }
 
     fn snapshot(&self) -> Snapshot {
         let make = |reading| Snapshot {
@@ -145,7 +164,9 @@ impl Provider for Claude {
             fetched_at: now_unix(),
             fetch_error: None,
         };
-        let Some(token) = self.credentials() else { return make(Reading::NotConfigured) };
+        let Some(token) = self.credentials() else {
+            return make(Reading::NotConfigured);
+        };
         let headers = [
             ("Authorization", format!("Bearer {token}")),
             ("anthropic-version", "2023-06-01".into()),
@@ -217,8 +238,14 @@ mod tests {
         // so a healthy plan showed as completely spent.
         let r = parse(&body());
         let w = windows(&r);
-        assert_eq!((w[0].label.as_str(), w[0].remaining_percent), ("session", Some(92.0)));
-        assert_eq!((w[1].label.as_str(), w[1].remaining_percent), ("weekly", Some(17.0)));
+        assert_eq!(
+            (w[0].label.as_str(), w[0].remaining_percent),
+            ("session", Some(92.0))
+        );
+        assert_eq!(
+            (w[1].label.as_str(), w[1].remaining_percent),
+            ("weekly", Some(17.0))
+        );
     }
 
     #[test]
@@ -236,7 +263,10 @@ mod tests {
         // account has depends on its plan. Listing four of them in code meant
         // the rest stayed invisible until somebody edited Rust.
         let r = parse(&body());
-        let w = windows(&r).iter().find(|w| w.label == "weekly cowork").expect("cowork window");
+        let w = windows(&r)
+            .iter()
+            .find(|w| w.label == "weekly cowork")
+            .expect("cowork window");
         assert_eq!(w.remaining_percent, Some(88.0));
     }
 

@@ -71,7 +71,9 @@ impl Custom {
     fn window(&self, w: &WindowConfig, v: &Value, now: u64) -> Option<Window> {
         let at = |p: &Option<String>| p.as_deref().and_then(|p| json_path(v, p));
         let pct = at(&w.remaining_path).and_then(num);
-        let frac = at(&w.remaining_fraction_path).and_then(num).map(|f| f * 100.0);
+        let frac = at(&w.remaining_fraction_path)
+            .and_then(num)
+            .map(|f| f * 100.0);
         let total = at(&w.total_count_path).and_then(num).or(w.total_const);
         let remaining = at(&w.remaining_count_path).and_then(num).or_else(|| {
             // "used" is the same fact told backwards
@@ -164,11 +166,18 @@ impl Provider for Custom {
             return make(Reading::NotConfigured);
         };
         let headers = self.headers();
-        let refs: Vec<(&str, String)> = headers.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        let refs: Vec<(&str, String)> = headers
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect();
         match http_get_json(url, &refs) {
             Ok(v) => {
-                let windows: Vec<Window> =
-                    self.cfg.windows.iter().filter_map(|w| self.window(w, &v, now)).collect();
+                let windows: Vec<Window> = self
+                    .cfg
+                    .windows
+                    .iter()
+                    .filter_map(|w| self.window(w, &v, now))
+                    .collect();
                 if windows.is_empty() {
                     make(Reading::Error(if self.cfg.windows.is_empty() {
                         "no quota windows mapped yet".into()
@@ -176,7 +185,10 @@ impl Provider for Custom {
                         "the mapped paths matched nothing in the response".into()
                     }))
                 } else {
-                    make(Reading::Ok { windows, detail: None })
+                    make(Reading::Ok {
+                        windows,
+                        detail: None,
+                    })
                 }
             }
             Err(e) if e == "auth-failed" => {
@@ -200,20 +212,32 @@ mod tests {
     }
 
     fn labelled() -> WindowConfig {
-        WindowConfig { label: "w".into(), ..Default::default() }
+        WindowConfig {
+            label: "w".into(),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn reads_a_ready_made_percentage() {
-        let w = WindowConfig { remaining_path: Some("u.pct".into()), ..labelled() };
+        let w = WindowConfig {
+            remaining_path: Some("u.pct".into()),
+            ..labelled()
+        };
         let got = map(w, json!({"u": {"pct": 63.5}})).unwrap();
         assert_eq!(got.remaining_percent, Some(63.5));
     }
 
     #[test]
     fn scales_a_fraction() {
-        let w = WindowConfig { remaining_fraction_path: Some("f".into()), ..labelled() };
-        assert_eq!(map(w, json!({"f": 0.25})).unwrap().remaining_percent, Some(25.0));
+        let w = WindowConfig {
+            remaining_fraction_path: Some("f".into()),
+            ..labelled()
+        };
+        assert_eq!(
+            map(w, json!({"f": 0.25})).unwrap().remaining_percent,
+            Some(25.0)
+        );
     }
 
     #[test]
@@ -235,7 +259,12 @@ mod tests {
             total_count_path: Some("cap".into()),
             ..labelled()
         };
-        assert_eq!(map(w, json!({"spent": 18, "cap": 30})).unwrap().remaining_percent, Some(40.0));
+        assert_eq!(
+            map(w, json!({"spent": 18, "cap": 30}))
+                .unwrap()
+                .remaining_percent,
+            Some(40.0)
+        );
     }
 
     #[test]
@@ -253,30 +282,60 @@ mod tests {
 
     #[test]
     fn numbers_encoded_as_strings_still_count() {
-        let w = WindowConfig { remaining_path: Some("p".into()), ..labelled() };
-        assert_eq!(map(w, json!({"p": "42"})).unwrap().remaining_percent, Some(42.0));
+        let w = WindowConfig {
+            remaining_path: Some("p".into()),
+            ..labelled()
+        };
+        assert_eq!(
+            map(w, json!({"p": "42"})).unwrap().remaining_percent,
+            Some(42.0)
+        );
     }
 
     #[test]
     fn accepts_seconds_millis_and_rfc3339_timestamps() {
-        let secs = WindowConfig { resets_at_path: Some("t".into()), ..labelled() };
-        assert_eq!(map(secs.clone(), json!({"t": 1_700_003_600u64})).unwrap().resets_at, Some(1_700_003_600));
-        assert_eq!(map(secs.clone(), json!({"t": 1_700_003_600_000u64})).unwrap().resets_at, Some(1_700_003_600));
+        let secs = WindowConfig {
+            resets_at_path: Some("t".into()),
+            ..labelled()
+        };
         assert_eq!(
-            map(secs, json!({"t": "2023-11-14T22:33:20Z"})).unwrap().resets_at,
+            map(secs.clone(), json!({"t": 1_700_003_600u64}))
+                .unwrap()
+                .resets_at,
+            Some(1_700_003_600)
+        );
+        assert_eq!(
+            map(secs.clone(), json!({"t": 1_700_003_600_000u64}))
+                .unwrap()
+                .resets_at,
+            Some(1_700_003_600)
+        );
+        assert_eq!(
+            map(secs, json!({"t": "2023-11-14T22:33:20Z"}))
+                .unwrap()
+                .resets_at,
             Some(1_700_001_200)
         );
     }
 
     #[test]
     fn a_countdown_is_resolved_against_now() {
-        let w = WindowConfig { resets_in_path: Some("in".into()), ..labelled() };
-        assert_eq!(map(w, json!({"in": 3600})).unwrap().resets_at, Some(NOW + 3600));
+        let w = WindowConfig {
+            resets_in_path: Some("in".into()),
+            ..labelled()
+        };
+        assert_eq!(
+            map(w, json!({"in": 3600})).unwrap().resets_at,
+            Some(NOW + 3600)
+        );
     }
 
     #[test]
     fn a_window_that_matched_nothing_is_dropped_rather_than_zeroed() {
-        let w = WindowConfig { remaining_path: Some("nope.missing".into()), ..labelled() };
+        let w = WindowConfig {
+            remaining_path: Some("nope.missing".into()),
+            ..labelled()
+        };
         assert!(map(w, json!({"u": 1})).is_none());
     }
 

@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use eframe::egui::{self, Color32, RichText, Vec2};
 use eframe::egui::text::{LayoutJob, TextFormat};
+use eframe::egui::{self, Color32, RichText, Vec2};
 
 use crate::types::{fmt_countdown, now_unix, Fidelity, Reading, Snapshot, Window};
 
@@ -26,7 +26,13 @@ pub fn tag(id: &str) -> String {
 
 /// Chip label: TAG + percent, tabular mono, percent colored by severity.
 /// `pct` is passed in (may be mid-animation); `None` renders `…`/status.
-pub fn chip_job(s: &Snapshot, pct: Option<f64>, pal: &Palette, alpha: f32, stale: bool) -> LayoutJob {
+pub fn chip_job(
+    s: &Snapshot,
+    pct: Option<f64>,
+    pal: &Palette,
+    alpha: f32,
+    stale: bool,
+) -> LayoutJob {
     let ok = matches!(s.reading, Reading::Ok { .. });
     let label = match (&s.reading, pct) {
         (Reading::Ok { .. }, Some(p)) => format!("{p:.0}%"),
@@ -40,7 +46,11 @@ pub fn chip_job(s: &Snapshot, pct: Option<f64>, pal: &Palette, alpha: f32, stale
         Reading::Error(_) => pal.bad,
         _ => pct_color(pct, ok, pal),
     };
-    let tag_col = if stale { theme::mix(pal.text, pal.faint, 0.45) } else { pal.text };
+    let tag_col = if stale {
+        theme::mix(pal.text, pal.faint, 0.45)
+    } else {
+        pal.text
+    };
     let mut job = LayoutJob::default();
     job.append(
         &tag(&s.provider_id),
@@ -57,8 +67,18 @@ pub fn chip_job(s: &Snapshot, pct: Option<f64>, pal: &Palette, alpha: f32, stale
 
 /// Width of the chip label text (TAG + percent) at current fonts.
 /// Stale tinting doesn't change metrics, so widths are always computed fresh.
-pub fn chip_text_w(ctx: &egui::Context, s: &Snapshot, pct: Option<f64>, pal: &Palette, alpha: f32) -> f32 {
-    ctx.fonts(|f| f.layout_job(chip_job(s, pct, pal, alpha, false)).rect.width())
+pub fn chip_text_w(
+    ctx: &egui::Context,
+    s: &Snapshot,
+    pct: Option<f64>,
+    pal: &Palette,
+    alpha: f32,
+) -> f32 {
+    ctx.fonts(|f| {
+        f.layout_job(chip_job(s, pct, pal, alpha, false))
+            .rect
+            .width()
+    })
 }
 
 /// Total width of a collapsed chip: hover padding + ring + gap + text.
@@ -90,7 +110,11 @@ pub fn draw_chip(
     }
     let cy = rect.center().y;
     let frac = (1.0 - pct.unwrap_or(100.0) / 100.0) as f32;
-    let ring_col = if stale { theme::mix(pct_color(pct, ok, pal), pal.stale, 0.6) } else { pct_color(pct, ok, pal) };
+    let ring_col = if stale {
+        theme::mix(pct_color(pct, ok, pal), pal.stale, 0.6)
+    } else {
+        pct_color(pct, ok, pal)
+    };
     logo_ring(
         ui,
         egui::pos2(rect.left() + 10.0 + CHIP_RING_D / 2.0, cy),
@@ -152,7 +176,6 @@ const STATUS_BODY_H: f32 = 34.0;
 /// Vertical clearance between the hovered row's centre line and the card.
 pub const RAIL_CARD_GAP_Y: f32 = 8.0;
 
-
 /// Chrome above the body: padding, header, hero.
 const CARD_TOP_H: f32 = PAD_TOP + HEAD_H + HEAD_GAP + HERO_H + HERO_GAP;
 /// Chrome below the body: footer rule, footer line, padding.
@@ -178,7 +201,12 @@ fn body(s: &Snapshot) -> Body {
     match &s.reading {
         Reading::Ok { windows, .. } => match windows.len() {
             0 => Body::Status,
-            1 => Body::Solo(windows[0].remaining_percent.map(|p| 1.0 - p / 100.0).unwrap_or(0.0) as f32),
+            1 => Body::Solo(
+                windows[0]
+                    .remaining_percent
+                    .map(|p| 1.0 - p / 100.0)
+                    .unwrap_or(0.0) as f32,
+            ),
             n => Body::Rows(n),
         },
         _ => Body::Status,
@@ -191,12 +219,17 @@ pub fn rail_card_content_height(s: &Snapshot, pace: bool) -> f32 {
     // well as painted below. Budget and painter disagreeing is what clipped
     // the footer the last time this card grew a line.
     let extra = if pace { PACE_H + PACE_GAP } else { 0.0 }
-        + if s.fetch_error.is_some() { NOTE_H + PACE_GAP } else { 0.0 };
-    extra + match body(s) {
-        Body::Solo(_) => CARD_TOP_H + SOLO_METER_H + CARD_BOTTOM_H,
-        Body::Rows(n) => CARD_FIXED_H + n as f32 * ROW_H + (n as f32 - 1.0) * ROW_GAP + 3.0,
-        Body::Status => CARD_FIXED_H + STATUS_BODY_H,
-    }
+        + if s.fetch_error.is_some() {
+            NOTE_H + PACE_GAP
+        } else {
+            0.0
+        };
+    extra
+        + match body(s) {
+            Body::Solo(_) => CARD_TOP_H + SOLO_METER_H + CARD_BOTTOM_H,
+            Body::Rows(n) => CARD_FIXED_H + n as f32 * ROW_H + (n as f32 - 1.0) * ROW_GAP + 3.0,
+            Body::Status => CARD_FIXED_H + STATUS_BODY_H,
+        }
 }
 
 pub fn rail_card_height(s: &Snapshot, pace: bool) -> f32 {
@@ -247,7 +280,11 @@ pub fn rail_card(
         }
         .as_shape(rect, egui::Rounding::same(CARD_CORNER)),
     );
-    p.rect_filled(rect, CARD_CORNER, dim(theme::at_opacity(pal.rail_deep, opacity)));
+    p.rect_filled(
+        rect,
+        CARD_CORNER,
+        dim(theme::at_opacity(pal.rail_deep, opacity)),
+    );
     // No outline: the shadow already separates the panel from the desktop, and
     // a hairline ring around a translucent surface reads as a seam. The sheen
     // below is a highlight along the top lip, not a border.
@@ -264,7 +301,10 @@ pub fn rail_card(
         Some(tex) => {
             p.image(
                 tex.id(),
-                egui::Rect::from_center_size(egui::pos2(x0 + 7.5, head.center().y), Vec2::splat(15.0)),
+                egui::Rect::from_center_size(
+                    egui::pos2(x0 + 7.5, head.center().y),
+                    Vec2::splat(15.0),
+                ),
                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                 dim(pal.ink),
             );
@@ -301,7 +341,11 @@ pub fn rail_card(
         mark,
         mark_col,
     );
-    let name_col = if stale { theme::mix(pal.ink, pal.faint, 0.4) } else { pal.ink };
+    let name_col = if stale {
+        theme::mix(pal.ink, pal.faint, 0.4)
+    } else {
+        pal.ink
+    };
     let arrow_w = if console { 18.0 } else { 0.0 };
     let name = widgets::elide(
         ui,
@@ -325,11 +369,19 @@ pub fn rail_card(
             Vec2::new(name_w + 4.0 + arrow_w, head.height() + 4.0),
         );
         let resp = ui
-            .interact(hit, ui.id().with(("console", &s.provider_id)), egui::Sense::click())
+            .interact(
+                hit,
+                ui.id().with(("console", &s.provider_id)),
+                egui::Sense::click(),
+            )
             .on_hover_text("Open this provider's dashboard");
         console_clicked = resp.clicked();
         let c = egui::pos2(x0 + 31.0 + name_w, head.center().y - 1.0);
-        let col = if resp.hovered() { pal.accent } else { pal.faint };
+        let col = if resp.hovered() {
+            pal.accent
+        } else {
+            pal.faint
+        };
         widgets::open_arrow(&p, c, dim(col));
     }
     y = head.bottom() + HEAD_GAP;
@@ -339,20 +391,32 @@ pub fn rail_card(
     match &s.reading {
         Reading::Ok { windows, .. } => {
             let peak = peak_window(windows);
-            let used = peak.and_then(|i| windows[i].remaining_percent).map(|p| 100.0 - p);
+            let used = peak
+                .and_then(|i| windows[i].remaining_percent)
+                .map(|p| 100.0 - p);
             let heat = used
                 .map(|u| theme::heat((u / 100.0) as f32, pal))
                 .unwrap_or(pal.muted);
-            let heat = if stale { theme::mix(heat, pal.stale, 0.55) } else { heat };
+            let heat = if stale {
+                theme::mix(heat, pal.stale, 0.55)
+            } else {
+                heat
+            };
             // "100% used" on one baseline: the count carries the weight, the
             // unit and the verb stay quiet.
-            let num = used.map(|u| format!("{u:.0}")).unwrap_or_else(|| "—".into());
+            let num = used
+                .map(|u| format!("{u:.0}"))
+                .unwrap_or_else(|| "—".into());
             let g_num = p.layout_no_wrap(num, theme::semibold(29.0), dim(heat));
             let num_bottom = hero.top() + g_num.rect.height();
             p.galley(egui::pos2(x0, hero.top()), g_num.clone(), heat);
             let mut cursor = x0 + g_num.rect.width() + 2.0;
             if used.is_some() {
-                let g_sym = p.layout_no_wrap("%".into(), theme::medium(15.0), dim(heat.gamma_multiply(0.8)));
+                let g_sym = p.layout_no_wrap(
+                    "%".into(),
+                    theme::medium(15.0),
+                    dim(heat.gamma_multiply(0.8)),
+                );
                 p.galley(
                     egui::pos2(cursor, num_bottom - g_sym.rect.height() - 4.0),
                     g_sym.clone(),
@@ -372,7 +436,13 @@ pub fn rail_card(
             // comes back — the two facts that make the big number actionable.
             if let Some(i) = peak {
                 let avail = (w - left_w - 14.0).max(60.0);
-                let label = widgets::elide(ui, &windows[i].label, theme::medium(11.5), dim(pal.text), avail);
+                let label = widgets::elide(
+                    ui,
+                    &windows[i].label,
+                    theme::medium(11.5),
+                    dim(pal.text),
+                    avail,
+                );
                 p.galley(
                     egui::pos2(x1 - label.rect.width(), hero.top() + 2.0),
                     label,
@@ -430,7 +500,11 @@ pub fn rail_card(
     // ---- single window: one bar, no list ---------------------------------
     if let Body::Solo(used01) = body(s) {
         let heat = theme::heat(used01, pal);
-        let heat = if stale { theme::mix(heat, pal.stale, 0.55) } else { heat };
+        let heat = if stale {
+            theme::mix(heat, pal.stale, 0.55)
+        } else {
+            heat
+        };
         widgets::meter(
             &p,
             egui::Rect::from_min_size(egui::pos2(x0, y), Vec2::new(w, SOLO_METER_H)),
@@ -473,12 +547,14 @@ pub fn rail_card(
                         if i > 0 {
                             ui.add_space(ROW_GAP);
                         }
-                        let (r, _) = ui.allocate_exact_size(Vec2::new(full, ROW_H), egui::Sense::hover());
+                        let (r, _) =
+                            ui.allocate_exact_size(Vec2::new(full, ROW_H), egui::Sense::hover());
                         window_row(ui, r, win, peak == Some(i), pal, a, stale, now);
                     }
                 }
                 Reading::NeedsAuth(m) | Reading::Error(m) => {
-                    let (r, _) = ui.allocate_exact_size(Vec2::new(full, STATUS_BODY_H), egui::Sense::hover());
+                    let (r, _) = ui
+                        .allocate_exact_size(Vec2::new(full, STATUS_BODY_H), egui::Sense::hover());
                     let p = ui.painter();
                     let g = widgets::elide(ui, m, theme::sans(11.0), dim(pal.muted), full);
                     p.galley(egui::pos2(r.left(), r.top()), g, pal.muted);
@@ -492,7 +568,8 @@ pub fn rail_card(
                     p.galley(egui::pos2(r.left(), r.top() + 17.0), g2, pal.faint);
                 }
                 _ => {
-                    let (r, _) = ui.allocate_exact_size(Vec2::new(full, STATUS_BODY_H), egui::Sense::hover());
+                    let (r, _) = ui
+                        .allocate_exact_size(Vec2::new(full, STATUS_BODY_H), egui::Sense::hover());
                     let g = widgets::elide(
                         ui,
                         "Add this provider in Settings to start tracking it.",
@@ -500,7 +577,8 @@ pub fn rail_card(
                         dim(pal.faint),
                         full,
                     );
-                    ui.painter().galley(egui::pos2(r.left(), r.top()), g, pal.faint);
+                    ui.painter()
+                        .galley(egui::pos2(r.left(), r.top()), g, pal.faint);
                 }
             }
         });
@@ -537,7 +615,9 @@ fn card_footer(
     let updated_w = updated.rect.width();
     p.galley(egui::pos2(x0, foot_y), updated, pal.faint);
     let note = match &s.reading {
-        Reading::Ok { detail: Some(d), .. } => Some(d.clone()),
+        Reading::Ok {
+            detail: Some(d), ..
+        } => Some(d.clone()),
         Reading::Ok { windows, .. } if windows.len() > 1 => {
             Some(format!("{} windows", windows.len()))
         }
@@ -570,9 +650,16 @@ fn window_row(
     now: u64,
 ) {
     let dim = |c: Color32| c.linear_multiply(a);
-    let used01 = win.remaining_percent.map(|p| 1.0 - p / 100.0).unwrap_or(0.0) as f32;
+    let used01 = win
+        .remaining_percent
+        .map(|p| 1.0 - p / 100.0)
+        .unwrap_or(0.0) as f32;
     let heat = theme::heat(used01, pal);
-    let heat = if stale { theme::mix(heat, pal.stale, 0.55) } else { heat };
+    let heat = if stale {
+        theme::mix(heat, pal.stale, 0.55)
+    } else {
+        heat
+    };
     let p = ui.painter();
 
     // label line ----------------------------------------------------------
@@ -593,10 +680,18 @@ fn window_row(
                 TextFormat::simple(theme::medium(10.5), dim(heat.gamma_multiply(0.8))),
             );
         }
-        None => value.append("—", 0.0, TextFormat::simple(theme::mono(12.5), dim(pal.faint))),
+        None => value.append(
+            "—",
+            0.0,
+            TextFormat::simple(theme::mono(12.5), dim(pal.faint)),
+        ),
     }
     let g_val = p.layout_job(value);
-    p.galley(egui::pos2(r.right() - g_val.rect.width(), r.top()), g_val.clone(), heat);
+    p.galley(
+        egui::pos2(r.right() - g_val.rect.width(), r.top()),
+        g_val.clone(),
+        heat,
+    );
     let (label_font, label_col) = if peak {
         (theme::semibold(12.0), heat)
     } else {
@@ -612,8 +707,18 @@ fn window_row(
     p.galley(egui::pos2(r.left(), r.top() + 1.0), g_lab, label_col);
 
     // meter ---------------------------------------------------------------
-    let meter_rect = egui::Rect::from_min_size(egui::pos2(r.left(), r.top() + 22.0), Vec2::new(r.width(), 4.0));
-    widgets::meter(p, meter_rect, used01, dim(heat), dim(pal.track), pal.glow * a);
+    let meter_rect = egui::Rect::from_min_size(
+        egui::pos2(r.left(), r.top() + 22.0),
+        Vec2::new(r.width(), 4.0),
+    );
+    widgets::meter(
+        p,
+        meter_rect,
+        used01,
+        dim(heat),
+        dim(pal.track),
+        pal.glow * a,
+    );
 
     // meta line -----------------------------------------------------------
     let meta_y = r.top() + 31.0;
@@ -687,15 +792,16 @@ pub fn rail_card_layout(
     }
 }
 
-
-
 /// Hover tooltip with the full per-window breakdown for one provider.
 pub fn chip_tooltip(ui: &mut egui::Ui, s: &Snapshot, pal: &Palette, stale: bool) {
     ui.strong(RichText::new(s.display_name.clone()));
     match &s.reading {
         Reading::Ok { windows, .. } => {
             for w in windows {
-                let pctt = w.remaining_percent.map(|p| format!("{p:.0}% left")).unwrap_or_default();
+                let pctt = w
+                    .remaining_percent
+                    .map(|p| format!("{p:.0}% left"))
+                    .unwrap_or_default();
                 let reset = w
                     .resets_at
                     .map(|t| fmt_countdown(t.saturating_sub(now_unix())))
@@ -734,7 +840,10 @@ fn value_job(w: &Window, pal: &Palette, alpha: f32, now: u64) -> LayoutJob {
         job.append(
             &format!("{p:.0}%"),
             0.0,
-            TextFormat::simple(theme::mono(11.5), pct_color(w.remaining_percent, true, pal).linear_multiply(alpha)),
+            TextFormat::simple(
+                theme::mono(11.5),
+                pct_color(w.remaining_percent, true, pal).linear_multiply(alpha),
+            ),
         );
     }
     if let (Some(a), Some(b)) = (w.remaining_count, w.total_count) {
@@ -759,7 +868,11 @@ fn value_job(w: &Window, pal: &Palette, alpha: f32, now: u64) -> LayoutJob {
 fn fidelity_badge(ui: &mut egui::Ui, s: &Snapshot, pal: &Palette, alpha: f32) {
     let (text, color, explain) = match s.fidelity {
         Fidelity::Official => ("official", pal.ok, "the provider's own endpoint"),
-        Fidelity::Derived => ("derived", pal.warn, "reverse-engineered endpoint — may break without notice"),
+        Fidelity::Derived => (
+            "derived",
+            pal.warn,
+            "reverse-engineered endpoint — may break without notice",
+        ),
         Fidelity::Manual => ("manual", pal.muted, "user-configured source"),
     };
     badge(ui, text, color, alpha).on_hover_text(explain);
@@ -778,12 +891,20 @@ pub fn provider_card(
     logos: &HashMap<String, egui::TextureHandle>,
 ) {
     let card_id = ui.id().with(("card", &s.provider_id));
-    let hovered = ui.ctx().read_response(card_id).map(|r| r.hovered()).unwrap_or(false);
+    let hovered = ui
+        .ctx()
+        .read_response(card_id)
+        .map(|r| r.hovered())
+        .unwrap_or(false);
     egui::Frame::none()
         .fill(if hovered { pal.card_hover } else { pal.card })
         .stroke(egui::Stroke::new(
             1.0_f32,
-            if hovered { pal.accent.linear_multiply(0.42) } else { pal.border },
+            if hovered {
+                pal.accent.linear_multiply(0.42)
+            } else {
+                pal.border
+            },
         ))
         .rounding(egui::Rounding::same(13.0))
         .inner_margin(egui::Margin::symmetric(12.0, 8.0))
@@ -813,8 +934,16 @@ pub fn provider_card(
                     alpha,
                 );
                 ui.add_space(1.0);
-                let name_col = if stale { theme::mix(pal.text, pal.faint, 0.4) } else { pal.text };
-                ui.label(RichText::new(&s.display_name).color(name_col.linear_multiply(alpha)).size(13.0));
+                let name_col = if stale {
+                    theme::mix(pal.text, pal.faint, 0.4)
+                } else {
+                    pal.text
+                };
+                ui.label(
+                    RichText::new(&s.display_name)
+                        .color(name_col.linear_multiply(alpha))
+                        .size(13.0),
+                );
                 fidelity_badge(ui, s, pal, alpha);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let age = now.saturating_sub(s.fetched_at);
@@ -822,7 +951,12 @@ pub fn provider_card(
                     if stale {
                         line.insert_str(0, "stale · ");
                     }
-                    ui.label(RichText::new(line).color(pal.faint.linear_multiply(alpha)).size(10.5).monospace());
+                    ui.label(
+                        RichText::new(line)
+                            .color(pal.faint.linear_multiply(alpha))
+                            .size(10.5)
+                            .monospace(),
+                    );
                 });
             });
 
@@ -838,9 +972,14 @@ pub fn provider_card(
                         );
                         // window label (fixed column, truncated)
                         ui.put(
-                            egui::Rect::from_min_size(egui::pos2(r.min.x, r.center().y - 8.0), Vec2::new(96.0, 16.0)),
+                            egui::Rect::from_min_size(
+                                egui::pos2(r.min.x, r.center().y - 8.0),
+                                Vec2::new(96.0, 16.0),
+                            ),
                             egui::Label::new(
-                                RichText::new(&w.label).color(pal.muted.linear_multiply(alpha)).size(11.5),
+                                RichText::new(&w.label)
+                                    .color(pal.muted.linear_multiply(alpha))
+                                    .size(11.5),
                             )
                             .selectable(false)
                             .truncate(),
@@ -848,13 +987,17 @@ pub fn provider_card(
                         // bar between label and value columns
                         let bar_rect = eframe::egui::Rect::from_min_max(
                             egui::pos2(r.min.x + 104.0, r.center().y - 3.0),
-                            egui::pos2((r.right() - 140.0).max(r.min.x + 180.0), r.center().y + 3.0),
+                            egui::pos2(
+                                (r.right() - 140.0).max(r.min.x + 180.0),
+                                r.center().y + 3.0,
+                            ),
                         );
                         if bar_rect.width() >= 30.0 {
                             bar(
                                 ui,
                                 bar_rect,
-                                (w.remaining_percent.map(|p| 1.0 - p / 100.0).unwrap_or(0.0)) as f32,
+                                (w.remaining_percent.map(|p| 1.0 - p / 100.0).unwrap_or(0.0))
+                                    as f32,
                                 pct_color(w.remaining_percent, true, pal),
                                 pal,
                                 alpha,
@@ -863,7 +1006,10 @@ pub fn provider_card(
                         // right-aligned tabular value
                         let galley = ui.painter().layout_job(value_job(w, pal, alpha, now));
                         ui.painter().galley(
-                            egui::pos2(r.right() - galley.rect.width(), r.center().y - galley.rect.height() / 2.0),
+                            egui::pos2(
+                                r.right() - galley.rect.width(),
+                                r.center().y - galley.rect.height() / 2.0,
+                            ),
                             galley,
                             pal.text,
                         );
@@ -877,17 +1023,35 @@ pub fn provider_card(
                         ("Update failed", pal.bad)
                     };
                     ui.horizontal(|ui| {
-                        let (r, _) = ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
+                        let (r, _) =
+                            ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
                         dot(ui, r.center(), col, alpha);
-                        ui.label(RichText::new(title).color(col.linear_multiply(alpha)).size(12.0).strong());
+                        ui.label(
+                            RichText::new(title)
+                                .color(col.linear_multiply(alpha))
+                                .size(12.0)
+                                .strong(),
+                        );
                     });
                     ui.add_space(3.0);
-                    ui.label(RichText::new(m.clone()).color(pal.muted.linear_multiply(alpha)).size(10.5));
-                    ui.label(RichText::new("No current usage reading").color(pal.faint.linear_multiply(alpha)).size(10.0));
+                    ui.label(
+                        RichText::new(m.clone())
+                            .color(pal.muted.linear_multiply(alpha))
+                            .size(10.5),
+                    );
+                    ui.label(
+                        RichText::new("No current usage reading")
+                            .color(pal.faint.linear_multiply(alpha))
+                            .size(10.0),
+                    );
                 }
                 Reading::NotConfigured => {
                     ui.add_space(2.0);
-                    ui.label(RichText::new("not configured").color(pal.faint.linear_multiply(alpha)).size(11.5));
+                    ui.label(
+                        RichText::new("not configured")
+                            .color(pal.faint.linear_multiply(alpha))
+                            .size(11.5),
+                    );
                 }
             }
 

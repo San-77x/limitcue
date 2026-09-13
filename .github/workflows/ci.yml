@@ -28,11 +28,8 @@ jobs:
             libxcb-xfixes0-dev libxkbcommon-dev libwayland-dev
       - uses: Swatinem/rust-cache@v2
 
-      # No `cargo fmt --check` step on purpose. The tree predates rustfmt by
-      # ~260 hunks and its compact one-liners in the adapters read as
-      # deliberate; reformatting is a decision to take on its own, not a
-      # condition to fail every build on meanwhile. A step that is permanently
-      # red just teaches people to ignore this workflow.
+      - name: format
+        run: cargo fmt --check
 
       # The project has held zero warnings throughout; keep it that way rather
       # than letting them accumulate back.

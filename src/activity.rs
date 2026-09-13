@@ -88,7 +88,9 @@ fn newest_mtime(root: &Path) -> Option<u64> {
         if depth > MAX_DEPTH || budget == 0 {
             continue;
         }
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             if budget == 0 {
                 break;
@@ -99,9 +101,10 @@ fn newest_mtime(root: &Path) -> Option<u64> {
                 stack.push((entry.path(), depth + 1));
                 continue;
             }
-            if let Ok(t) = meta.modified().and_then(|m| {
-                m.duration_since(UNIX_EPOCH).map_err(std::io::Error::other)
-            }) {
+            if let Ok(t) = meta
+                .modified()
+                .and_then(|m| m.duration_since(UNIX_EPOCH).map_err(std::io::Error::other))
+            {
                 newest = newest.max(t.as_secs());
             }
         }

@@ -28,7 +28,11 @@ pub fn ring(
     alpha: f32,
 ) {
     let p = ui.painter();
-    p.circle_stroke(center, r, Stroke::new(width, pal.track.linear_multiply(alpha)));
+    p.circle_stroke(
+        center,
+        r,
+        Stroke::new(width, pal.track.linear_multiply(alpha)),
+    );
     let frac = frac.clamp(0.0, 1.0);
     if frac <= 0.001 {
         return;
@@ -68,7 +72,18 @@ pub fn monogram_ring(
     pal: &Palette,
     alpha: f32,
 ) {
-    monogram_ring_on(ui, center, r, letter, brand, frac, color, pal, alpha, pal.card_hover)
+    monogram_ring_on(
+        ui,
+        center,
+        r,
+        letter,
+        brand,
+        frac,
+        color,
+        pal,
+        alpha,
+        pal.card_hover,
+    )
 }
 
 /// [`monogram_ring`] with an explicit disc fill color.
@@ -116,7 +131,19 @@ pub fn logo_ring(
     pal: &Palette,
     alpha: f32,
 ) {
-    logo_ring_on(ui, center, r, logo, letter, brand, frac, color, pal, alpha, pal.card_hover)
+    logo_ring_on(
+        ui,
+        center,
+        r,
+        logo,
+        letter,
+        brand,
+        frac,
+        color,
+        pal,
+        alpha,
+        pal.card_hover,
+    )
 }
 
 /// [`logo_ring`] with an explicit disc fill color.
@@ -134,7 +161,9 @@ pub fn logo_ring_on(
     alpha: f32,
     disc: Color32,
 ) {
-    logo_ring_stroke_on(ui, center, r, logo, letter, brand, frac, color, pal, alpha, disc, 2.5)
+    logo_ring_stroke_on(
+        ui, center, r, logo, letter, brand, frac, color, pal, alpha, disc, 2.5,
+    )
 }
 
 /// [`logo_ring_on`] with a caller-chosen ring stroke width (the rail's
@@ -223,7 +252,11 @@ pub fn gauge(
     let col = color.linear_multiply(alpha);
     if frac >= 0.999 {
         if glow > 0.0 {
-            p.circle_stroke(center, r, Stroke::new(stroke * 2.8, col.gamma_multiply(0.14 * glow)));
+            p.circle_stroke(
+                center,
+                r,
+                Stroke::new(stroke * 2.8, col.gamma_multiply(0.14 * glow)),
+            );
         }
         p.circle_stroke(center, r, Stroke::new(stroke, col));
         return;
@@ -265,7 +298,9 @@ pub fn bar(ui: &egui::Ui, rect: Rect, frac: f32, color: Color32, pal: &Palette, 
 /// Small outlined uppercase tag (fidelity label), allocated as a widget.
 pub fn badge(ui: &mut egui::Ui, text: &str, color: Color32, alpha: f32) -> egui::Response {
     let font = FontId::monospace(9.0);
-    let galley = ui.painter().layout_no_wrap(text.to_uppercase(), font, color);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_uppercase(), font, color);
     let size = Vec2::new(galley.rect.width() + 10.0, 14.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
     let p = ui.painter();
@@ -276,7 +311,10 @@ pub fn badge(ui: &mut egui::Ui, text: &str, color: Color32, alpha: f32) -> egui:
         Stroke::new(1.0_f32, color.linear_multiply(0.55 * alpha)),
     );
     p.galley(
-        egui::pos2(rect.center().x - galley.rect.width() / 2.0, rect.center().y - galley.rect.height() / 2.0),
+        egui::pos2(
+            rect.center().x - galley.rect.width() / 2.0,
+            rect.center().y - galley.rect.height() / 2.0,
+        ),
         galley,
         color,
     );
@@ -295,7 +333,11 @@ pub fn overflow_chip(ui: &mut egui::Ui, n: usize, pal: &Palette) -> egui::Respon
     p.rect(
         rect,
         7.0_f32,
-        if hover { pal.card_hover } else { Color32::TRANSPARENT },
+        if hover {
+            pal.card_hover
+        } else {
+            Color32::TRANSPARENT
+        },
         Stroke::new(1.0_f32, if hover { pal.muted } else { pal.border }),
     );
     p.galley(
@@ -311,7 +353,8 @@ pub fn overflow_chip(ui: &mut egui::Ui, n: usize, pal: &Palette) -> egui::Respon
 
 /// A status dot (needs-auth / error marker).
 pub fn dot(ui: &egui::Ui, center: Pos2, color: Color32, alpha: f32) {
-    ui.painter().circle_filled(center, 3.0, color.linear_multiply(alpha));
+    ui.painter()
+        .circle_filled(center, 3.0, color.linear_multiply(alpha));
 }
 
 /// Icon button drawn from a texture; `angle` optionally spins the glyph
@@ -326,14 +369,23 @@ pub fn icon_button(
 ) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(
         Vec2::splat(26.0),
-        if alpha > 0.9 { Sense::click() } else { Sense::hover() },
+        if alpha > 0.9 {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
     );
     if alpha > 0.02 {
         let hovered = resp.hovered() && alpha > 0.9;
         if hovered {
-            ui.painter().rect_filled(rect.shrink(2.0), 8.0_f32, pal.card_hover);
+            ui.painter()
+                .rect_filled(rect.shrink(2.0), 8.0_f32, pal.card_hover);
         }
-        let base = if hovered { pal.ink } else { pal.ink.gamma_multiply(0.82) };
+        let base = if hovered {
+            pal.ink
+        } else {
+            pal.ink.gamma_multiply(0.82)
+        };
         let center = rect.center();
         let size = 17.0;
         match angle {
@@ -348,13 +400,24 @@ pub fn icon_button(
             Some(a) => {
                 let (s, c) = a.sin_cos();
                 let h = size / 2.0;
-                let rot = |dx: f32, dy: f32| egui::pos2(center.x + dx * c - dy * s, center.y + dx * s + dy * c);
+                let rot = |dx: f32, dy: f32| {
+                    egui::pos2(center.x + dx * c - dy * s, center.y + dx * s + dy * c)
+                };
                 let mut mesh = egui::Mesh::with_texture(tex.id());
                 let corners = [rot(-h, -h), rot(h, -h), rot(h, h), rot(-h, h)];
-                let uvs = [egui::pos2(0.0, 0.0), egui::pos2(1.0, 0.0), egui::pos2(1.0, 1.0), egui::pos2(0.0, 1.0)];
+                let uvs = [
+                    egui::pos2(0.0, 0.0),
+                    egui::pos2(1.0, 0.0),
+                    egui::pos2(1.0, 1.0),
+                    egui::pos2(0.0, 1.0),
+                ];
                 let color = base.linear_multiply(alpha);
                 for (pos, uv) in corners.iter().zip(uvs) {
-                    mesh.vertices.push(egui::epaint::Vertex { pos: *pos, uv, color });
+                    mesh.vertices.push(egui::epaint::Vertex {
+                        pos: *pos,
+                        uv,
+                        color,
+                    });
                 }
                 let i = 0;
                 mesh.add_triangle(i, i + 1, i + 2);
@@ -486,7 +549,11 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool, pal: &Palette) -> egui::Response
     let x0 = rect.left() + 3.0 + knob_r;
     let cx = x0 + (rect.width() - 6.0 - knob_r * 2.0) * t;
     // On a light theme a white knob on a light accent would vanish.
-    let knob = if t > 0.5 { theme::on_brand(pal.accent) } else { pal.muted };
+    let knob = if t > 0.5 {
+        theme::on_brand(pal.accent)
+    } else {
+        pal.muted
+    };
     p.circle_filled(egui::pos2(cx, rect.center().y), knob_r, knob);
     resp
 }
@@ -503,7 +570,8 @@ pub fn slider(
 ) -> bool {
     let value_w = 54.0;
     let h = 20.0;
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::click_and_drag());
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::click_and_drag());
     const KNOB_R: f32 = 7.0;
     let track = Rect::from_min_max(
         egui::pos2(rect.left() + KNOB_R, rect.center().y - 1.5),
@@ -515,7 +583,8 @@ pub fn slider(
         if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
             let t = ((pos.x - track.left()) / track.width().max(1.0)).clamp(0.0, 1.0);
             let raw = lo + (hi - lo) * t;
-            let snapped = ((raw / step as f32).round() as i64 * step).clamp(*range.start(), *range.end());
+            let snapped =
+                ((raw / step as f32).round() as i64 * step).clamp(*range.start(), *range.end());
             if snapped != *value {
                 *value = snapped;
                 changed = true;
@@ -601,20 +670,37 @@ pub fn pill_button(
     enabled: bool,
     pal: &Palette,
 ) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), theme::medium(12.0), pal.text);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), theme::medium(12.0), pal.text);
     let size = Vec2::new(galley.rect.width() + 26.0, 28.0);
-    let (rect, resp) = ui.allocate_exact_size(size, if enabled { Sense::click() } else { Sense::hover() });
+    let (rect, resp) = ui.allocate_exact_size(
+        size,
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
+    );
     let hot = enabled && resp.hovered();
     let p = ui.painter();
     let (fill, stroke, fg) = match (primary, enabled) {
         (true, true) => (
-            if hot { theme::mix(pal.accent, Color32::WHITE, 0.14) } else { pal.accent },
+            if hot {
+                theme::mix(pal.accent, Color32::WHITE, 0.14)
+            } else {
+                pal.accent
+            },
             Color32::TRANSPARENT,
             theme::on_brand(pal.accent),
         ),
         (true, false) => (pal.control, Color32::TRANSPARENT, pal.faint),
         (false, true) => (
-            if hot { pal.control_hi } else { Color32::TRANSPARENT },
+            if hot {
+                pal.control_hi
+            } else {
+                Color32::TRANSPARENT
+            },
             pal.border,
             if hot { pal.text } else { pal.muted },
         ),
@@ -626,7 +712,8 @@ pub fn pill_button(
             rect.center().x - galley.rect.width() / 2.0,
             rect.center().y - galley.rect.height() / 2.0,
         ),
-        ui.painter().layout_no_wrap(label.to_owned(), theme::medium(12.0), fg),
+        ui.painter()
+            .layout_no_wrap(label.to_owned(), theme::medium(12.0), fg),
         fg,
     );
     resp
@@ -651,7 +738,11 @@ pub fn glyph_button(
 ) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(
         Vec2::splat(22.0),
-        if enabled { Sense::click() } else { Sense::hover() },
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
     );
     let hot = enabled && resp.hovered();
     let p = ui.painter();
@@ -661,7 +752,11 @@ pub fn glyph_button(
     let col = if !enabled {
         pal.faint.gamma_multiply(0.45)
     } else if hot {
-        if mark == Mark::Cross { pal.bad } else { pal.text }
+        if mark == Mark::Cross {
+            pal.bad
+        } else {
+            pal.text
+        }
     } else {
         pal.muted
     };
@@ -680,13 +775,37 @@ pub fn glyph_button(
             ));
         }
         Mark::Cross => {
-            p.line_segment([egui::pos2(c.x - 3.5, c.y - 3.5), egui::pos2(c.x + 3.5, c.y + 3.5)], s);
-            p.line_segment([egui::pos2(c.x + 3.5, c.y - 3.5), egui::pos2(c.x - 3.5, c.y + 3.5)], s);
+            p.line_segment(
+                [
+                    egui::pos2(c.x - 3.5, c.y - 3.5),
+                    egui::pos2(c.x + 3.5, c.y + 3.5),
+                ],
+                s,
+            );
+            p.line_segment(
+                [
+                    egui::pos2(c.x + 3.5, c.y - 3.5),
+                    egui::pos2(c.x - 3.5, c.y + 3.5),
+                ],
+                s,
+            );
         }
         Mark::Pencil => {
             // nib on a shaft, drawn on the diagonal
-            p.line_segment([egui::pos2(c.x - 4.0, c.y + 4.0), egui::pos2(c.x + 3.0, c.y - 3.0)], s);
-            p.line_segment([egui::pos2(c.x + 2.0, c.y - 4.5), egui::pos2(c.x + 4.5, c.y - 2.0)], s);
+            p.line_segment(
+                [
+                    egui::pos2(c.x - 4.0, c.y + 4.0),
+                    egui::pos2(c.x + 3.0, c.y - 3.0),
+                ],
+                s,
+            );
+            p.line_segment(
+                [
+                    egui::pos2(c.x + 2.0, c.y - 4.5),
+                    egui::pos2(c.x + 4.5, c.y - 2.0),
+                ],
+                s,
+            );
             p.circle_filled(egui::pos2(c.x - 4.0, c.y + 4.0), 1.1, col);
         }
     }
@@ -699,7 +818,12 @@ pub fn glyph_button(
 
 /// Theme swatch chip: three gauge stops over the theme's own background, so
 /// a theme is chosen by looking at it rather than by reading its name.
-pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette) -> egui::Response {
+pub fn theme_swatch(
+    ui: &mut egui::Ui,
+    name: &str,
+    selected: bool,
+    pal: &Palette,
+) -> egui::Response {
     let other = theme::palette(name);
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(80.0, 46.0), Sense::click());
     let p = ui.painter();
@@ -718,7 +842,10 @@ pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette
         Vec2::new(rect.width() - 18.0, 4.0),
     );
     let seg = strip.width() / 3.0;
-    for (i, c) in [other.gauge[0], other.gauge[1], other.gauge[3]].iter().enumerate() {
+    for (i, c) in [other.gauge[0], other.gauge[1], other.gauge[3]]
+        .iter()
+        .enumerate()
+    {
         let r = Rect::from_min_size(
             egui::pos2(strip.left() + seg * i as f32, strip.top()),
             Vec2::new(seg - 3.0, strip.height()),
@@ -738,7 +865,10 @@ pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette
         rect.width() - 12.0,
     );
     p.galley(
-        egui::pos2(rect.center().x - label.rect.width() / 2.0, rect.bottom() - 20.0),
+        egui::pos2(
+            rect.center().x - label.rect.width() / 2.0,
+            rect.bottom() - 20.0,
+        ),
         label,
         other.text,
     );
@@ -750,9 +880,27 @@ pub fn theme_swatch(ui: &mut egui::Ui, name: &str, selected: bool, pal: &Palette
 /// than no affordance at all.
 pub fn open_arrow(p: &egui::Painter, c: Pos2, color: Color32) {
     let s = Stroke::new(1.3_f32, color);
-    p.line_segment([egui::pos2(c.x - 3.0, c.y + 3.0), egui::pos2(c.x + 3.0, c.y - 3.0)], s);
-    p.line_segment([egui::pos2(c.x - 0.5, c.y - 3.0), egui::pos2(c.x + 3.0, c.y - 3.0)], s);
-    p.line_segment([egui::pos2(c.x + 3.0, c.y - 3.0), egui::pos2(c.x + 3.0, c.y + 0.5)], s);
+    p.line_segment(
+        [
+            egui::pos2(c.x - 3.0, c.y + 3.0),
+            egui::pos2(c.x + 3.0, c.y - 3.0),
+        ],
+        s,
+    );
+    p.line_segment(
+        [
+            egui::pos2(c.x - 0.5, c.y - 3.0),
+            egui::pos2(c.x + 3.0, c.y - 3.0),
+        ],
+        s,
+    );
+    p.line_segment(
+        [
+            egui::pos2(c.x + 3.0, c.y - 3.0),
+            egui::pos2(c.x + 3.0, c.y + 0.5),
+        ],
+        s,
+    );
 }
 
 /// A soft dot on the gauge rim, marking a provider an agent is working
@@ -834,19 +982,32 @@ pub fn secret_field(
     revealed: &mut bool,
     pal: &Palette,
 ) -> bool {
-    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(1.0), 14.0), Sense::hover());
+    let (r, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width().max(1.0), 14.0),
+        Sense::hover(),
+    );
     let col = theme::mix(pal.faint, pal.muted, 0.55);
     let g = ui.painter().layout_job(theme::caps_job(label, 9.0, col));
-    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+    ui.painter()
+        .galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
     if !value.is_empty() {
         let word = if *revealed { "hide" } else { "show" };
-        let g = ui.painter().layout_job(theme::caps_job(word, 9.0, pal.accent));
+        let g = ui
+            .painter()
+            .layout_job(theme::caps_job(word, 9.0, pal.accent));
         let w = g.rect.width();
-        let hit = Rect::from_min_size(egui::pos2(r.right() - w - 6.0, r.top() - 3.0), Vec2::new(w + 12.0, 18.0));
-        if ui.interact(hit, ui.id().with(("reveal", label)), Sense::click()).clicked() {
+        let hit = Rect::from_min_size(
+            egui::pos2(r.right() - w - 6.0, r.top() - 3.0),
+            Vec2::new(w + 12.0, 18.0),
+        );
+        if ui
+            .interact(hit, ui.id().with(("reveal", label)), Sense::click())
+            .clicked()
+        {
             *revealed = !*revealed;
         }
-        ui.painter().galley(egui::pos2(r.right() - w, r.top()), g, pal.accent);
+        ui.painter()
+            .galley(egui::pos2(r.right() - w, r.top()), g, pal.accent);
     }
     ui.add_space(4.0);
     let h = 28.0;
@@ -877,10 +1038,14 @@ pub fn field(
     value: &mut String,
     pal: &Palette,
 ) -> bool {
-    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(1.0), 13.0), Sense::hover());
+    let (r, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width().max(1.0), 13.0),
+        Sense::hover(),
+    );
     let col = theme::mix(pal.faint, pal.muted, 0.55);
     let g = ui.painter().layout_job(theme::caps_job(label, 9.0, col));
-    ui.painter().galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
+    ui.painter()
+        .galley(egui::pos2(r.left() + 2.0, r.top()), g, col);
     ui.add_space(4.0);
     let changed = text_field(ui, value, hint, pal);
     ui.add_space(10.0);

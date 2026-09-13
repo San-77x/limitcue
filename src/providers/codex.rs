@@ -1,5 +1,5 @@
 use super::{home, http_get_json, read_json_file, Provider};
-use crate::types::{Fidelity, Reading, Snapshot, Window, now_unix};
+use crate::types::{now_unix, Fidelity, Reading, Snapshot, Window};
 
 /// One Codex login, read from a CLI config directory.
 pub struct Codex {
@@ -77,7 +77,10 @@ fn parse(j: &serde_json::Value, now: u64) -> Reading {
                 continue;
             }
             windows.push(Window {
-                label: window_label(w.get("limit_window_seconds").and_then(|s| s.as_u64()), fallback),
+                label: window_label(
+                    w.get("limit_window_seconds").and_then(|s| s.as_u64()),
+                    fallback,
+                ),
                 remaining_percent: used.map(|u| (100.0 - u).clamp(0.0, 100.0)),
                 remaining_count: None,
                 total_count: None,
@@ -88,14 +91,23 @@ fn parse(j: &serde_json::Value, now: u64) -> Reading {
     if windows.is_empty() {
         Reading::Error("no windows in response".into())
     } else {
-        Reading::Ok { windows, detail: None }
+        Reading::Ok {
+            windows,
+            detail: None,
+        }
     }
 }
 
 impl Provider for Codex {
-    fn id(&self) -> String { self.id.clone() }
-    fn fidelity(&self) -> Fidelity { Fidelity::Official }
-    fn is_present(&self) -> bool { self.dir.join("auth.json").exists() }
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+    fn fidelity(&self) -> Fidelity {
+        Fidelity::Official
+    }
+    fn is_present(&self) -> bool {
+        self.dir.join("auth.json").exists()
+    }
 
     fn snapshot(&self) -> Snapshot {
         let make = |reading| Snapshot {
@@ -109,10 +121,18 @@ impl Provider for Codex {
         let Some(v) = read_json_file(&self.dir.join("auth.json")) else {
             return make(Reading::NotConfigured);
         };
-        let Some(token) = v.get("tokens").and_then(|t| t.get("access_token")).and_then(|s| s.as_str()) else {
+        let Some(token) = v
+            .get("tokens")
+            .and_then(|t| t.get("access_token"))
+            .and_then(|s| s.as_str())
+        else {
             return make(Reading::NotConfigured);
         };
-        let account_id = v.get("last_account").and_then(|a| a.get("account_id")).and_then(|s| s.as_str()).unwrap_or("");
+        let account_id = v
+            .get("last_account")
+            .and_then(|a| a.get("account_id"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
         let headers = [
             ("Authorization", format!("Bearer {token}")),
             ("chatgpt-account-id", account_id.to_string()),
@@ -201,7 +221,10 @@ mod tests {
 
     #[test]
     fn over_use_is_clamped_rather_than_reported_as_negative() {
-        let r = parse(&json!({"rate_limit": {"primary_window": {"used_percent": 130.0}}}), NOW);
+        let r = parse(
+            &json!({"rate_limit": {"primary_window": {"used_percent": 130.0}}}),
+            NOW,
+        );
         assert_eq!(windows(&r)[0].remaining_percent, Some(0.0));
     }
 

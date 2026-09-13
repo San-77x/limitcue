@@ -362,7 +362,11 @@ pub fn detect(cfg: &crate::config::Config) -> Vec<Found> {
             }
             _ => continue,
         };
-        out.push(Found { preset: p, because, already });
+        out.push(Found {
+            preset: p,
+            because,
+            already,
+        });
     }
     out
 }

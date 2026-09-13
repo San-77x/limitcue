@@ -2,14 +2,16 @@ use serde_json::Value;
 
 use super::{home, http_get_json, read_json_file, Provider};
 use crate::config::ProviderConfig;
-use crate::types::{Fidelity, Reading, Snapshot, Window, now_unix};
+use crate::types::{now_unix, Fidelity, Reading, Snapshot, Window};
 
 pub struct Kimi {
     cfg: Option<ProviderConfig>,
 }
 
 impl Kimi {
-    pub fn new(cfg: Option<ProviderConfig>) -> Self { Self { cfg } }
+    pub fn new(cfg: Option<ProviderConfig>) -> Self {
+        Self { cfg }
+    }
 }
 
 /// Some Kimi responses use strings for numeric fields.
@@ -56,7 +58,10 @@ fn row_to_window(detail: &Value, fallback_label: &str, window: &Value) -> Option
         .map(String::from)
         .unwrap_or_else(|| {
             let dur = num(window, "duration").unwrap_or(0.0);
-            let unit = window.get("timeUnit").and_then(|u| u.as_str()).unwrap_or("");
+            let unit = window
+                .get("timeUnit")
+                .and_then(|u| u.as_str())
+                .unwrap_or("");
             if dur > 0.0 {
                 format!("{dur:.0} {unit}")
             } else {
@@ -102,7 +107,10 @@ fn parse(v: &Value) -> Reading {
     if windows.is_empty() {
         Reading::Error("no windows in response".into())
     } else {
-        Reading::Ok { windows, detail: None }
+        Reading::Ok {
+            windows,
+            detail: None,
+        }
     }
 }
 
@@ -118,7 +126,12 @@ fn key_from_kimi_config() -> Option<String> {
         }
         if in_provider {
             if let Some(rest) = l.strip_prefix("api_key") {
-                let val = rest.split('=').nth(1)?.trim().trim_matches('"').trim_matches('\'');
+                let val = rest
+                    .split('=')
+                    .nth(1)?
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'');
                 if !val.is_empty() {
                     return Some(val.to_string());
                 }
@@ -129,13 +142,19 @@ fn key_from_kimi_config() -> Option<String> {
 }
 
 impl Provider for Kimi {
-    fn id(&self) -> String { "kimi".into() }
-    fn fidelity(&self) -> Fidelity { Fidelity::Derived }
+    fn id(&self) -> String {
+        "kimi".into()
+    }
+    fn fidelity(&self) -> Fidelity {
+        Fidelity::Derived
+    }
     fn is_present(&self) -> bool {
         self.cfg.as_ref().and_then(|c| c.api_key.clone()).is_some()
             || std::env::var("KIMI_API_KEY").is_ok()
             || key_from_kimi_config().is_some()
-            || home().join(".kimi-code/credentials/kimi-code.json").exists()
+            || home()
+                .join(".kimi-code/credentials/kimi-code.json")
+                .exists()
     }
 
     fn snapshot(&self) -> Snapshot {
@@ -159,18 +178,29 @@ impl Provider for Kimi {
                     .and_then(|o| o.get("accessToken"))
                     .and_then(|s| s.as_str())
                     .map(String::from)
-                    .or_else(|| v.get("accessToken").and_then(|s| s.as_str()).map(String::from))
+                    .or_else(|| {
+                        v.get("accessToken")
+                            .and_then(|s| s.as_str())
+                            .map(String::from)
+                    })
             });
-        let Some(token) = token else { return make(Reading::NotConfigured) };
+        let Some(token) = token else {
+            return make(Reading::NotConfigured);
+        };
         let base = self
             .cfg
             .as_ref()
             .and_then(|c| c.base_url.clone())
-            .unwrap_or_else(|| std::env::var("KIMI_CODE_BASE_URL").unwrap_or_else(|_| "https://api.kimi.com/coding/v1".into()));
+            .unwrap_or_else(|| {
+                std::env::var("KIMI_CODE_BASE_URL")
+                    .unwrap_or_else(|_| "https://api.kimi.com/coding/v1".into())
+            });
         let url = format!("{base}/usages");
         match http_get_json(&url, &[("Authorization", format!("Bearer {token}"))]) {
             Ok(v) => make(parse(&v)),
-            Err(e) if e == "auth-failed" => make(Reading::NeedsAuth("check KIMI_API_KEY / kimi login".into())),
+            Err(e) if e == "auth-failed" => {
+                make(Reading::NeedsAuth("check KIMI_API_KEY / kimi login".into()))
+            }
             Err(e) => make(Reading::Error(e)),
         }
     }

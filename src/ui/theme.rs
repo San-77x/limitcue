@@ -3,7 +3,9 @@
 //! Every color in the UI comes from a [`Palette`]; nothing else hard-codes
 //! colors. All themes are dark and share the same semantic roles.
 
-use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, FontId, Rounding, Stroke, Style};
+use eframe::egui::{
+    self, Color32, FontData, FontDefinitions, FontFamily, FontId, Rounding, Stroke, Style,
+};
 
 /// Semantic palette for one theme.
 #[derive(Debug, Clone, Copy)]
@@ -439,7 +441,11 @@ pub fn monogram(id: &str) -> String {
         "grok" => "G".into(),
         "minimax" => "M".into(),
         "kimi" => "K".into(),
-        other => other.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into()),
+        other => other
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "?".into()),
     }
 }
 
@@ -471,18 +477,33 @@ pub fn install_fonts(ctx: &egui::Context) {
     // eframe's `default_fonts` feature is off: nothing is registered for us, so
     // every family the app asks for has to be defined here.
     let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert("inter".into(), FontData::from_static(INTER_REGULAR));
-    fonts.font_data.insert("inter-medium".into(), FontData::from_static(INTER_MEDIUM));
-    fonts.font_data.insert("inter-semibold".into(), FontData::from_static(INTER_SEMIBOLD));
-    fonts.font_data.insert("hack".into(), FontData::from_static(HACK_REGULAR));
-    fonts.families.insert(FontFamily::Proportional, vec!["inter".into()]);
-    fonts.families.insert(FontFamily::Monospace, vec!["hack".into()]);
+    fonts
+        .font_data
+        .insert("inter".into(), FontData::from_static(INTER_REGULAR));
+    fonts
+        .font_data
+        .insert("inter-medium".into(), FontData::from_static(INTER_MEDIUM));
+    fonts.font_data.insert(
+        "inter-semibold".into(),
+        FontData::from_static(INTER_SEMIBOLD),
+    );
+    fonts
+        .font_data
+        .insert("hack".into(), FontData::from_static(HACK_REGULAR));
     fonts
         .families
-        .insert(FontFamily::Name("inter-medium".into()), vec!["inter-medium".into()]);
+        .insert(FontFamily::Proportional, vec!["inter".into()]);
     fonts
         .families
-        .insert(FontFamily::Name("inter-semibold".into()), vec!["inter-semibold".into()]);
+        .insert(FontFamily::Monospace, vec!["hack".into()]);
+    fonts.families.insert(
+        FontFamily::Name("inter-medium".into()),
+        vec!["inter-medium".into()],
+    );
+    fonts.families.insert(
+        FontFamily::Name("inter-semibold".into()),
+        vec!["inter-semibold".into()],
+    );
     ctx.set_fonts(fonts);
 }
 

@@ -35,9 +35,7 @@ impl Grok {
                 .map(|c| c.name.clone())
                 .unwrap_or_else(|| "Grok".into()),
             api_key: cfg.and_then(|c| c.api_key.clone()),
-            default_login: cfg
-                .map(|c| c.credentials_dir.is_none())
-                .unwrap_or(true),
+            default_login: cfg.map(|c| c.credentials_dir.is_none()).unwrap_or(true),
         }
     }
 }
@@ -55,7 +53,11 @@ fn token_from_auth_json(v: &Value) -> Option<String> {
     let obj = v.as_object()?;
     let mut legacy = None;
     for (scope, entry) in obj {
-        let Some(key) = entry.get("key").and_then(|k| k.as_str()).filter(|s| !s.is_empty()) else {
+        let Some(key) = entry
+            .get("key")
+            .and_then(|k| k.as_str())
+            .filter(|s| !s.is_empty())
+        else {
             continue;
         };
         if scope.contains("auth.x.ai") {
@@ -114,7 +116,11 @@ fn parse(v: &Value) -> Reading {
     if limit > 0.0 {
         let remaining = ((limit - used) / limit * 100.0).clamp(0.0, 100.0);
         windows.push(Window {
-            label: format!("quota ${:.2} of ${:.0}", usd((limit - used).max(0.0)), usd(limit)),
+            label: format!(
+                "quota ${:.2} of ${:.0}",
+                usd((limit - used).max(0.0)),
+                usd(limit)
+            ),
             remaining_percent: Some(remaining),
             remaining_count: None,
             total_count: None,
@@ -139,7 +145,10 @@ fn parse(v: &Value) -> Reading {
         });
     }
 
-    if windows.iter().all(|w| w.remaining_percent.is_none() && w.resets_at.is_none()) {
+    if windows
+        .iter()
+        .all(|w| w.remaining_percent.is_none() && w.resets_at.is_none())
+    {
         return Reading::Error("no windows in response".into());
     }
     Reading::Ok {
@@ -178,8 +187,18 @@ impl Provider for Grok {
             .filter(|k| !k.is_empty())
             .or_else(|| std::env::var("XAI_API_KEY").ok())
             .or_else(|| std::env::var("GROK_API_KEY").ok())
-            .or_else(|| read_json_file(&self.dir.join("auth.json")).as_ref().and_then(token_from_auth_json))
-            .or_else(|| if self.default_login { token_from_opencode() } else { None });
+            .or_else(|| {
+                read_json_file(&self.dir.join("auth.json"))
+                    .as_ref()
+                    .and_then(token_from_auth_json)
+            })
+            .or_else(|| {
+                if self.default_login {
+                    token_from_opencode()
+                } else {
+                    None
+                }
+            });
         let Some(token) = token else {
             return make(Reading::NotConfigured);
         };

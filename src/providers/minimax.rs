@@ -1,16 +1,21 @@
 use super::{http_get_json, json_path, Provider};
 use crate::config::ProviderConfig;
-use crate::types::{Fidelity, Reading, Snapshot, Window, now_unix};
+use crate::types::{now_unix, Fidelity, Reading, Snapshot, Window};
 
 pub struct MiniMax {
     cfg: ProviderConfig,
 }
 
 impl MiniMax {
-    pub fn new(cfg: ProviderConfig) -> Self { Self { cfg } }
+    pub fn new(cfg: ProviderConfig) -> Self {
+        Self { cfg }
+    }
 
     fn key(&self) -> Option<String> {
-        self.cfg.api_key.clone().or_else(|| std::env::var("MINIMAX_API_KEY").ok())
+        self.cfg
+            .api_key
+            .clone()
+            .or_else(|| std::env::var("MINIMAX_API_KEY").ok())
     }
 }
 
@@ -20,8 +25,14 @@ impl MiniMax {
 /// this one carries its own error channel inside a 200, which is the sort of
 /// thing that silently starts reading as "no windows" when it changes.
 fn parse(v: &serde_json::Value) -> Reading {
-    if json_path(v, "base_resp.status_code").and_then(|c| c.as_i64()).unwrap_or(0) != 0 {
-        let msg = json_path(v, "base_resp.status_msg").and_then(|m| m.as_str()).unwrap_or("");
+    if json_path(v, "base_resp.status_code")
+        .and_then(|c| c.as_i64())
+        .unwrap_or(0)
+        != 0
+    {
+        let msg = json_path(v, "base_resp.status_msg")
+            .and_then(|m| m.as_str())
+            .unwrap_or("");
         return Reading::NeedsAuth(msg.into());
     }
     let mut windows = Vec::new();
@@ -53,14 +64,23 @@ fn parse(v: &serde_json::Value) -> Reading {
     if windows.is_empty() {
         Reading::Error("no windows in response".into())
     } else {
-        Reading::Ok { windows, detail: None }
+        Reading::Ok {
+            windows,
+            detail: None,
+        }
     }
 }
 
 impl Provider for MiniMax {
-    fn id(&self) -> String { "minimax".into() }
-    fn fidelity(&self) -> Fidelity { Fidelity::Official }
-    fn is_present(&self) -> bool { self.key().is_some() }
+    fn id(&self) -> String {
+        "minimax".into()
+    }
+    fn fidelity(&self) -> Fidelity {
+        Fidelity::Official
+    }
+    fn is_present(&self) -> bool {
+        self.key().is_some()
+    }
 
     fn snapshot(&self) -> Snapshot {
         let make = |reading| Snapshot {
@@ -71,8 +91,14 @@ impl Provider for MiniMax {
             fetched_at: now_unix(),
             fetch_error: None,
         };
-        let Some(key) = self.key() else { return make(Reading::NotConfigured) };
-        let base = self.cfg.base_url.as_deref().unwrap_or("https://api.minimax.io");
+        let Some(key) = self.key() else {
+            return make(Reading::NotConfigured);
+        };
+        let base = self
+            .cfg
+            .base_url
+            .as_deref()
+            .unwrap_or("https://api.minimax.io");
         let url = format!("{base}/v1/token_plan/remains");
         let headers = [
             ("Authorization", format!("Bearer {key}")),
@@ -142,7 +168,8 @@ mod tests {
     fn an_error_carried_inside_a_200_is_treated_as_an_auth_problem() {
         // This API reports failure in the body, not the status line — so a
         // bad key arrives looking like a perfectly good response.
-        let r = parse(&json!({"base_resp": {"status_code": 1004, "status_msg": "invalid api key"}}));
+        let r =
+            parse(&json!({"base_resp": {"status_code": 1004, "status_msg": "invalid api key"}}));
         match r {
             Reading::NeedsAuth(m) => assert_eq!(m, "invalid api key"),
             other => panic!("expected NeedsAuth, got {other:?}"),

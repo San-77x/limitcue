@@ -45,9 +45,13 @@ impl Notifier {
         }
         let threshold = cfg.notify_threshold.clamp(1.0, 99.0);
         for s in snaps {
-            let Reading::Ok { windows, .. } = &s.reading else { continue };
+            let Reading::Ok { windows, .. } = &s.reading else {
+                continue;
+            };
             for w in windows {
-                let Some(pct) = w.remaining_percent else { continue };
+                let Some(pct) = w.remaining_percent else {
+                    continue;
+                };
                 let key = format!("{}|{}", s.provider_id, w.label);
                 let was = self.latched.contains_key(&key);
                 if pct <= threshold && !was {
@@ -72,9 +76,13 @@ impl Notifier {
     fn record(&mut self, snaps: &[Snapshot], cfg: &Config) {
         let threshold = cfg.notify_threshold.clamp(1.0, 99.0);
         for s in snaps {
-            let Reading::Ok { windows, .. } = &s.reading else { continue };
+            let Reading::Ok { windows, .. } = &s.reading else {
+                continue;
+            };
             for w in windows {
-                let Some(pct) = w.remaining_percent else { continue };
+                let Some(pct) = w.remaining_percent else {
+                    continue;
+                };
                 let key = format!("{}|{}", s.provider_id, w.label);
                 if pct <= threshold {
                     self.latched.insert(key, ());
@@ -127,22 +135,28 @@ impl Notifier {
         );
         let Ok(proxy) = proxy else { return false };
         let mut hints: HashMap<&str, zbus::zvariant::Value> = HashMap::new();
-        hints.insert("urgency", zbus::zvariant::Value::U8(if urgent { 2 } else { 1 }));
+        hints.insert(
+            "urgency",
+            zbus::zvariant::Value::U8(if urgent { 2 } else { 1 }),
+        );
         // Collapse repeats from the same provider into one tray entry.
-        hints.insert("x-canonical-private-synchronous", zbus::zvariant::Value::from("limitcue"));
+        hints.insert(
+            "x-canonical-private-synchronous",
+            zbus::zvariant::Value::from("limitcue"),
+        );
         proxy
             .call::<_, _, u32>(
-            "Notify",
-            &(
-                "LimitCue",
-                0u32,
-                "utilities-system-monitor",
-                summary,
-                body,
-                Vec::<&str>::new(),
-                hints,
-                if urgent { 0i32 } else { 8000i32 },
-            ),
+                "Notify",
+                &(
+                    "LimitCue",
+                    0u32,
+                    "utilities-system-monitor",
+                    summary,
+                    body,
+                    Vec::<&str>::new(),
+                    hints,
+                    if urgent { 0i32 } else { 8000i32 },
+                ),
             )
             .is_ok()
     }
@@ -170,7 +184,11 @@ mod tests {
     use crate::types::{Fidelity, Window};
 
     fn cfg() -> Config {
-        Config { notify: true, notify_threshold: 15.0, ..Default::default() }
+        Config {
+            notify: true,
+            notify_threshold: 15.0,
+            ..Default::default()
+        }
     }
 
     fn snap(pct: f64) -> Vec<Snapshot> {
@@ -196,7 +214,11 @@ mod tests {
     /// A notifier with no bus: `send` is a no-op, so the latch logic is what
     /// the tests actually exercise.
     fn offline() -> Notifier {
-        Notifier { conn: None, latched: HashMap::new(), primed: true }
+        Notifier {
+            conn: None,
+            latched: HashMap::new(),
+            primed: true,
+        }
     }
 
     #[test]
@@ -205,7 +227,10 @@ mod tests {
         n.review(&snap(10.0), &cfg());
         assert!(n.latched.contains_key("p|5h"));
         n.review(&snap(9.0), &cfg());
-        assert!(n.latched.contains_key("p|5h"), "still latched, not re-fired");
+        assert!(
+            n.latched.contains_key("p|5h"),
+            "still latched, not re-fired"
+        );
     }
 
     #[test]
@@ -226,7 +251,11 @@ mod tests {
 
     #[test]
     fn a_first_reading_never_announces() {
-        let mut n = Notifier { conn: None, latched: HashMap::new(), primed: false };
+        let mut n = Notifier {
+            conn: None,
+            latched: HashMap::new(),
+            primed: false,
+        };
         n.review(&snap(2.0), &cfg());
         assert!(n.latched.contains_key("p|5h"), "recorded");
         assert!(n.primed, "and armed for next time");

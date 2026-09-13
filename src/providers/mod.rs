@@ -38,7 +38,11 @@ pub fn build_all(cfg: &Config) -> Vec<Box<dyn Provider>> {
         }
         v.push(adapter_for(p));
     }
-    if !cfg.provider.iter().any(|p| p.id == "kimi" && p.enabled != Some(false)) {
+    if !cfg
+        .provider
+        .iter()
+        .any(|p| p.id == "kimi" && p.enabled != Some(false))
+    {
         v.push(Box::new(kimi::Kimi::new(None)));
     }
     v.retain(|p| !cfg.disabled.contains(&p.id()));

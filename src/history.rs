@@ -33,7 +33,10 @@ pub struct History {
 }
 
 fn path() -> std::path::PathBuf {
-    dirs::data_dir().unwrap_or_default().join("limitcue").join("history.json")
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join("limitcue")
+        .join("history.json")
 }
 
 impl History {
@@ -84,10 +87,17 @@ impl History {
     /// Fold a batch of readings in, dropping anything stale.
     pub fn record(&mut self, snaps: &[Snapshot]) {
         for s in snaps {
-            let Reading::Ok { windows, .. } = &s.reading else { continue };
+            let Reading::Ok { windows, .. } = &s.reading else {
+                continue;
+            };
             for w in windows {
-                let Some(pct) = w.remaining_percent else { continue };
-                let series = self.series.entry(key(&s.provider_id, &w.label)).or_default();
+                let Some(pct) = w.remaining_percent else {
+                    continue;
+                };
+                let series = self
+                    .series
+                    .entry(key(&s.provider_id, &w.label))
+                    .or_default();
                 // A refill resets the clock: averaging across it would report
                 // a gentle drain for a window that just jumped back to full.
                 if let Some((_, last)) = series.back() {
@@ -153,9 +163,10 @@ pub fn projection(remaining: f64, burn_per_hour: f64, resets_in: Option<u64>) ->
     match resets_in {
         // Kept short on purpose: this sits on a 264 pt card, and an elided
         // projection is worse than none.
-        Some(reset) if secs_left < reset => {
-            Some(format!("Out {} before the reset", fmt_countdown(reset - secs_left)))
-        }
+        Some(reset) if secs_left < reset => Some(format!(
+            "Out {} before the reset",
+            fmt_countdown(reset - secs_left)
+        )),
         Some(reset) => {
             let at_reset = remaining - burn_per_hour * (reset as f64 / 3600.0);
             Some(format!("About {:.0}% left at the reset", at_reset.max(0.0)))
@@ -221,7 +232,10 @@ mod tests {
             h.record(&[snap(i * 600, 40.0 - i as f64 * 5.0)]);
         }
         h.record(&[snap(4200, 100.0)]); // window refilled
-        assert!(h.burn_per_hour(&key("p", "5h")).is_none(), "history restarts at the refill");
+        assert!(
+            h.burn_per_hour(&key("p", "5h")).is_none(),
+            "history restarts at the refill"
+        );
     }
 
     #[test]
@@ -232,7 +246,9 @@ mod tests {
         }
         let encoded = serde_json::to_string(&h).unwrap();
         let back: History = serde_json::from_str(&encoded).unwrap();
-        let rate = back.burn_per_hour(&key("p", "5h")).expect("the trend survives");
+        let rate = back
+            .burn_per_hour(&key("p", "5h"))
+            .expect("the trend survives");
         assert!((rate - 30.0).abs() < 0.5, "expected ~30%/h, got {rate}");
     }
 

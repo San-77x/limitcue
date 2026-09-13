@@ -63,7 +63,10 @@ impl Snapshot {
     /// Worst remaining percentage across all windows (the number you care about).
     pub fn min_remaining(&self) -> Option<f64> {
         match &self.reading {
-            Reading::Ok { windows, .. } => windows.iter().filter_map(|w| w.remaining_percent).min_by(|a, b| a.partial_cmp(b).unwrap()),
+            Reading::Ok { windows, .. } => windows
+                .iter()
+                .filter_map(|w| w.remaining_percent)
+                .min_by(|a, b| a.partial_cmp(b).unwrap()),
             _ => None,
         }
     }
@@ -79,7 +82,10 @@ impl Snapshot {
 }
 
 pub fn now_unix() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Human copy for a reset time: near resets count down ("in 51 min",
