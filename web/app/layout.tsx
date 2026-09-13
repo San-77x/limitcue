@@ -1,11 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
 
-// Served from /<repo>/ on a GitHub Pages project site; empty in development.
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 
-// Inlined rather than kept in globals.css so the font URLs carry the same
-// base path as the rest of the export.
 const fontFaces = `
 @font-face{font-family:Inter;src:url('${basePath}/fonts/Inter-Regular.ttf')}
 @font-face{font-family:Inter;src:url('${basePath}/fonts/Inter-Medium.ttf');font-weight:500}
@@ -13,16 +10,20 @@ const fontFaces = `
 `;
 
 export const metadata: Metadata = {
-  title: 'LimitCue — Know your limits before they interrupt your flow',
-  description: 'A native Linux quota monitor for AI coding plans. See usage windows and reset times without opening another browser tab.',
+  title: 'LimitCue — Always-on-top quota pill for Linux',
+  description:
+    'See how much is left on every AI coding plan you’re signed into — no browser, no fake numbers.',
   openGraph: {
-    title: 'LimitCue — Know your limits before they interrupt your flow',
-    description: 'A quiet, open-source Linux quota monitor for AI coding plans.',
+    title: 'LimitCue — Always-on-top quota pill for Linux',
+    description:
+      'See how much is left on every AI coding plan you’re signed into — no browser, no fake numbers.',
     type: 'website',
   },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <head>

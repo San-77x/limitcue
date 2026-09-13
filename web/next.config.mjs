@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 // When deployed to a GitHub Pages project site the app is served from
-// /<repo>/ rather than the domain root, so the Pages workflow sets
+// a subpath rather than the domain root, so the Pages workflow sets
 // NEXT_PUBLIC_BASE_PATH. Local development leaves it empty.
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
