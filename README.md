@@ -375,6 +375,9 @@ gdbus call --session --dest io.limitcue \
 gdbus call --session --dest io.limitcue \
   --object-path /io/limitcue/usage --method io.limitcue.Usage.Refresh
 
+# subscribe instead of polling: a signal per new reading, JSON included
+gdbus monitor --session --dest io.limitcue --object-path /io/limitcue/usage
+
 # unix socket — connect, read one JSON line, done
 socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/limitcue.sock
 ```
