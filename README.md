@@ -207,6 +207,7 @@ quiet_mode = false         # dim the gauges until you point at the notch
 notch_opacity = 0.60       # notch body opacity, 0.15-1.0
 card_opacity = 0.70        # hover usage card opacity, 0.15-1.0
 show_rail_percent = false  # show used percentages beneath notch gauges
+hide_when_idle = false     # hide the notch while the session is idle or locked
 
 [[provider]]
 id = "minimax"

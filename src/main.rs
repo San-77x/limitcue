@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod dock;
 mod history;
+mod idle;
 mod notify;
 mod providers;
 mod service;
@@ -561,6 +562,10 @@ struct App {
     dock: dock::SharedDock,
     usage: service::SharedUsage,
     activity: activity::SharedActivity,
+    idle: idle::SharedIdle,
+    /// Whether the notch is hidden because the session went idle, so the
+    /// visibility command is only sent when the state actually changes.
+    idle_hidden: bool,
     restore_sent: u32,
     /// A drag was handed to the compositor; replay the release it swallowed.
     replay_drag_release: bool,
@@ -632,6 +637,7 @@ impl App {
         let snapshots = load_state();
         spawn_poller(cfg.clone(), tx_snap, rx_tick, usage.clone());
         let activity = activity::start(cfg.clone());
+        let idle = idle::start();
         // Debug hooks: start expanded / with settings open / with a rail card
         // open (tests, screenshots).
         let expanded = std::env::var("LIMITCUE_UI_EXPANDED")
@@ -684,6 +690,8 @@ impl App {
             dock,
             usage,
             activity,
+            idle,
+            idle_hidden: false,
             restore_sent: 0,
             replay_drag_release: false,
             drag_release_at: None,
@@ -2135,6 +2143,22 @@ impl App {
         spawn_poller(self.cfg.clone(), tx_snap, rx_tick, self.usage.clone());
     }
 
+    /// Show or hide the notch to match the session's idle state, when the user
+    /// asked for it. A viewport command is only sent on an actual change.
+    fn sync_idle(&mut self, ctx: &egui::Context) {
+        use std::sync::atomic::Ordering;
+        let want_hidden = self.cfg.hide_when_idle && self.idle.load(Ordering::Relaxed);
+        if want_hidden == self.idle_hidden {
+            return;
+        }
+        self.idle_hidden = want_hidden;
+        ctx.send_viewport_cmd(ViewportCommand::Visible(!want_hidden));
+        if !want_hidden {
+            // Coming back from idle, make sure the notch is on top again.
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
+    }
+
     fn refresh(&mut self, ctx: &egui::Context) {
         let _ = self.tx_tick.send(Ctl::Refresh);
         self.refresh_at = Some(Instant::now());
@@ -2249,6 +2273,17 @@ impl eframe::App for App {
     /// shows up as a flat dark slab behind the usage card.)
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         [0.0, 0.0, 0.0, 0.0]
+    }
+
+    /// Runs before every `ui`, and also while the window is hidden, which is
+    /// what lets an idle notch notice activity and come back.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.sync_idle(ctx);
+        if self.cfg.hide_when_idle {
+            // While hidden there are no frames of our own; wake periodically
+            // so the idle flag is noticed within a couple of seconds.
+            ctx.request_repaint_after(std::time::Duration::from_secs(2));
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
