@@ -1,19 +1,30 @@
 version: 2
 updates:
+  # Group patch and minor updates so routine churn is one pull request per
+  # ecosystem; breaking majors still arrive on their own for deliberate review.
   - package-ecosystem: cargo
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    commit-message:
-      prefix: ""
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: npm
     directory: "/web"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
