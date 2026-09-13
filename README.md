@@ -480,6 +480,14 @@ compositor drag).
 - **Provider config is mode `0600`** (user-only readable) since it may contain
   inline keys.
 
+## Accessibility
+
+LimitCue builds with egui's `accesskit` integration, so assistive technology
+(AT-SPI on Linux) can see the interface: the notch and pill controls, the
+settings switches and sliders, the provider rows, and the collapsed chips
+expose labels, roles and states. Painting is custom, so coverage is partial —
+if something is announced poorly or not at all, an issue is welcome.
+
 ## Contributing
 
 Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the
