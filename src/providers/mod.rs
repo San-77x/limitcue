@@ -103,29 +103,40 @@ pub fn probe(cfg: &ProviderConfig) -> Snapshot {
 
 /// GET a URL with headers; returns parsed JSON. Errors carry a readable message.
 pub fn http_get_json(url: &str, headers: &[(&str, String)]) -> Result<Value, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(30))
-        .timeout_write(Duration::from_secs(10))
-        .build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(10)))
+        .timeout_global(Some(Duration::from_secs(30)))
+        .build()
+        .into();
     let mut req = agent.get(url);
     for (k, v) in headers {
-        req = req.set(k, v);
+        req = req.header(*k, v.as_str());
     }
     match req.call() {
-        Ok(resp) => resp
-            .into_json()
+        Ok(mut resp) => resp
+            .body_mut()
+            .read_json::<Value>()
             .map_err(|e| format!("bad JSON response: {e}")),
-        Err(ureq::Error::Status(401, _)) | Err(ureq::Error::Status(403, _)) => {
+        Err(ureq::Error::StatusCode(401)) | Err(ureq::Error::StatusCode(403)) => {
             Err("auth-failed".into())
         }
-        Err(ureq::Error::Status(429, _)) => Err("rate-limited".into()),
-        // `ureq`'s Display for a transport error embeds the full URL, which in
-        // a card elides to "request failed: http://12…" and tells the reader
-        // nothing. The kind ("Connection Failed", "Dns Failed") is the part
-        // they can act on; the URL is in their own config.
-        Err(ureq::Error::Transport(t)) => Err(t.kind().to_string().to_lowercase()),
-        Err(ureq::Error::Status(code, _)) => Err(format!("server said {code}")),
+        Err(ureq::Error::StatusCode(429)) => Err("rate-limited".into()),
+        Err(ureq::Error::StatusCode(code)) => Err(format!("server said {code}")),
+        // Give the reader the actionable kind, not a dump of the failing URL.
+        // The URL is already in their own config; "connection failed" is the
+        // part that tells them what to do next.
+        Err(e) => Err(match e {
+            ureq::Error::HostNotFound => "dns failed",
+            ureq::Error::ConnectionFailed => "connection failed",
+            ureq::Error::Timeout(_) => "timed out",
+            ureq::Error::Io(_) => "io error",
+            ureq::Error::BadUri(_) => "bad url",
+            ureq::Error::RedirectFailed | ureq::Error::TooManyRedirects => "redirect failed",
+            ureq::Error::InvalidProxyUrl => "bad proxy settings",
+            ureq::Error::Protocol(_) => "protocol error",
+            _ => "request failed",
+        }
+        .into()),
     }
 }
 
