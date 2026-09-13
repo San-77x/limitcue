@@ -1,0 +1,48 @@
+# Supply-chain policy. Run locally with `cargo deny check`; CI runs the same
+# checks in the `deny` job. Sections left at their defaults are omitted.
+
+[advisories]
+# RustSec advisories. Nothing is exempted today; add an entry here (with a
+# comment and a link) rather than removing the check when one is unavoidable.
+ignore = []
+
+[licenses]
+# Every crate in the tree, for every target, must resolve to one of these.
+# self_cell is dual Apache-2.0 OR GPL-2.0-only, satisfied by Apache here.
+confidence-threshold = 0.9
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+exceptions = [
+    # LGPL-2.1-or-later, but r-efi only enters the graph for UEFI targets and
+    # is not linked into the Linux binary.
+    { allow = ["LGPL-2.1-or-later"], crate = "r-efi" },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+deny = [
+    # ureq is built on rustls; a second TLS stack must not sneak in.
+    "native-tls",
+    "openssl",
+    "openssl-sys",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
