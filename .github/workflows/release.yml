@@ -58,6 +58,6 @@ jobs:
               cp limitcue.desktop ~/.config/autostart/
           EOF
           (cd out && tar czf ../limitcue-linux-x86_64.tar.gz .)
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: limitcue-linux-x86_64.tar.gz
