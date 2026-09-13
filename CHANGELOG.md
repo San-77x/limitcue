@@ -6,6 +6,10 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.1] - 2026-09-13
+
 ### Added
 
 - Optional system-tray icon (`tray = true`): a StatusNotifierItem whose ring
@@ -55,5 +59,6 @@ The first public release.
 - A KWin integration for edge snapping and persisted dock position on KDE
   Plasma (Wayland and X11).
 
-[Unreleased]: https://github.com/San-77x/limitcue/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/San-77x/limitcue/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/San-77x/limitcue/releases/tag/v0.1.1
 [0.1.0]: https://github.com/San-77x/limitcue/releases/tag/v0.1.0
