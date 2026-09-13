@@ -39,6 +39,12 @@ jobs:
       - name: tests
         run: cargo test --all-targets
 
+      # The published crate must build from the files the packaging rules
+      # include. An `exclude` that drops something an include_str!/include_bytes!
+      # needs only shows up here, not in a normal build.
+      - name: package
+        run: cargo package
+
       # The compositor integration is JavaScript KWin runs, so cargo cannot
       # see it. Its geometry maths is where the multi-monitor docking bugs
       # lived, and it has its own tests.
