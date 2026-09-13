@@ -8,7 +8,7 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
-## [0.1.0]
+## [0.1.0] - 2026-09-13
 
 The first public release.
 

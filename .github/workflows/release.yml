@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
 
+# The default GITHUB_TOKEN is read-only, which is not enough to create the
+# release the last step publishes.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -14,7 +19,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libwayland-dev
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target x86_64-unknown-linux-gnu
-      - run: cargo install cargo-appimage || true
       - name: package
         run: |
           mkdir -p out/kwin
