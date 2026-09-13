@@ -58,6 +58,9 @@ jobs:
               cp limitcue.desktop ~/.config/autostart/
           EOF
           (cd out && tar czf ../limitcue-linux-x86_64.tar.gz .)
+          sha256sum limitcue-linux-x86_64.tar.gz > limitcue-linux-x86_64.tar.gz.sha256
       - uses: softprops/action-gh-release@v3
         with:
-          files: limitcue-linux-x86_64.tar.gz
+          files: |
+            limitcue-linux-x86_64.tar.gz
+            limitcue-linux-x86_64.tar.gz.sha256

@@ -1,0 +1,35 @@
+# Maintainer: LimitCue contributors <https://github.com/San-77x/limitcue>
+#
+# Prebuilt binary package. Rebuilds are only needed when pkgver changes:
+# bump pkgver, refresh sha256sums (`updpkgsums`), regenerate .SRCINFO.
+pkgname=limitcue-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Always-on-top quota pill for AI coding plans (prebuilt)"
+arch=('x86_64')
+url="https://github.com/San-77x/limitcue"
+license=('MIT')
+# The release binary is dynamically linked against the usual desktop stack.
+# Adjust if a linter flags a library that is pulled in transitively.
+depends=('glibc' 'gcc-libs' 'libxcb' 'libxkbcommon' 'wayland')
+provides=('limitcue')
+conflicts=('limitcue')
+options=('!strip')
+
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/limitcue-linux-x86_64.tar.gz")
+sha256sums=('7220f8a671dcbb45088ba01952c29d750cf528bb089b1794b2be13b104f3f95f')
+
+package() {
+  install -Dm755 limitcue "$pkgdir/usr/bin/limitcue"
+  install -Dm644 limitcue.desktop "$pkgdir/usr/share/applications/limitcue.desktop"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+  # Optional KWin integration: without it, edge docking and position
+  # persistence are unavailable. `sh /usr/share/limitcue/install-kwin.sh` or
+  # the app's own updater enables it on the user's next login.
+  install -Dm644 kwin/limitcue-integrate/metadata.json \
+    "$pkgdir/usr/share/kwin/scripts/limitcue-integrate/metadata.json"
+  install -Dm644 kwin/limitcue-integrate/contents/code/main.js \
+    "$pkgdir/usr/share/kwin/scripts/limitcue-integrate/contents/code/main.js"
+}

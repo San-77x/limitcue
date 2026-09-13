@@ -11,6 +11,13 @@ rust-version = "1.95"
 keywords = ["quota", "usage", "ai", "desktop", "linux"]
 categories = ["gui", "command-line-utilities", "development-tools"]
 
+# Prebuilt-install metadata for `cargo binstall limitcue`. The release asset
+# is Linux x86_64 only, which is the only target shipped today.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/limitcue-linux-x86_64.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "."
+
 [dependencies]
 eframe = { version = "0.36", default-features = false, features = ["glow", "wayland", "x11"] }
 serde = { version = "1", features = ["derive"] }
