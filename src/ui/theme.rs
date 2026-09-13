@@ -4,7 +4,7 @@
 //! colors. All themes are dark and share the same semantic roles.
 
 use eframe::egui::{
-    self, Color32, FontData, FontDefinitions, FontFamily, FontId, Rounding, Stroke, Style,
+    self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke,
 };
 
 /// Semantic palette for one theme.
@@ -477,19 +477,22 @@ pub fn install_fonts(ctx: &egui::Context) {
     // eframe's `default_fonts` feature is off: nothing is registered for us, so
     // every family the app asks for has to be defined here.
     let mut fonts = FontDefinitions::default();
-    fonts
-        .font_data
-        .insert("inter".into(), FontData::from_static(INTER_REGULAR));
-    fonts
-        .font_data
-        .insert("inter-medium".into(), FontData::from_static(INTER_MEDIUM));
+    fonts.font_data.insert(
+        "inter".into(),
+        std::sync::Arc::new(FontData::from_static(INTER_REGULAR)),
+    );
+    fonts.font_data.insert(
+        "inter-medium".into(),
+        std::sync::Arc::new(FontData::from_static(INTER_MEDIUM)),
+    );
     fonts.font_data.insert(
         "inter-semibold".into(),
-        FontData::from_static(INTER_SEMIBOLD),
+        std::sync::Arc::new(FontData::from_static(INTER_SEMIBOLD)),
     );
-    fonts
-        .font_data
-        .insert("hack".into(), FontData::from_static(HACK_REGULAR));
+    fonts.font_data.insert(
+        "hack".into(),
+        std::sync::Arc::new(FontData::from_static(HACK_REGULAR)),
+    );
     fonts
         .families
         .insert(FontFamily::Proportional, vec!["inter".into()]);
@@ -561,34 +564,36 @@ pub fn on_brand(brand: Color32) -> Color32 {
 /// Install the dark instrument look: dark tooltips, floating scrollbar,
 /// styled selection. Call once at startup.
 pub fn apply_style(ctx: &egui::Context, pal: &Palette) {
-    let mut style: Style = (*ctx.style()).clone();
-    let v = &mut style.visuals;
-    v.override_text_color = Some(pal.text);
-    v.panel_fill = pal.bg;
-    v.window_fill = pal.card; // tooltip background
-    v.window_stroke = Stroke::new(1.0_f32, pal.border); // tooltip border
-    v.menu_rounding = Rounding::same(10.0);
-    v.popup_shadow = egui::Shadow::NONE;
-    v.window_shadow = egui::Shadow::NONE;
-    // separators / non-interactive strokes follow the border color
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, pal.border);
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, pal.border);
-    v.selection.bg_fill = pal.accent.gamma_multiply(0.30);
-    v.selection.stroke = Stroke::new(1.0_f32, pal.accent);
-    style.spacing.menu_margin = egui::Margin::symmetric(8.0, 6.0);
-    style.spacing.item_spacing = egui::Vec2::new(8.0, 4.0);
-    style.spacing.scroll = {
-        let mut s = egui::style::ScrollStyle::floating();
-        s.floating_width = 5.0;
-        s.floating_allocated_width = 7.0;
-        s.bar_inner_margin = 3.0;
-        s.bar_outer_margin = 3.0;
-        s.handle_min_length = 24.0;
-        s.dormant_handle_opacity = 0.15;
-        s.active_handle_opacity = 0.6;
-        s
-    };
-    ctx.set_style(style);
+    // Applied to every theme's style once at startup, so switching the OS
+    // theme under the app cannot leave one of them undecorated.
+    ctx.all_styles_mut(|style| {
+        let v = &mut style.visuals;
+        v.override_text_color = Some(pal.text);
+        v.panel_fill = pal.bg;
+        v.window_fill = pal.card; // tooltip background
+        v.window_stroke = Stroke::new(1.0_f32, pal.border); // tooltip border
+        v.menu_corner_radius = CornerRadius::same(10);
+        v.popup_shadow = egui::Shadow::NONE;
+        v.window_shadow = egui::Shadow::NONE;
+        // separators / non-interactive strokes follow the border color
+        v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, pal.border);
+        v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, pal.border);
+        v.selection.bg_fill = pal.accent.gamma_multiply(0.30);
+        v.selection.stroke = Stroke::new(1.0_f32, pal.accent);
+        style.spacing.menu_margin = egui::Margin::symmetric(8, 6);
+        style.spacing.item_spacing = egui::Vec2::new(8.0, 4.0);
+        style.spacing.scroll = {
+            let mut s = egui::style::ScrollStyle::floating();
+            s.floating_width = 5.0;
+            s.floating_allocated_width = 7.0;
+            s.bar_inner_margin = 3.0;
+            s.bar_outer_margin = 3.0;
+            s.handle_min_length = 24.0;
+            s.dormant_handle_opacity = 0.15;
+            s.active_handle_opacity = 0.6;
+            s
+        };
+    });
 }
 
 /// Micro caps label — uppercase, letter-tracked, used for section headers,

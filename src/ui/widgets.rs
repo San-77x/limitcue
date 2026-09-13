@@ -309,6 +309,7 @@ pub fn badge(ui: &mut egui::Ui, text: &str, color: Color32, alpha: f32) -> egui:
         4.0_f32,
         Color32::TRANSPARENT,
         Stroke::new(1.0_f32, color.linear_multiply(0.55 * alpha)),
+        egui::StrokeKind::Inside,
     );
     p.galley(
         egui::pos2(
@@ -339,6 +340,7 @@ pub fn overflow_chip(ui: &mut egui::Ui, n: usize, pal: &Palette) -> egui::Respon
             Color32::TRANSPARENT
         },
         Stroke::new(1.0_f32, if hover { pal.muted } else { pal.border }),
+        egui::StrokeKind::Inside,
     );
     p.galley(
         egui::pos2(
@@ -543,6 +545,7 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool, pal: &Palette) -> egui::Response
             rect,
             rect.height() / 2.0,
             Stroke::new(1.0_f32, pal.border.gamma_multiply(1.0 - t)),
+            egui::StrokeKind::Inside,
         );
     }
     let knob_r = rect.height() / 2.0 - 3.0;
@@ -706,7 +709,13 @@ pub fn pill_button(
         ),
         (false, false) => (Color32::TRANSPARENT, pal.border, pal.faint),
     };
-    p.rect(rect, 8.0_f32, fill, Stroke::new(1.0_f32, stroke));
+    p.rect(
+        rect,
+        8.0_f32,
+        fill,
+        Stroke::new(1.0_f32, stroke),
+        egui::StrokeKind::Inside,
+    );
     p.galley(
         egui::pos2(
             rect.center().x - galley.rect.width() / 2.0,
@@ -835,7 +844,7 @@ pub fn theme_swatch(
     } else {
         Stroke::new(1.0_f32, other.border)
     };
-    p.rect_stroke(rect, 9.0_f32, border);
+    p.rect_stroke(rect, 9.0_f32, border, egui::StrokeKind::Inside);
     // three heat stops as a miniature gauge strip
     let strip = Rect::from_min_size(
         egui::pos2(rect.left() + 9.0, rect.top() + 11.0),
@@ -963,7 +972,7 @@ pub fn text_field(ui: &mut egui::Ui, value: &mut String, hint: &str, pal: &Palet
             Vec2::new(w, h),
             egui::TextEdit::singleline(value)
                 .hint_text(hint)
-                .margin(egui::Margin::symmetric(9.0, 6.0))
+                .margin(egui::Margin::symmetric(9, 6))
                 .font(theme::sans(11.5))
                 .text_color(pal.text),
         )
@@ -1018,7 +1027,7 @@ pub fn secret_field(
             egui::TextEdit::singleline(value)
                 .hint_text(hint)
                 .password(!*revealed)
-                .margin(egui::Margin::symmetric(9.0, 6.0))
+                .margin(egui::Margin::symmetric(9, 6))
                 .font(theme::sans(11.5))
                 .text_color(pal.text),
         )

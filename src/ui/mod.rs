@@ -74,7 +74,7 @@ pub fn chip_text_w(
     pal: &Palette,
     alpha: f32,
 ) -> f32 {
-    ctx.fonts(|f| {
+    ctx.fonts_mut(|f| {
         f.layout_job(chip_job(s, pct, pal, alpha, false))
             .rect
             .width()
@@ -273,12 +273,12 @@ pub fn rail_card(
     // glass lifted off the desktop rather than a flat rectangle.
     p.add(
         egui::epaint::Shadow {
-            offset: egui::vec2(0.0, 10.0),
-            blur: 30.0,
-            spread: -4.0,
+            offset: [0, 10],
+            blur: 30,
+            spread: 0,
             color: Color32::from_black_alpha(132).linear_multiply(a),
         }
-        .as_shape(rect, egui::Rounding::same(CARD_CORNER)),
+        .as_shape(rect, egui::CornerRadius::same(CARD_CORNER as u8)),
     );
     p.rect_filled(
         rect,
@@ -896,7 +896,7 @@ pub fn provider_card(
         .read_response(card_id)
         .map(|r| r.hovered())
         .unwrap_or(false);
-    egui::Frame::none()
+    egui::Frame::NONE
         .fill(if hovered { pal.card_hover } else { pal.card })
         .stroke(egui::Stroke::new(
             1.0_f32,
@@ -906,8 +906,8 @@ pub fn provider_card(
                 pal.border
             },
         ))
-        .rounding(egui::Rounding::same(13.0))
-        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+        .corner_radius(egui::CornerRadius::same(13))
+        .inner_margin(egui::Margin::symmetric(12, 8))
         .show(ui, |ui| {
             let now = now_unix();
             let ok = matches!(s.reading, Reading::Ok { .. });
