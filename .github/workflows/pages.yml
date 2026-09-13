@@ -23,10 +23,14 @@ concurrency:
 
 jobs:
   build:
+    # Pages is not available for private repositories on the free plan, so the
+    # push trigger stays quiet until the repository is public. A manual run
+    # still works once Pages is configured.
+    if: github.event.repository.visibility == 'public' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: npm

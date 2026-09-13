@@ -17,7 +17,7 @@ jobs:
   check:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -42,7 +42,7 @@ jobs:
       # The compositor integration is JavaScript KWin runs, so cargo cannot
       # see it. Its geometry maths is where the multi-monitor docking bugs
       # lived, and it has its own tests.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
       - name: kwin script tests
