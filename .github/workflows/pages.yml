@@ -44,6 +44,10 @@ jobs:
           NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
         run: npm run build
       - uses: actions/configure-pages@v6
+        with:
+          # Enables Pages on the first run after the repository is public,
+          # so no manual settings change is needed.
+          enablement: true
       - uses: actions/upload-pages-artifact@v5
         with:
           path: web/out
