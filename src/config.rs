@@ -124,6 +124,11 @@ pub struct Config {
     /// Show used percentage text beneath gauges in the side rail.
     #[serde(default)]
     pub show_rail_percent: bool,
+    /// Hide the notch while the session is idle or locked, and bring it back
+    /// on activity. Off by default: a quota pill that quietly disappears is
+    /// surprising unless you asked for it.
+    #[serde(default)]
+    pub hide_when_idle: bool,
     /// Opacity of the notch body, 0..1. The desktop shows through below 1.
     #[serde(default = "default_notch_opacity")]
     pub notch_opacity: f32,
@@ -208,6 +213,7 @@ impl Default for Config {
             max_visible_collapsed: default_max_visible(),
             quiet_mode: false,
             show_rail_percent: false,
+            hide_when_idle: false,
             notch_opacity: default_notch_opacity(),
             card_opacity: default_card_opacity(),
             notify: false,
@@ -290,6 +296,7 @@ hide_unconfigured = true
 # max_visible_collapsed = 4      # providers on the pill before folding into "+N"
 # quiet_mode = false              # dim the gauges until you point at the notch
 # show_rail_percent = false       # show used percentages beneath rail gauges
+# hide_when_idle = false          # hide the notch while the session is idle/locked
 # notch_opacity = 0.60            # notch body opacity, 0.15-1.0
 # card_opacity = 0.70             # hover usage card opacity, 0.15-1.0
 # notify = true                   # desktop alert when a window runs low
