@@ -213,3 +213,15 @@ h1 em,h2 em{font-style:normal;color:var(--green)}
   html{scroll-behavior:auto}
   .button,.mock-row,.gauge{transition:none}
 }
+
+.hero-proof{position:relative;min-height:470px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.hero-shot{width:min(100%,520px);height:auto;border-radius:14px;border:1px solid rgba(139,187,184,.22);box-shadow:0 30px 90px rgba(0,0,0,.45);background:#0c1113}
+.hero-shot-caption{color:#60706f;font-size:10px;margin:0}
+.hero-fallback,.shot-fallback{margin:0;width:min(100%,520px)}
+.shot-fallback-panel{height:320px;border-radius:14px;border:1px solid rgba(139,187,184,.18);background:linear-gradient(160deg,#0c1113,#152022 55%,#0c1113);box-shadow:0 18px 45px rgba(0,0,0,.35)}
+.shot-fallback figcaption,.hero-fallback figcaption{margin-top:10px;color:#60706f;font-size:10px;text-align:center}
+.mock-secondary{padding:88px 0 40px}
+.mock-secondary .section-intro{margin-bottom:36px}
+.shot-card img{width:100%;height:auto;display:block;border-radius:10px;border:1px solid rgba(139,187,184,.16);background:#0c1113}
+.shot-card .shot-fallback-panel{height:180px;border-radius:10px}
+@media(max-width:850px){.hero-proof{min-height:0;margin-top:48px}.hero-shot{width:100%}.shot-fallback-panel{height:240px}}

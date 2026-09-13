@@ -54,6 +54,58 @@ function Logo({ id }: { id: string }) {
   );
 }
 
+
+function ShotCard({
+  src,
+  alt,
+  caption,
+  className,
+}: {
+  src: string;
+  alt: string;
+  caption: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <figure className={className ?? 'shot-card'}>
+      {failed ? (
+        <div className="shot-fallback-panel" aria-hidden="true" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={alt} onError={() => setFailed(true)} />
+      )}
+      <figcaption>{failed ? `${caption} preview` : caption}</figcaption>
+    </figure>
+  );
+}
+
+function HeroProof() {
+  const src = `${BASE_PATH}/screenshots/notch.png`;
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="hero-proof">
+      {failed ? (
+        <figure className="shot-fallback hero-fallback">
+          <div className="shot-fallback-panel" aria-hidden="true" />
+          <figcaption>Notch preview</figcaption>
+        </figure>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="hero-shot"
+          src={src}
+          alt="LimitCue edge-docked notch with a real usage card open"
+          onError={() => setFailed(true)}
+        />
+      )}
+      <p className="hero-shot-caption">
+        <span className="live-dot" /> Real capture — not a CSS mock
+      </p>
+    </div>
+  );
+}
+
 function Gauge({
   id,
   used,
@@ -236,7 +288,7 @@ export default function Home() {
             <span>Linux</span>
           </div>
         </div>
-        <ProductMockup />
+        <HeroProof />
       </section>
 
       <section className="install-band" aria-label="Install">
@@ -276,47 +328,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="signal-section">
-        <div className="container signal-grid">
-          <div>
-            <span className="section-kicker">THE PROBLEM</span>
-            <h2>
-              Quota is invisible
-              <br />
-              until it becomes a blocker.
-            </h2>
-          </div>
-          <div className="signal-copy">
-            <p>
-              Usage is scattered across browser tabs, hidden behind provider
-              dashboards, and easy to misread when a reset window is moving.
-            </p>
-            <div className="signal-list">
-              <div>
-                <b>01</b>
-                <span>Too many tabs to check before a long session.</span>
-              </div>
-              <div>
-                <b>02</b>
-                <span>Several windows, each with a different reset clock.</span>
-              </div>
-              <div>
-                <b>03</b>
-                <span>Numbers you cannot tell are official or stale.</span>
-              </div>
-            </div>
-            <div className="answer">
-              <span>↳</span>
-              <p>
-                <strong>LimitCue makes the signal ambient.</strong>
-                <br />
-                Always on top as a pill or edge-docked notch — small, honest,
-                and where you work.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <section className="features container" id="features">
         <div className="section-intro">
@@ -379,11 +390,13 @@ export default function Home() {
           </div>
           <div className="shot-gallery">
             {shots.map((shot) => (
-              <figure key={shot.id} className={`shot-card shot-${shot.id}`}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={shot.src} alt={shot.alt} />
-                <figcaption>{shot.caption}</figcaption>
-              </figure>
+              <ShotCard
+                key={shot.id}
+                className={`shot-card shot-${shot.id}`}
+                src={shot.src}
+                alt={shot.alt}
+                caption={shot.caption}
+              />
             ))}
           </div>
         </div>
