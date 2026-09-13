@@ -6,7 +6,11 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- A `floating_pill` config key and a **Horizontal pill** toggle in
+  Settings → Appearance, so the surface can be switched between the vertical
+  notch and the wide pill without an environment variable.
 
 ## [0.1.1] - 2026-09-13
 
