@@ -184,14 +184,14 @@ fn wait(cfg: &Config, args: &Args) -> i32 {
         let usable = |snaps: &Vec<Snapshot>| {
             args.provider
                 .as_deref()
-                .is_none_or(|id| snaps.iter().any(|s| s.provider_id == id))
+                .map_or(true, |id| snaps.iter().any(|s| s.provider_id == id))
         };
         let snaps = cached()
             .filter(usable)
             .unwrap_or_else(|| read_all(cfg));
         let lowest = snaps
             .iter()
-            .filter(|s| args.provider.as_deref().is_none_or(|id| s.provider_id == id))
+            .filter(|s| args.provider.as_deref().map_or(true, |id| s.provider_id == id))
             .filter_map(worst)
             .fold(f64::INFINITY, f64::min);
         if lowest.is_finite() && lowest >= target {

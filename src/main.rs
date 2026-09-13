@@ -2219,7 +2219,7 @@ impl eframe::App for App {
             } else {
                 (-1, -1, -1)
             };
-            let settling = self.restore_sent < 30 && self.restore_sent.is_multiple_of(6);
+            let settling = self.restore_sent < 30 && self.restore_sent % 6 == 0;
             // Screenshot runs must not touch the compositor: the script picks
             // the first limitcue window it finds, which would be whatever
             // instance the user already has open.
