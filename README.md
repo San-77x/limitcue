@@ -1,5 +1,9 @@
 # LimitCue
 
+[![CI](https://github.com/San-77x/limitcue/actions/workflows/ci.yml/badge.svg)](https://github.com/San-77x/limitcue/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust 1.76+](https://img.shields.io/badge/rust-1.76%2B-orange.svg)](https://www.rust-lang.org)
+
 A tiny always-on-top quota pill for your Linux desktop. See how much usage is
 left on every AI coding plan you're signed into — without opening a browser,
 a terminal, or trusting a made-up number.
@@ -158,15 +162,19 @@ never granted and cards fall back to the room below the notch.
 
 ## Install
 
-Prebuilt binaries: see Releases (Linux x86_64, AppImage).
+Prebuilt Linux x86_64 binaries are on the
+[Releases](https://github.com/San-77x/limitcue/releases) page.
+
+Build from source with Rust 1.76 or newer:
 
 ```sh
-# build from source
+git clone https://github.com/San-77x/limitcue
+cd limitcue
 cargo build --release
 ./target/release/limitcue
 
 # or just try the fetcher without any GUI
-limitcue --once
+./target/release/limitcue --once
 ```
 
 ## Configuration
@@ -450,11 +458,13 @@ compositor drag).
 - **Provider config is mode `0600`** (user-only readable) since it may contain
   inline keys.
 
-## Project status
+## Contributing
 
-See [STATUS.md](STATUS.md) for what's done, in progress, and known limitations,
-and [docs/v2.md](docs/v2.md) for the feature backlog.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the
+development setup and the checks CI runs; [docs/ROADMAP.md](docs/ROADMAP.md)
+is where the project is headed. Please report security problems through
+[SECURITY.md](SECURITY.md) rather than the public issue tracker.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
