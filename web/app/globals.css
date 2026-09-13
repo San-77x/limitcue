@@ -26,7 +26,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .eyebrow,.section-kicker{display:flex;align-items:center;gap:10px;color:var(--green);font-size:10px;font-weight:650;letter-spacing:.18em}
 .eyebrow-line{width:24px;height:1px;background:var(--green)}
 h1,h2,h3,p{margin:0}
-h1{font-size:clamp(42px,5.2vw,72px);line-height:1.02;letter-spacing:-.075em;margin:24px 0 24px;font-weight:500}
+h1{font-size:clamp(46px,5.4vw,76px);line-height:1.02;letter-spacing:-.075em;margin:24px 0 24px;font-weight:500}
 h1 em,h2 em{font-style:normal;color:var(--green)}
 .hero-lede{color:var(--muted);font-size:16px;max-width:470px;line-height:1.7}
 .hero-actions{display:flex;align-items:center;gap:25px;margin-top:34px;flex-wrap:wrap}
