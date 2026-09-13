@@ -44,6 +44,7 @@ png = "0.17"
 dirs = "5"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zbus = { version = "5", features = ["blocking"] }
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 
 [profile.release]
 lto = true

@@ -7,6 +7,7 @@ mod idle;
 mod notify;
 mod providers;
 mod service;
+mod tray;
 mod types;
 mod ui;
 
@@ -566,6 +567,11 @@ struct App {
     /// Whether the notch is hidden because the session went idle, so the
     /// visibility command is only sent when the state actually changes.
     idle_hidden: bool,
+    /// The optional system-tray icon, started on the first frame.
+    tray: Option<tray::TrayHandle>,
+    /// A tray start was attempted (or the setting is off), so it is not
+    /// retried every frame — a missing tray host is not an error.
+    tray_tried: bool,
     restore_sent: u32,
     /// A drag was handed to the compositor; replay the release it swallowed.
     replay_drag_release: bool,
@@ -692,6 +698,8 @@ impl App {
             activity,
             idle,
             idle_hidden: false,
+            tray: None,
+            tray_tried: false,
             restore_sent: 0,
             replay_drag_release: false,
             drag_release_at: None,
@@ -770,8 +778,17 @@ impl App {
         if changed {
             let oks = self.snapshots.clone();
             save_state(&oks);
+            self.publish_tray();
             ctx.request_repaint();
         }
+    }
+
+    /// Push the current readings to the tray, if one is running.
+    fn publish_tray(&self) {
+        let Some(tray) = &self.tray else { return };
+        let mut snaps: Vec<Snapshot> = self.snapshots.values().cloned().collect();
+        snaps.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
+        tray.publish(&snaps);
     }
 
     /// Draw the settings sheet. Saves `self.cfg_next` back to config.toml on
@@ -2155,6 +2172,38 @@ impl App {
 
     /// Show or hide the notch to match the session's idle state, when the user
     /// asked for it. A viewport command is only sent on an actual change.
+    /// Start or stop the tray to match the config, and act on a menu click.
+    /// Started here rather than in `new` because the tray binds the Context,
+    /// which only exists once a frame runs.
+    fn sync_tray(&mut self, ctx: &egui::Context) {
+        if self.cfg.tray {
+            if self.tray.is_none() && !self.tray_tried {
+                self.tray_tried = true;
+                self.tray = Some(tray::start(ctx.clone()));
+                self.publish_tray();
+            }
+        } else if !self.cfg.tray {
+            if let Some(t) = self.tray.take() {
+                t.shutdown();
+            }
+            self.tray_tried = false;
+        }
+
+        let Some(tray) = &self.tray else { return };
+        let wanted = tray.take();
+        if wanted.refresh {
+            self.refresh(ctx);
+        }
+        if wanted.show {
+            self.idle_hidden = false;
+            ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
+        if wanted.quit {
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+    }
+
     fn sync_idle(&mut self, ctx: &egui::Context) {
         use std::sync::atomic::Ordering;
         let want_hidden = self.cfg.hide_when_idle && self.idle.load(Ordering::Relaxed);
@@ -2289,6 +2338,7 @@ impl eframe::App for App {
     /// what lets an idle notch notice activity and come back.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.sync_idle(ctx);
+        self.sync_tray(ctx);
         if self.cfg.hide_when_idle {
             // While hidden there are no frames of our own; wake periodically
             // so the idle flag is noticed within a couple of seconds.

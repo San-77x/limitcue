@@ -15,8 +15,10 @@ local readers. There is no runtime, no webview, and no server.
 | `src/history.rs` | Burn-rate samples (`history.json`), percentages and timestamps only, used for the projection line. |
 | `src/notify.rs` | Low-quota and refill alerts, latched per window, with command hooks. |
 | `src/activity.rs` | Session-activity detection from CLI log modification times. Contents are never opened. |
+| `src/idle.rs` | Session idle and lock state from systemd-logind, for `hide_when_idle`. |
 | `src/dock.rs` | Edge-docking state and the KWin script handshake over D-Bus (`io.limitcue.Dock`). |
 | `src/service.rs` | Read interfaces for other programs: `io.limitcue.Usage` on D-Bus (a `Get`/`Refresh` pair plus a `Changed` signal per new reading) and `$XDG_RUNTIME_DIR/limitcue.sock`. |
+| `src/tray.rs` | Optional StatusNotifierItem fallback: a ring icon coloured by the tightest window, a per-provider tooltip, and a menu. |
 | `src/cli.rs` | Headless output: `--once`, `--json`, `--line`, `--waybar`, `--watch`, `wait`, `init`. |
 | `src/ui/` | Theme palettes (`theme.rs`), drawing primitives (`widgets.rs`), and composed surfaces (`mod.rs`). |
 
