@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.png binary
+*.ttf binary
+*.ico binary
+
+*.rs diff=rust
+Cargo.lock merge=binary linguist-generated=true
+web/package-lock.json linguist-generated=true

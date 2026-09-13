@@ -1,2 +1,25 @@
+# Rust
 /target
+
+# Node / Next.js (the landing page under web/)
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Agent / tool scratch
 .zcode/

@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a capability or a change in behaviour.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/ROADMAP.md](../blob/main/docs/ROADMAP.md) first — it
+        may already be planned, or deliberately out of scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation you are in, not just the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to see?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require a sign-in flow, telemetry, or a cloud service.
+          required: true
+        - label: I am willing to help implement this.
+          required: false
