@@ -20,6 +20,9 @@ use crate::types::Snapshot;
 pub struct Usage {
     pub snaps: Mutex<Vec<Snapshot>>,
     pub refresh_wanted: AtomicBool,
+    /// Set once the bus is up, so a new reading can raise `Changed` without
+    /// the poller knowing anything about D-Bus.
+    conn: Mutex<Option<zbus::blocking::Connection>>,
 }
 
 pub type SharedUsage = Arc<Usage>;
@@ -29,6 +32,26 @@ impl Usage {
         if let Ok(mut g) = self.snaps.lock() {
             *g = snaps.to_vec();
         }
+        self.emit_changed();
+    }
+
+    /// Emit `io.limitcue.Usage.Changed` with the same JSON `Get` returns.
+    ///
+    /// A reader that only wants to know when to re-read can subscribe to this
+    /// instead of polling `Get`; the payload saves it a round trip. Failure is
+    /// ignored: a signal that could not be sent must not take the reading with
+    /// it, and the next `Get` still answers.
+    fn emit_changed(&self) {
+        let Ok(guard) = self.conn.lock() else { return };
+        let Some(conn) = guard.as_ref() else { return };
+        let Ok(iface) = conn
+            .object_server()
+            .interface::<_, UsageIface>("/io/limitcue/usage")
+        else {
+            return;
+        };
+        let json = self.json();
+        let _ = zbus::block_on(UsageIface::changed(iface.signal_emitter(), &json));
     }
 
     pub fn json(&self) -> String {
@@ -59,6 +82,14 @@ impl UsageIface {
     fn refresh(&self) {
         self.usage.refresh_wanted.store(true, Ordering::Relaxed);
     }
+
+    /// Raised whenever a new reading is stored, carrying the same JSON as
+    /// `Get`. A subscriber can drop its polling loop and read this instead.
+    #[zbus(signal)]
+    async fn changed(
+        emitter: &zbus::object_server::SignalEmitter<'_>,
+        json: &str,
+    ) -> zbus::Result<()>;
 }
 
 /// Own `io.limitcue` and serve both objects on it: the dock position the KWin
@@ -68,11 +99,19 @@ pub fn start_dbus(dock: SharedDock, usage: SharedUsage) -> Result<(), zbus::Erro
     let conn = zbus::blocking::connection::Builder::session()?
         .name("io.limitcue")?
         .serve_at("/io/limitcue/dock", DockIface::new(dock))?
-        .serve_at("/io/limitcue/usage", UsageIface { usage })?
+        .serve_at(
+            "/io/limitcue/usage",
+            UsageIface {
+                usage: usage.clone(),
+            },
+        )?
         .build()?;
-    // The connection owns the object server; keep it alive for the process
-    // lifetime (single-purpose app).
-    std::mem::forget(conn);
+    // The connection owns the object server and must outlive this call. The
+    // usage handle keeps it alive, and is what `emit_changed` reaches through
+    // to raise the signal.
+    if let Ok(mut slot) = usage.conn.lock() {
+        *slot = Some(conn);
+    }
     Ok(())
 }
 
