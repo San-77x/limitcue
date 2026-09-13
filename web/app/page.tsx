@@ -2,42 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const REPO = 'https://github.com/San-77x/limitcue';
-const RELEASES = `${REPO}/releases`;
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
-const LINUX_ASSET = 'limitcue-linux-x86_64.tar.gz';
-const DEFAULT_TAG = 'v0.1.1';
-
-type Download =
-  | { kind: 'asset'; url: string; tag: string }
-  | { kind: 'watch'; url: string; tag: string };
-
-async function resolveLinuxDownload(): Promise<Download> {
-  try {
-    const res = await fetch(
-      'https://api.github.com/repos/San-77x/limitcue/releases/latest',
-      {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'limitcue-web',
-        },
-        cache: 'force-cache',
-      },
-    );
-    if (!res.ok) return { kind: 'watch', url: RELEASES, tag: DEFAULT_TAG };
-    const data = (await res.json()) as {
-      tag_name?: string;
-      assets?: { name: string; browser_download_url: string }[];
-    };
-    const tag = data.tag_name || DEFAULT_TAG;
-    const asset = data.assets?.find((a) => a.name === LINUX_ASSET);
-    if (!asset?.browser_download_url) {
-      return { kind: 'watch', url: RELEASES, tag };
-    }
-    return { kind: 'asset', url: asset.browser_download_url, tag };
-  } catch {
-    return { kind: 'watch', url: RELEASES, tag: DEFAULT_TAG };
-  }
-}
+const RELEASE_TAG = 'v0.1.1';
+const DOWNLOAD_URL =
+  'https://github.com/San-77x/limitcue/releases/download/v0.1.1/limitcue-linux-x86_64.tar.gz';
 
 const SHOT_NAMES = ['pill', 'notch', 'expanded'] as const;
 type ShotName = (typeof SHOT_NAMES)[number];
@@ -85,7 +53,7 @@ function Shot({
   return (
     <figure className="shot-fallback">
       <div className="shot-fallback-panel" aria-hidden="true" />
-      <figcaption>Preview</figcaption>
+      <figcaption>Pill preview</figcaption>
     </figure>
   );
 }
@@ -106,9 +74,9 @@ const PROVIDERS = [
 ] as const;
 
 const PRIVACY = [
-  'Keys go only to the provider API.',
-  'No telemetry.',
-  'Local cache stores numbers and timestamps only.',
+  'Keys leave your machine only to that provider’s own API.',
+  'No telemetry, analytics, or update pings.',
+  'Local cache is numbers and timestamps only — never credentials or session contents.',
 ] as const;
 
 const FAQ = [
@@ -126,16 +94,12 @@ const FAQ = [
   },
 ] as const;
 
-export default async function Home() {
-  const download = await resolveLinuxDownload();
+export default function Home() {
   const shots = availableShots();
   const heroShot = pickShot(shots, ['pill', 'notch', 'expanded']);
   const detailShot = pickShot(shots, ['expanded', 'notch', 'pill']);
-  const primaryHref = download.url;
-  const primaryLabel =
-    download.kind === 'asset'
-      ? `Download Linux x86_64 tarball ${download.tag}`
-      : 'Watch releases';
+  const primaryHref = DOWNLOAD_URL;
+  const primaryLabel = `Download Linux x86_64 tarball ${RELEASE_TAG}`;
 
   return (
     <main>
@@ -177,7 +141,7 @@ export default async function Home() {
         <ol className="install-strip">
           <li>
             <span className="step-n">1</span>
-            Download the Linux x86_64 tarball ({download.tag})
+            Download the Linux x86_64 tarball (v0.1.1)
           </li>
           <li>
             <span className="step-n">2</span>
@@ -185,7 +149,7 @@ export default async function Home() {
           </li>
           <li>
             <span className="step-n">3</span>
-            Optional: limitcue init
+            Optional: limitcue init to wire providers already on this machine
           </li>
         </ol>
       </section>
