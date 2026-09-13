@@ -18,6 +18,19 @@ when you have more plans than fit on screen.
 
 Built with Rust + egui as a single ~6.5 MB binary — no Electron, no webview, no runtime.
 
+## Screenshots
+
+Real captures from a live session:
+
+<p align="center">
+  <img src="assets/screenshots/notch.png" width="330"
+       alt="LimitCue docked to the left edge as a notch, with the AgentRouter usage card open: 39% used, the $30.46 of $50 quota, and a reset time.">
+</p>
+
+| Collapsed pill | Expanded cards |
+|---|---|
+| ![The collapsed pill showing AgentRouter and Codex](assets/screenshots/pill.png) | ![Expanded per-provider usage cards](assets/screenshots/expanded.png) |
+
 ## What it does
 
 - **One pill, many plans.** A compact heat-colored ring gauge per provider —
@@ -374,6 +387,11 @@ should not be blocked on somebody else's rate limit. The socket is created
 
 The gear icon on the pill — or the orb at the foot of the notch — opens the
 settings sheet.
+
+<p align="center">
+  <img src="assets/screenshots/settings.png" width="380"
+       alt="The settings sheet, Providers tab, listing tracked and built-in providers with toggles.">
+</p>
 
 The sheet is three fixed bands — title, tabs, action bar — around one
 scrolling body, so *Save* and *Cancel* stay reachable however many providers
