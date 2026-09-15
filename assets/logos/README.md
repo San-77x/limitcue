@@ -11,7 +11,7 @@ Provider brand logos, pre-rasterized 64px white RGBA PNGs
 
 Source: https://simpleicons.org — CDN serves single-path 24×24 SVGs with the
 brand color replaced by the requested fill; regen with `scripts/fetch-logos.sh`
-(rsvg-convert rasterization, same pipeline as assets/icons). The codex logo
+(rsvg-convert rasterization). The codex logo
 is simple-icons' `openai`; agentrouter uses Moonshot's mark. Simple Icons
 packaging is CC0; logos remain trademarks of their owners, used for
 identification in this personal tool.

@@ -421,18 +421,6 @@ pub fn palette(name: &str) -> Palette {
     }
 }
 
-/// Brand color for a provider's monogram disc. Unknown providers get the accent.
-pub fn brand(id: &str, pal: &Palette) -> Color32 {
-    match id {
-        "claude" => Color32::from_rgb(0xD9, 0x77, 0x57),
-        "codex" => Color32::from_rgb(0x10, 0xA3, 0x7F),
-        "grok" => Color32::from_rgb(0x1A, 0x1A, 0x1A),
-        "minimax" => Color32::from_rgb(0xFF, 0x5A, 0x5F),
-        "kimi" => Color32::from_rgb(0x7C, 0x8C, 0xFF),
-        _ => pal.accent,
-    }
-}
-
 /// Letter shown inside a provider's monogram disc (distinct per provider).
 pub fn monogram(id: &str) -> String {
     match id {

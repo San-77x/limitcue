@@ -4,56 +4,49 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 1.95+](https://img.shields.io/badge/rust-1.95%2B-orange.svg)](https://www.rust-lang.org)
 
-A tiny always-on-top quota pill for your Linux desktop. See how much usage is
-left on every AI coding plan you're signed into — without opening a browser,
+A tiny always-on-top **notch** for your Linux desktop. It shows how much usage
+is left on every AI coding plan you're signed into — without opening a browser,
 a terminal, or trusting a made-up number.
 
 ```
- ◔ CODEX 63%  ◑ CLAUDE 22%  ◕ M3 69%        ← collapsed: ring gauges
+   ◔  Codex        ← one gauge per plan
+   ◑  Claude          the arc is the share used
+   ◕  MiniMax         hover a gauge for the details
 ```
 
-Click it and it eases open into a detail card per provider — labelled
-quota bars, counts, and live reset countdowns — with smooth scrolling
-when you have more plans than fit on screen.
+Hover a gauge and a usage card slides out beside the notch: how much is gone,
+which window it belongs to, and when it resets. The whole notch is draggable,
+and on KDE it snaps flush to a screen edge and remembers where you put it.
 
 Built with Rust + egui as a single ~6.5 MB binary — no Electron, no webview, no runtime.
 
 ## Screenshots
 
-Real captures from a live session:
+A real capture from a live session:
 
 <p align="center">
-  <img src="assets/screenshots/notch.png" width="330"
+  <img src="assets/screenshots/notch.png" width="360"
        alt="LimitCue docked to the left edge as a notch, with the AgentRouter usage card open: 39% used, the $30.46 of $50 quota, and a reset time.">
 </p>
 
-| Collapsed pill | Expanded cards |
-|---|---|
-| ![The collapsed pill showing AgentRouter and Codex](assets/screenshots/pill.png) | ![Expanded per-provider usage cards](assets/screenshots/expanded.png) |
-
 ## What it does
 
-- **One pill, many plans.** A compact heat-colored ring gauge per provider —
+- **One notch, many plans.** A compact heat-coloured ring gauge per provider —
   green while plenty remains, warming through yellow and orange to red as the
-  quota is used — with the percentage in tabular digits. More providers than
-  `max_visible_collapsed` (default 4)? The overflow folds into a `+N` chip;
-  expanding lists everything in a content-sized detail area that only becomes
-  scrollable when it reaches the available screen height. Stale readings fade
-  toward grey instead of pretending to be fresh.
-- **Drag it anywhere** — grab it anywhere (compositor-native grab;
-  Wayland + X11). No grip icon needed: press-and-drag the pill itself, or
-  the notch when it's docked to a side. Borderless, always-on-top, eased
-  expand/collapse animation.
-  Hover any ring for per-window detail; `R` refreshes, `Esc` minimizes.
-  On KDE Plasma (Wayland or X11), drag it near a screen edge and it **docks
-  flush** — zero gap, square corners on the attached edge — and the detail
-  card grows *away* from the edge. The docked position survives restarts.
+  quota is used. Every provider gets its own cell; nothing folds away.
+  Readings older than three poll intervals fade toward grey instead of
+  pretending to be fresh.
+- **Hover for detail, drag to move.** Hovering a gauge slides out a usage card
+  with the numbers behind it. The whole notch is draggable (compositor-native
+  grab; Wayland + X11), so there is no grip icon to aim at. `R` refreshes,
+  `Esc` minimizes. On KDE Plasma (Wayland or X11), drag it near a screen edge
+  and it **docks flush** — zero gap, square corners on the attached edge — and
+  the docked position survives restarts.
 
-### The vertical rail (left/right dock)
+### The notch
 
-Docked left or right, the pill becomes a black notch welded to the screen
-edge: a pure-`#000` strip, square where it meets the bezel and rounded on
-the card side. Each tracked provider gets its own cell — a clean **gauge**: the
+A pure-`#000` strip, square where it meets the bezel and rounded on the
+card side. Each tracked provider gets its own cell — a clean **gauge**: the
 provider's white mark (real logo for Claude, Codex/OpenAI, Gemini, Grok, Kimi,
   MiniMax and AgentRouter; a monogram letter otherwise) framed by a track
 ring and a heat-colored arc showing the share *used* — green while
@@ -202,14 +195,12 @@ poll_interval_secs = 240         # seconds between checks; below this, providers
 hide_unconfigured = true
 disabled = []            # e.g. ["codex"]
 theme = "midnight"       # see Settings -> Appearance for all ten
-max_visible_collapsed = 4  # providers on the pill before folding into "+N"
 quiet_mode = false         # dim the gauges until you point at the notch
 notch_opacity = 0.60       # notch body opacity, 0.15-1.0
 card_opacity = 0.70        # hover usage card opacity, 0.15-1.0
 show_rail_percent = false  # show used percentages beneath notch gauges
 hide_when_idle = false     # hide the notch while the session is idle or locked
 tray = false               # also publish a system-tray icon
-floating_pill = false      # true shows the wide pill instead of the vertical notch
 
 [[provider]]
 id = "minimax"
@@ -255,22 +246,17 @@ ring takes the colour of the tightest window, with a per-provider tooltip and
 a menu to show the notch, refresh, or quit. It is off by default, and a desktop
 with no tray host is not an error — the notch is unaffected.
 
-The vertical notch is the default surface. For the wide horizontal pill
-instead, turn on **Settings → Appearance → Horizontal pill** (or set
-`floating_pill = true`).
-
 ## Edge docking (KDE Plasma)
 
 On Wayland an app cannot move or even know its own window position, so
 docking is done compositor-side. LimitCue ships a small KWin script
 (`misc/kwin/limitcue-integrate/`) that:
 
-- keeps the pill above other windows (replaces the older `limitcue-pin`
+- keeps the notch above other windows (replaces the older `limitcue-pin`
   script — uninstall that one if you have it),
-- snaps the pill flush to the nearest screen edge when you drop a drag within
+- snaps the notch flush to the nearest screen edge when you drop a drag within
   ~32 px of it (top/bottom/left/right),
-- re-clamps it to the edge whenever the pill resizes itself (expand/collapse),
-  and
+- re-clamps it to the edge whenever the notch resizes itself, and
 - reports the docked position to the app over D-Bus (`io.limitcue.Dock`), which
   persists it to `~/.local/share/limitcue/dock.json` and restores it on the
   next launch.
@@ -401,12 +387,11 @@ should not be blocked on somebody else's rate limit. The socket is created
 
 ## Settings
 
-The gear icon on the pill — or the orb at the foot of the notch — opens the
-settings sheet.
+The orb at the foot of the notch opens the settings sheet.
 
 <p align="center">
   <img src="assets/screenshots/settings.png" width="380"
-       alt="The settings sheet, Providers tab, listing tracked and built-in providers with toggles.">
+       alt="The settings sheet, Appearance tab, showing the theme swatches and the notch and card opacity sliders.">
 </p>
 
 The sheet is three fixed bands — title, tabs, action bar — around one
@@ -437,18 +422,15 @@ than stock widgets. Three tabs:
   editor with the field mapping exposed: point it at a URL, say which fields
   hold the numbers, and it derives the rest. See `config.toml` for the full
   list of mapping keys.
-- **Appearance** — the surface to show (**Horizontal pill** or the vertical
-  notch; the notch is the default), the theme, picked from swatches that show
-  each palette's
-  own background and heat scale (and previewed live while the sheet is open);
-  notch and card opacity; and the collapsed provider count for the undocked
-  pill.
+- **Appearance** — the theme, picked from swatches that show each palette's
+  own background and heat scale (and previewed live while the sheet is open),
+  and the notch and card opacity.
 
 *Save* writes `config.toml` and hot-reloads the poll loop — no restart
 needed. Edits made to the file in an editor are picked up the same way, within
 a couple of seconds, except while the settings sheet is open: reloading
 underneath a half-finished edit would throw it away. Providers can also carry a `priority = <n>` key in config.toml
-(lower = earlier in the pill; file order otherwise).
+(lower = earlier in the notch; file order otherwise).
 
 ## Development
 
@@ -497,10 +479,10 @@ compositor drag).
 ## Accessibility
 
 LimitCue builds with egui's `accesskit` integration, so assistive technology
-(AT-SPI on Linux) can see the interface: the notch and pill controls, the
-settings switches and sliders, the provider rows, and the collapsed chips
-expose labels, roles and states. Painting is custom, so coverage is partial —
-if something is announced poorly or not at all, an issue is welcome.
+(AT-SPI on Linux) can see the interface: the notch, the gauges and settings
+orb, the settings switches and sliders, and the provider rows expose labels,
+roles and states. Painting is custom, so coverage is partial — if something is
+announced poorly or not at all, an issue is welcome.
 
 ## Contributing
 

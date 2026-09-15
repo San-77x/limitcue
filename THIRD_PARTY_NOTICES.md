@@ -13,11 +13,6 @@ following third-party assets, each under its own license.
   Full license: [`assets/fonts/LICENSE-Hack.txt`](assets/fonts/LICENSE-Hack.txt).
   Vendored from `epaint_default_fonts` 0.29.1.
 
-## Icons — `assets/icons/`
-
-- **Lucide** icons (ISC license) — <https://lucide.dev>. Pre-rasterized
-  to 32 px white PNGs; see [`assets/icons/README.md`](assets/icons/README.md).
-
 ## Provider logos — `assets/logos/`
 
 - Sourced from **Simple Icons** (<https://simpleicons.org>), whose

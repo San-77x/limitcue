@@ -46,8 +46,8 @@ config.toml ──▶  Vec<Box<dyn Provider>> ──▶ polls ──▶ Vec<Snap
    readers through `SharedUsage`, and the good readings are written to
    `state.json`.
 4. The UI never fetches. It renders whatever the poller last published and
-   repaints on a timer that is cheap when collapsed and one second when
-   expanded (so countdowns tick).
+   repaints on a cheap timer, so the ages and countdowns on an open card stay
+   current.
 
 ## Threads
 
