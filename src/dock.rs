@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-/// Screen edge the pill is docked to.
+/// Screen edge the notch is docked to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Edge {

@@ -2236,8 +2236,6 @@ impl eframe::App for App {
         // not produce one leaves it contradicting the position — which showed
         // up as a left-docked notch opening its card leftwards, off screen.
         let stored_edge = dock_now.side(RAIL_STRIP_W as i32).unwrap_or(dock_now.edge);
-        // The chosen surface wins. In pill mode the dock edge is ignored, so a
-        // position saved by an earlier notch run cannot keep forcing the rail.
         // The notch defaults to the left edge until the compositor reports
         // which side it is actually on.
         let edge = if stored_edge == Edge::Free {
@@ -2274,10 +2272,6 @@ impl eframe::App for App {
         {
             self.rail_open = None;
         }
-        // Left/right dock: the pill becomes a vertical rail (rings + %).
-        // In notch mode this is the only primary surface: there is no
-        // dashboard-style expand state. Details are revealed by hovering a
-        // provider socket and live in the adjacent contextual card.
         // The notch is the only surface: there is no dashboard-style expand
         // state. Details are revealed by hovering a provider socket and live
         // in the adjacent contextual card.
@@ -2509,7 +2503,7 @@ impl App {
         };
         let edge = self.last_edge;
         // While the edge is unknown the window may still be the tiny init
-        // pill — don't render the notch into a rect it can't fit in.
+        // window — don't render the notch into a rect it can't fit in.
         if edge == Edge::Free {
             return;
         }

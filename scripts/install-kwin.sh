@@ -36,4 +36,4 @@ if command -v gdbus >/dev/null; then
 fi
 
 echo "LimitCue KWin integration installed: $DST"
-echo "The pill will now stay on top and snap to screen edges (drag it within ~32px of an edge)."
+echo "The notch will now stay on top and snap to screen edges (drag it within ~32px of an edge)."

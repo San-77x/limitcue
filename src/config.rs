@@ -122,7 +122,7 @@ pub struct Config {
     #[serde(default)]
     pub show_rail_percent: bool,
     /// Hide the notch while the session is idle or locked, and bring it back
-    /// on activity. Off by default: a quota pill that quietly disappears is
+    /// on activity. Off by default: a notch that quietly disappears is
     /// surprising unless you asked for it.
     #[serde(default)]
     pub hide_when_idle: bool,
