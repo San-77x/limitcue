@@ -13,16 +13,20 @@ const fontFaces = `
 `;
 
 export const metadata: Metadata = {
-  title: 'LimitCue — Know your limits before they interrupt your flow',
-  description: 'A native Linux quota monitor for AI coding plans. See usage windows and reset times without opening another browser tab.',
+  title: 'LimitCue — Always-on-top quota pill for Linux',
+  description:
+    'See how much is left on every AI coding plan you’re signed into — no browser, no fake numbers. Native Rust · ~4.1 MB · no Electron · no telemetry · MIT.',
   openGraph: {
-    title: 'LimitCue — Know your limits before they interrupt your flow',
-    description: 'A quiet, open-source Linux quota monitor for AI coding plans.',
+    title: 'LimitCue — Always-on-top quota pill for Linux',
+    description:
+      'See remaining AI coding plan quota without a browser or fake numbers. Native Linux monitor by Aerium Studio.',
     type: 'website',
   },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <head>
