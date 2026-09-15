@@ -15,7 +15,7 @@ cp packaging/aur/PKGBUILD limitcue-bin/
 cd limitcue-bin
 makepkg --printsrcinfo > .SRCINFO   # regenerate after any PKGBUILD edit
 makepkg -si                         # test the build locally first
-git add PKGBUILD .SRCINFO && git commit -m "Update to 0.1.0" && git push
+git add PKGBUILD .SRCINFO && git commit -m "Update to 0.2.0" && git push
 ```
 
 Bump `pkgver` and run `updpkgsums` (from `pacman-contrib`) for a new release.
