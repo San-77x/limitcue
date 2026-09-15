@@ -22,11 +22,31 @@ Built with Rust + egui as a single ~6.5 MB binary — no Electron, no webview, n
 
 ## Screenshots
 
-A real capture from a live session:
+Real captures from a live session. The notch rests as a strip of gauges; hover
+one and its card slides out.
 
 <p align="center">
+  <img src="assets/screenshots/notch-collapsed.png" width="140"
+       alt="The resting notch: three provider gauges, each with the share used printed under it.">
+  &nbsp;&nbsp;&nbsp;
   <img src="assets/screenshots/notch.png" width="360"
-       alt="LimitCue docked to the left edge as a notch, with the AgentRouter usage card open: 39% used, the $30.46 of $50 quota, and a reset time.">
+       alt="The notch with the AgentRouter card open: 39% used, the $30.46 of $50 quota, and a reset time.">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/notch-card.png" width="360"
+       alt="The Claude card open beside the notch, showing a session and a weekly window, and a line saying a session is running now.">
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/screenshots/notch-paper.png" width="360"
+       alt="The same notch in the light Paper theme: dark ink on a white strip.">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/notch-prism.png" width="140"
+       alt="The notch in the colourful Prism theme: a violet strip with a yellow, a green and a blue gauge arc.">
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/screenshots/settings-providers.png" width="360"
+       alt="The settings sheet, Providers tab, listing tracked and built-in providers with toggles.">
 </p>
 
 ## What it does
