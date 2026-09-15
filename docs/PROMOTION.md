@@ -24,10 +24,11 @@ that exists and one people can find.
 
 Short version, for a post or a comment:
 
-> **LimitCue** — a tiny always-on-top quota pill for Linux. It shows what's
+> **LimitCue** — a tiny always-on-top notch for Linux. It shows what's
 > left on every AI coding plan you're signed into (Claude, Codex, Grok,
 > MiniMax, Kimi, gateways, or any JSON endpoint) without opening a browser or
-> a terminal. It borrows the credentials your provider CLI already saved, never
+> a terminal. Hover a gauge for the numbers; drag it to a screen edge and it
+> docks flush. It borrows the credentials your provider CLI already saved, never
 > signs you in, and sends nothing anywhere except each provider's own API —
 > no telemetry. Rust + egui, one ~6 MB binary, Wayland and X11.
 > https://github.com/San-77x/limitcue

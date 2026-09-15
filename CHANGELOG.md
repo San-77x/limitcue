@@ -6,11 +6,20 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+Nothing yet.
 
-- A `floating_pill` config key and a **Horizontal pill** toggle in
-  Settings → Appearance, so the surface can be switched between the vertical
-  notch and the wide pill without an environment variable.
+## [0.2.0] - 2026-09-15
+
+### Removed
+
+- **The horizontal pill.** The notch is now the only surface; it was already
+  the default and the product's identity, and maintaining two shapes meant
+  maintaining two render paths, two sets of widgets and two sets of settings.
+  Removed with it: the `floating_pill` config key and the Settings → Appearance
+  toggle, `max_visible_collapsed` (and the `+N` overflow chip), the
+  expand/collapse animation, the `LIMITCUE_FLOAT` environment override, and the
+  now-unused icon assets. The tray remains for compositors that will not keep a
+  window on top.
 
 ## [0.1.1] - 2026-09-13
 
@@ -63,6 +72,7 @@ The first public release.
 - A KWin integration for edge snapping and persisted dock position on KDE
   Plasma (Wayland and X11).
 
-[Unreleased]: https://github.com/San-77x/limitcue/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/San-77x/limitcue/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/San-77x/limitcue/releases/tag/v0.2.0
 [0.1.1]: https://github.com/San-77x/limitcue/releases/tag/v0.1.1
 [0.1.0]: https://github.com/San-77x/limitcue/releases/tag/v0.1.0

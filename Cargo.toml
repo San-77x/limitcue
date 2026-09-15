@@ -1,6 +1,6 @@
 [package]
 name = "limitcue"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Floating quota pill for AI coding subscriptions — see remaining usage for Claude, Codex, Grok, MiniMax, Kimi and more, right on your desktop."
 license = "MIT"

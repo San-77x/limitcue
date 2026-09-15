@@ -16,21 +16,13 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
 
-use eframe::egui::{self, Color32, Rect, RichText, Sense, Vec2, ViewportBuilder, ViewportCommand};
+use eframe::egui::{self, Color32, Rect, Sense, Vec2, ViewportBuilder, ViewportCommand};
 
 use config::Config;
 use dock::Edge;
 use providers::build_all;
 use types::{now_unix, Reading, Snapshot};
 use ui::theme::{self, Palette};
-
-const ICON_PNGS: [(&str, &[u8]); 5] = [
-    ("grip", include_bytes!("../assets/icons/grip-vertical.png")),
-    ("min", include_bytes!("../assets/icons/minus.png")),
-    ("refresh", include_bytes!("../assets/icons/refresh-cw.png")),
-    ("close", include_bytes!("../assets/icons/x.png")),
-    ("gear", include_bytes!("../assets/icons/settings.png")),
-];
 
 /// White brand logos (64px RGBA PNGs, see assets/logos/README.md). Unknown
 /// providers simply aren't in the map and fall back to the monogram letter.
@@ -47,15 +39,6 @@ const LOGO_PNGS: [(&str, &[u8]); 7] = [
     ),
 ];
 
-#[derive(Clone)]
-struct Icons {
-    grip: egui::TextureHandle,
-    min: egui::TextureHandle,
-    refresh: egui::TextureHandle,
-    close: egui::TextureHandle,
-    gear: egui::TextureHandle,
-}
-
 fn decode_png(bytes: &[u8]) -> egui::ColorImage {
     let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     let mut reader = decoder.read_info().expect("icon png header");
@@ -66,24 +49,6 @@ fn decode_png(bytes: &[u8]) -> egui::ColorImage {
         [info.width as usize, info.height as usize],
         &buf[..info.buffer_size()],
     )
-}
-
-fn load_icons(ctx: &egui::Context) -> Icons {
-    let get = |name: &str| {
-        let bytes = ICON_PNGS
-            .iter()
-            .find(|(n, _)| *n == name)
-            .map(|(_, b)| *b)
-            .unwrap();
-        ctx.load_texture(name, decode_png(bytes), egui::TextureOptions::LINEAR)
-    };
-    Icons {
-        grip: get("grip"),
-        min: get("min"),
-        refresh: get("refresh"),
-        close: get("close"),
-        gear: get("gear"),
-    }
 }
 
 fn load_logos(ctx: &egui::Context) -> HashMap<String, egui::TextureHandle> {
@@ -100,15 +65,6 @@ fn load_logos(ctx: &egui::Context) -> HashMap<String, egui::TextureHandle> {
             )
         })
         .collect()
-}
-
-/// The surface to show: the `LIMITCUE_FLOAT` environment override wins (the
-/// screenshot and script hooks depend on it), otherwise the config decides.
-fn resolved_notch_mode(cfg: &Config) -> bool {
-    match std::env::var("LIMITCUE_FLOAT") {
-        Ok(v) => v == "0",
-        Err(_) => !cfg.floating_pill,
-    }
 }
 
 fn state_path() -> std::path::PathBuf {
@@ -136,17 +92,6 @@ fn load_state() -> HashMap<String, Snapshot> {
         .unwrap_or_default()
 }
 
-// Header-row geometry, shared by the collapsed pill (whose window width is
-// derived from it) and the expanded header (whose chip budget is derived
-// from it), so the two can't drift apart when a button is added or resized.
-const H_MARGIN: f32 = 10.0; // horizontal frame inner margin
-const GRIP_W: f32 = 18.0;
-const GRIP_GAP: f32 = 2.0;
-const HEADER_BUTTONS_W: f32 = 26.0 * 4.0 + 8.0 * 3.0; // min/gear/refresh/close + spacing
-const HEADER_ROW_SPACING: f32 = 10.0; // chip/chip and chips/buttons gap
-const COLLAPSED_H: f32 = 38.0;
-const HEADER_H: f32 = 26.0;
-const EXPANDED_W: f32 = 380.0;
 const SETTINGS_W: f32 = 420.0;
 /// Height of the settings sheet, whatever is in it.
 ///
@@ -335,7 +280,6 @@ fn poller_eq(a: &Config, b: &Config) -> bool {
         c.card_opacity = 0.0;
         c.quiet_mode = false;
         c.show_rail_percent = false;
-        c.max_visible_collapsed = 0;
         c.sort_by_urgency = false;
         c.hide_unconfigured = false;
         c.projections = false;
@@ -563,11 +507,8 @@ struct App {
     tx_tick: mpsc::Sender<Ctl>,
     cfg: Config,
     pal: Palette,
-    expanded: bool,
     cur_size: Vec2,
-    last_expanded_h: f32,
     refresh_at: Option<Instant>,
-    icons: Icons,
     logos: HashMap<String, egui::TextureHandle>,
     dock: dock::SharedDock,
     usage: service::SharedUsage,
@@ -632,8 +573,6 @@ struct App {
     rail_focus_weights: HashMap<String, f32>,
     /// Shared ambient dim weight, eased independently from provider focus.
     rail_dim_t: f32,
-    /// The notch is the primary surface. LIMITCUE_FLOAT=1 restores the pill.
-    notch_mode: bool,
     started: Instant,
     shot_requested: bool,
 }
@@ -642,7 +581,6 @@ impl App {
     fn new(
         cfg: Config,
         pal: Palette,
-        icons: Icons,
         logos: HashMap<String, egui::TextureHandle>,
         dock: dock::SharedDock,
         usage: service::SharedUsage,
@@ -653,11 +591,8 @@ impl App {
         spawn_poller(cfg.clone(), tx_snap, rx_tick, usage.clone());
         let activity = activity::start(cfg.clone());
         let idle = idle::start();
-        // Debug hooks: start expanded / with settings open / with a rail card
-        // open (tests, screenshots).
-        let expanded = std::env::var("LIMITCUE_UI_EXPANDED")
-            .map(|v| v != "0")
-            .unwrap_or(false);
+        // Debug hooks: start with settings open / with a rail card open
+        // (tests, screenshots).
         let settings_var = std::env::var("LIMITCUE_UI_SETTINGS").unwrap_or_default();
         let settings_open = !settings_var.is_empty() && settings_var != "0";
         let settings_tab = match settings_var.as_str() {
@@ -674,7 +609,6 @@ impl App {
         let rail_open = std::env::var("LIMITCUE_UI_RAIL")
             .ok()
             .filter(|v| !v.is_empty());
-        let notch_mode = resolved_notch_mode(&cfg);
         let cfg_next = cfg.clone();
         Self {
             snapshots,
@@ -689,11 +623,8 @@ impl App {
             tx_tick,
             cfg,
             pal,
-            expanded,
-            cur_size: Vec2::new(280.0, COLLAPSED_H),
-            last_expanded_h: 200.0,
+            cur_size: Vec2::new(RAIL_STRIP_W, 200.0),
             refresh_at: None,
-            icons,
             logos,
             notch_y: dock.lock().map(|d| d.y as f32).unwrap_or(0.0),
             headroom: 0.0,
@@ -711,7 +642,7 @@ impl App {
             replay_drag_release: false,
             drag_release_at: None,
             drag_from: None,
-            last_edge: if notch_mode { Edge::Left } else { Edge::Free },
+            last_edge: Edge::Left,
             cfg_next,
             cfg_mtime: Config::mtime(),
             cfg_check_at: Instant::now(),
@@ -728,7 +659,6 @@ impl App {
             rail_card_f: 0.0,
             rail_focus_weights: HashMap::new(),
             rail_dim_t: 0.0,
-            notch_mode,
             started: Instant::now(),
             shot_requested: false,
         }
@@ -915,10 +845,6 @@ impl App {
                     let projections_were_on = self.cfg.projections;
                     let refetch = !poller_eq(&self.cfg, &self.cfg_next);
                     self.cfg = self.cfg_next.clone();
-                    // A surface change is a live relayout, not a restart: the
-                    // window is resized on the next frame from `notch_mode`.
-                    self.notch_mode = resolved_notch_mode(&self.cfg);
-                    ui.ctx().request_repaint();
                     config::Config::save(&self.cfg);
                     self.cfg_mtime = Config::mtime();
                     self.pal = theme::palette(&self.cfg.theme);
@@ -1841,34 +1767,6 @@ impl App {
     fn settings_appearance(&mut self, ui: &mut egui::Ui, pal: &Palette) -> bool {
         use ui::widgets as w;
         let mut dirty = false;
-        section(ui, "Surface", pal);
-        card(ui, pal, |ui| {
-            if toggle_row(
-                ui,
-                "Horizontal pill",
-                "Show the wide pill instead of the vertical notch.",
-                &mut self.cfg_next.floating_pill,
-                pal,
-            ) {
-                dirty = true;
-            }
-            hairline(ui, pal);
-            setting_row(
-                ui,
-                "Providers when collapsed",
-                "The rest fold into a +N chip. Only affects the undocked pill.",
-                pal,
-                |ui| {
-                    let mut v = self.cfg_next.max_visible_collapsed as i64;
-                    if w::slider(ui, &mut v, 1..=8, 1, "", "Providers when collapsed", pal) {
-                        self.cfg_next.max_visible_collapsed = v.max(1) as usize;
-                        dirty = true;
-                    }
-                },
-            );
-        });
-
-        ui.add_space(16.0);
         section(ui, "Theme", pal);
         card(ui, pal, |ui| {
             ui.add_space(2.0);
@@ -2082,56 +1980,6 @@ impl App {
         v
     }
 
-    /// How many of `snaps` fit into `avail` px of chip row (chips consume
-    /// `spacing + chip_width` each, the first one without leading spacing).
-    /// Always shows at least one chip; hidden ones fold into the `+N` chip.
-    /// Widths are measured at the widest stable label (`100%`) so the count
-    /// can't grow when a real, narrower percent renders later.
-    fn fitting_chips(
-        ctx: &egui::Context,
-        snaps: &[Snapshot],
-        pal: &Palette,
-        avail: f32,
-        max_any: usize,
-    ) -> usize {
-        let mut used = 0.0;
-        let mut n = 0;
-        for (i, s) in snaps.iter().enumerate() {
-            if i >= max_any {
-                break;
-            }
-            let text_w = ui::chip_text_w(ctx, s, Some(100.0), pal, 1.0);
-            let w = ui::chip_width(text_w) + if i == 0 { 0.0 } else { HEADER_ROW_SPACING };
-            if i > 0 && used + w > avail {
-                break;
-            }
-            used += w;
-            n += 1;
-        }
-        n.max(1).min(snaps.len().max(1))
-    }
-
-    /// Collapsed pill width that fits its content exactly.
-    fn collapsed_width(&self, ctx: &egui::Context, snaps: &[Snapshot]) -> f32 {
-        let max_vis = snaps.len().min(self.cfg.max_visible_collapsed);
-        // The collapsed state is a real edge pill, not a shrunken window.
-        // Controls are not laid out until expanded, so the shell hugs the
-        // provider chips instead of reserving invisible button space.
-        let mut w = H_MARGIN * 2.0 // frame margins
-            + GRIP_W + GRIP_GAP; // grip + gap
-        for s in snaps.iter().take(max_vis) {
-            w += HEADER_ROW_SPACING
-                + ui::chip_width(ui::chip_text_w(ctx, s, self.render_pct(s), &self.pal, 1.0));
-        }
-        if snaps.len() > max_vis {
-            w += HEADER_ROW_SPACING + 32.0; // +N chip
-        }
-        if snaps.is_empty() {
-            w = w.max(280.0);
-        }
-        w
-    }
-
     /// Restart the poll thread after a config change (provider set, order,
     /// interval). The old thread exits on its own when its channel closes.
     /// Pick up an edit made to config.toml outside the app. Checked on a slow
@@ -2175,9 +2023,6 @@ impl App {
         let refetch = !poller_eq(&self.cfg, &fresh);
         self.cfg = fresh.clone();
         self.cfg_next = fresh;
-        // A direct edit to config.toml must switch the surface too, not only
-        // the version saved from the settings sheet.
-        self.notch_mode = resolved_notch_mode(&self.cfg);
         self.apply_projection_setting(projections_were_on);
         self.pal = theme::palette(&self.cfg.theme);
         theme::apply_style(ctx, &self.pal);
@@ -2393,9 +2238,9 @@ impl eframe::App for App {
         let stored_edge = dock_now.side(RAIL_STRIP_W as i32).unwrap_or(dock_now.edge);
         // The chosen surface wins. In pill mode the dock edge is ignored, so a
         // position saved by an earlier notch run cannot keep forcing the rail.
-        let edge = if !self.notch_mode {
-            Edge::Free
-        } else if stored_edge == Edge::Free {
+        // The notch defaults to the left edge until the compositor reports
+        // which side it is actually on.
+        let edge = if stored_edge == Edge::Free {
             Edge::Left
         } else {
             stored_edge
@@ -2405,7 +2250,6 @@ impl eframe::App for App {
             ctx.request_repaint();
         }
 
-        let pal = self.pal;
         let now = now_unix();
         // Freeze the row order for as long as a card is on screen, and let it
         // re-derive the moment nothing is being read.
@@ -2434,43 +2278,17 @@ impl eframe::App for App {
         // In notch mode this is the only primary surface: there is no
         // dashboard-style expand state. Details are revealed by hovering a
         // provider socket and live in the adjacent contextual card.
-        let rail = self.notch_mode;
-        if self.notch_mode {
-            self.expanded = false;
-        }
-
-        // Expanded height follows content. Only clamp to the available
-        // screen height so a long provider list scrolls instead of clipping.
-        let ideal_h = HEADER_H
-            + 42.0
-            + snaps
-                .iter()
-                .map(|s| {
-                    let rows_h = match &s.reading {
-                        Reading::Ok { windows, .. } => windows.len().max(1) as f32 * 24.0,
-                        _ => 56.0,
-                    };
-                    38.0 + rows_h
-                })
-                .sum::<f32>();
-        let viewport_h = ctx
-            .input(|i| i.viewport().inner_rect.map(|r| r.height()))
-            .unwrap_or(720.0);
-        let expanded_size = Vec2::new(
-            EXPANDED_W,
-            (ideal_h + 10.0).min((viewport_h - VIEWPORT_H_MARGIN).max(220.0)),
-        );
-        if self.expanded {
-            self.last_expanded_h = expanded_size.y;
-        }
+        // The notch is the only surface: there is no dashboard-style expand
+        // state. Details are revealed by hovering a provider socket and live
+        // in the adjacent contextual card.
+        let rail = true;
 
         let dt = ctx.input(|i| i.stable_dt).clamp(0.001, 0.1);
 
-        // Rail: notch body only when nothing is hovered; body + tail-card
-        // while a provider is hovered (card fades/springs, so its height is
-        // budgeted at full once the pointer is on it). The rail shows one
-        // cell per provider — max_visible_collapsed only limits the
-        // horizontal pill.
+        // Notch body only when nothing is hovered; body + tail-card while a
+        // provider is hovered (the card fades/springs, so its height is
+        // budgeted at full once the pointer is on it). Every provider gets a
+        // cell; there is no folding.
         let rail_rows = snaps.len().max(1) as f32;
         let rail_row_h = if self.cfg.show_rail_percent {
             RAIL_ROW_H
@@ -2612,13 +2430,7 @@ impl eframe::App for App {
             }
         }
 
-        let target = if rail {
-            rail_size
-        } else if self.expanded {
-            expanded_size
-        } else {
-            Vec2::new(self.collapsed_width(ctx, &snaps), COLLAPSED_H)
-        };
+        let target = rail_size;
         // Debug hook: jump to the final size instead of animating (screenshot automation).
         // Sends the size unconditionally — snapping makes cur==target, which would
         // otherwise never trip the `animating` branch below.
@@ -2627,30 +2439,14 @@ impl eframe::App for App {
             .unwrap_or(false);
         let prev = self.cur_size;
         let mut animating = false;
-        if rail {
-            // Do not spring the native rail viewport while hovering. A
-            // compositor-docked transparent window moves when its width or
-            // height changes; animating that geometry makes the pointer cross
-            // the moving hover rect and causes a visible vibration. Animate
-            // only the card paint below, keeping the notch stable.
-            if (prev - target).length() > 0.08 || snap {
-                self.cur_size = target;
-                ctx.send_viewport_cmd(ViewportCommand::InnerSize(target));
-            }
-        } else {
-            if snap {
-                self.cur_size = target;
-                ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
-            }
-            let t = 1.0 - (-18.0 * dt).exp();
-            self.cur_size = Vec2::new(
-                prev.x + (target.x - prev.x) * t,
-                prev.y + (target.y - prev.y) * t,
-            );
-            animating = (self.cur_size - prev).length() > 0.08 && !snap;
-            if animating {
-                ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
-            }
+        // Do not spring the native rail viewport while hovering. A
+        // compositor-docked transparent window moves when its width or height
+        // changes; animating that geometry makes the pointer cross the moving
+        // hover rect and causes a visible vibration. Only the card paint below
+        // animates, keeping the notch stable.
+        if (prev - target).length() > 0.08 || snap {
+            self.cur_size = target;
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(target));
         }
 
         if !self.tweens.is_empty() {
@@ -2664,294 +2460,23 @@ impl eframe::App for App {
             }
         }
 
-        // Expanded: 1 s tick so countdowns and ages stay live. Collapsed: cheap 30 s.
-        if self.expanded {
-            ctx.request_repaint_after(std::time::Duration::from_secs(1));
-        } else if !animating {
+        // Ages and countdowns on an open card stay live on a cheap tick.
+        if !animating {
             ctx.request_repaint_after(std::time::Duration::from_secs(30));
         }
         if animating {
             ctx.request_repaint();
         }
 
-        let span = (self.last_expanded_h - COLLAPSED_H).max(1.0);
-        let f = (((self.cur_size.y - COLLAPSED_H) / span).clamp(0.0, 1.0)).min(1.0);
-        let f = 1.0 - (1.0 - f) * (1.0 - f); // ease-out
-
-        // Edge docking: square the two corners on the attached edge; when
-        // docked at the bottom, the layout flips so the detail card grows
-        // *up* (header/pill stays nearest the screen edge).
-        let rounding = if rail {
-            // the notch body paints its own corners; keep the frame square
-            egui::CornerRadius::ZERO
-        } else {
-            match edge {
-                Edge::Top => egui::CornerRadius {
-                    nw: 0,
-                    ne: 0,
-                    sw: 17,
-                    se: 17,
-                },
-                Edge::Bottom => egui::CornerRadius {
-                    nw: 17,
-                    ne: 17,
-                    sw: 0,
-                    se: 0,
-                },
-                Edge::Left => egui::CornerRadius {
-                    nw: 0,
-                    sw: 0,
-                    ne: 17,
-                    se: 17,
-                },
-                Edge::Right => egui::CornerRadius {
-                    nw: 17,
-                    sw: 17,
-                    ne: 0,
-                    se: 0,
-                },
-                Edge::Free => egui::CornerRadius::same(17),
-            }
-        };
-        let flip = edge == Edge::Bottom;
-
-        let frame = if rail {
-            // Transparent host: the notch paints its own black body and fillets.
-            egui::Frame::NONE
-        } else {
-            egui::Frame::NONE
-                .fill(pal.bg)
-                .stroke(egui::Stroke::new(1.0_f32, pal.border))
-                .corner_radius(rounding)
-                .inner_margin(egui::Margin::symmetric(
-                    11,
-                    if self.expanded { 8 } else { 5 },
-                ))
-        };
-
-        // Settings follows its content, with only a viewport safety cap.
-        // Docked, it is drawn beside the notch instead (see `render_rail`) —
-        // taking the whole window there would hide the notch, which is the one
-        // thing on screen the user asked to always be there.
-        if self.settings_open && !rail {
-            // Theme changes preview live — picking a swatch that only takes
-            // effect after Save makes the picker feel broken.
-            let pal = theme::palette(&self.cfg_next.theme);
-            let settings_h = self.settings_height(ctx);
-            self.cur_size = Vec2::new(SETTINGS_W, settings_h);
-            ctx.send_viewport_cmd(ViewportCommand::InnerSize(self.cur_size));
-            let frame = egui::Frame::NONE
-                .fill(pal.bg)
-                .stroke(egui::Stroke::new(1.0_f32, pal.border))
-                .corner_radius(egui::CornerRadius::same(17))
-                .inner_margin(egui::Margin::same(SETTINGS_PAD as i8));
-            egui::CentralPanel::default().frame(frame).show(ui, |ui| {
-                self.settings_ui(ui, &pal);
-            });
-            return;
-        }
-
-        // Render header + detail; for bottom dock, reverse order so the pill
-        // row ends up at the bottom (detail grows upward, away from the edge).
-        let header = |ui: &mut egui::Ui, this: &mut App| {
-            if rail {
-                this.render_rail(ui, ctx, &snaps, rail_h, rail_row_h);
-            } else {
-                this.render_header(ui, ctx, &snaps, f, now);
-            }
-        };
-        let detail = |ui: &mut egui::Ui, this: &mut App| {
-            // Rail mode has no detail area — everything lives in the notch
-            // and its tail-card.
-            if !rail && f > 0.02 {
-                this.render_detail(ui, &snaps, f, now);
-            }
-        };
+        let frame = egui::Frame::NONE;
 
         egui::CentralPanel::default().frame(frame).show(ui, |ui| {
-            if flip {
-                detail(ui, self);
-                header(ui, self);
-            } else {
-                header(ui, self);
-                detail(ui, self);
-            }
+            self.render_rail(ui, ctx, &snaps, rail_h, rail_row_h)
         });
     }
 }
 
 impl App {
-    fn render_header(
-        &mut self,
-        ui: &mut egui::Ui,
-        ctx: &egui::Context,
-        snaps: &[Snapshot],
-        f: f32,
-        now: u64,
-    ) {
-        let pal = self.pal;
-        {
-            // The header row is grip+buttons (RTL) plus chips (LTR) sharing one
-            // fixed width. Budget the chips so they can never run under the
-            // buttons; anything that doesn't fit folds into the `+N` chip.
-            let chips_avail = if self.expanded {
-                EXPANDED_W
-                    - H_MARGIN * 2.0
-                    - GRIP_W
-                    - GRIP_GAP
-                    - HEADER_BUTTONS_W
-                    - HEADER_ROW_SPACING
-            } else {
-                f32::INFINITY
-            };
-            let hard_cap = if self.expanded {
-                snaps.len()
-            } else {
-                self.cfg.max_visible_collapsed
-            };
-            let max_vis = if self.expanded && chips_avail.is_finite() {
-                Self::fitting_chips(ctx, snaps, &pal, chips_avail, hard_cap)
-            } else {
-                snaps.len().min(hard_cap)
-            };
-            ui.horizontal(|ui| {
-                // grip
-                let (grect, _gr) =
-                    ui.allocate_exact_size(Vec2::new(18.0, HEADER_H), Sense::hover());
-                ui.painter().image(
-                    self.icons.grip.id(),
-                    egui::Rect::from_center_size(grect.center(), Vec2::splat(15.0)),
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    pal.muted.linear_multiply(0.75 + 0.25 * f),
-                );
-                let grip = ui.interact(grect.expand(4.0), ui.id().with("grip"), Sense::drag());
-                grip.widget_info(|| {
-                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Drag LimitCue")
-                });
-                if grip.drag_started() {
-                    self.start_window_drag(ctx);
-                }
-                ui.add_space(2.0);
-
-                // provider chips
-                ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
-                for s in snaps.iter().take(max_vis) {
-                    let pct = self.render_pct(s);
-                    let stale = self.is_stale(s, now);
-                    let text_w = ui::chip_text_w(ctx, s, pct, &pal, 1.0);
-                    let (rect, _) = ui.allocate_exact_size(
-                        Vec2::new(ui::chip_width(text_w), HEADER_H),
-                        Sense::hover(),
-                    );
-                    let resp =
-                        ui.interact(rect, ui.id().with(("chip", &s.provider_id)), Sense::hover());
-                    let chip_name = match pct {
-                        Some(p) => format!("{}: {p:.0}% remaining", s.display_name),
-                        None => s.display_name.clone(),
-                    };
-                    resp.widget_info(|| {
-                        egui::WidgetInfo::labeled(
-                            egui::WidgetType::Button,
-                            true,
-                            chip_name.as_str(),
-                        )
-                    });
-                    let chip_alpha = if self.cfg.quiet_mode && !resp.hovered() {
-                        0.58
-                    } else {
-                        1.0
-                    };
-                    ui::draw_chip(
-                        ui,
-                        rect,
-                        s,
-                        pct,
-                        &pal,
-                        chip_alpha,
-                        stale,
-                        resp.hovered(),
-                        &self.logos,
-                    );
-                    resp.on_hover_ui(|ui| ui::chip_tooltip(ui, s, &pal, stale));
-                }
-                if snaps.len() > max_vis
-                    && ui::widgets::overflow_chip(ui, snaps.len() - max_vis, &pal).clicked()
-                {
-                    self.expanded = true;
-                }
-                if snaps.is_empty() {
-                    ui.label(
-                        RichText::new("no providers — edit config.toml")
-                            .color(pal.faint)
-                            .size(12.0),
-                    );
-                }
-
-                if self.expanded {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let spin = self.refresh_at.map(|t0| {
-                            t0.elapsed().as_secs_f32() / SPIN_SECS * std::f32::consts::TAU * 1.5
-                        });
-                        if ui::widgets::icon_button(
-                            ui,
-                            &self.icons.min,
-                            "minimize (or press Esc)",
-                            f,
-                            &pal,
-                            None,
-                        )
-                        .clicked()
-                        {
-                            self.expanded = false;
-                        }
-                        if ui::widgets::icon_button(ui, &self.icons.gear, "settings", f, &pal, None)
-                            .clicked()
-                        {
-                            self.settings_open = true;
-                        }
-                        if ui::widgets::icon_button(
-                            ui,
-                            &self.icons.refresh,
-                            "refresh now",
-                            f,
-                            &pal,
-                            spin,
-                        )
-                        .clicked()
-                        {
-                            self.refresh(ctx);
-                        }
-                        if ui::widgets::icon_button(ui, &self.icons.close, "quit", f, &pal, None)
-                            .clicked()
-                        {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                }
-            });
-
-            if f < 0.05 {
-                let body = ui.interact(
-                    ui.max_rect().shrink(2.0),
-                    ui.id().with("body"),
-                    Sense::click(),
-                );
-                body.widget_info(|| {
-                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "LimitCue notch")
-                });
-                if body.clicked() {
-                    self.expanded = true;
-                }
-            }
-            if ui.input(|i| i.key_pressed(egui::Key::R)) {
-                self.refresh(ctx);
-            }
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.expanded {
-                self.expanded = false;
-            }
-        }
-    }
-
     /// Height the settings sheet wants. The window has to be sized before the
     /// sheet is drawn, so this cannot live where the drawing happens.
     fn settings_height(&self, ctx: &egui::Context) -> f32 {
@@ -3470,40 +2995,7 @@ impl App {
         }
     }
 
-    /// ============ detail area (scrolls when many providers) ============
-    fn render_detail(&mut self, ui: &mut egui::Ui, snaps: &[Snapshot], f: f32, now: u64) {
-        let pal = self.pal;
-        ui.add_space((1.0 - f) * 10.0); // content slides in as it appears
-        ui.visuals_mut().override_text_color = Some(pal.text.linear_multiply(f));
-        // Small wordmark above the list (lives here, not in the chip row —
-        // the header budget doesn't account for it).
-        ui.label(
-            RichText::new("LIMITCUE")
-                .monospace()
-                .size(9.5)
-                .strong()
-                .color(pal.accent.linear_multiply(0.85 * f)),
-        );
-        ui.label(
-            RichText::new("/ USAGE")
-                .monospace()
-                .size(8.5)
-                .color(pal.faint.linear_multiply(f)),
-        );
-        ui.separator();
-        egui::ScrollArea::vertical()
-            .max_height((self.cur_size.y - HEADER_H - 34.0).max(60.0))
-            .auto_shrink([false, true])
-            .scroll_source(egui::containers::scroll_area::ScrollSource::ALL)
-            .show(ui, |ui| {
-                for s in snaps {
-                    let pct = self.render_pct(s);
-                    let stale = self.is_stale(s, now);
-                    ui::provider_card(ui, s, pct, &pal, f, stale, &self.logos);
-                    ui.add_space(6.0);
-                }
-            });
-    }
+    // ============ detail area (scrolls when many providers) ============
 }
 
 /// Messages the UI can send to the poll thread.
@@ -3631,23 +3123,11 @@ fn main() -> eframe::Result<()> {
         eprintln!("limitcue: no D-Bus session bus ({e}) — dock position won't persist");
     }
     service::start_socket(usage.clone());
-    // Match the initial window size to the starting state (debug/screenshot aid:
-    // LIMITCUE_UI_EXPANDED=1 opens already expanded at full size).
-    let start_expanded = std::env::var("LIMITCUE_UI_EXPANDED")
-        .map(|v| v != "0")
-        .unwrap_or(false);
-    let notch_mode = resolved_notch_mode(&cfg);
-    let init_size = if notch_mode {
-        // Resting notch: exactly the spine; height matches the rail's own
-        // layout math.
-        let rail_h =
-            RAIL_PAD_TOP + 4.0 * RAIL_ROW_H_COMPACT + 3.0 * RAIL_ROW_GAP + RAIL_ORB + RAIL_PAD_BOT;
-        Vec2::new(RAIL_STRIP_W, rail_h)
-    } else if start_expanded {
-        Vec2::new(EXPANDED_W, 420.0)
-    } else {
-        Vec2::new(260.0, 30.0)
-    };
+    // The notch is the only surface: start at exactly the spine's size, with
+    // the height matching the rail's own layout math.
+    let rail_h =
+        RAIL_PAD_TOP + 4.0 * RAIL_ROW_H_COMPACT + 3.0 * RAIL_ROW_GAP + RAIL_ORB + RAIL_PAD_BOT;
+    let init_size = Vec2::new(RAIL_STRIP_W, rail_h);
     // Debug launch position (screenshot automation): LIMITCUE_UI_POS=X,Y.
     let init_pos = std::env::var("LIMITCUE_UI_POS")
         .ok()
@@ -3655,13 +3135,7 @@ fn main() -> eframe::Result<()> {
             let (x, y) = v.split_once(',')?;
             Some(egui::pos2(x.parse().ok()?, y.parse().ok()?))
         })
-        .unwrap_or_else(|| {
-            if notch_mode {
-                egui::pos2(0.0, 120.0)
-            } else {
-                egui::pos2(60.0, 40.0)
-            }
-        });
+        .unwrap_or_else(|| egui::pos2(0.0, 120.0));
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_decorations(false)
@@ -3678,9 +3152,8 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             theme::install_fonts(&cc.egui_ctx);
             theme::apply_style(&cc.egui_ctx, &pal);
-            let icons = load_icons(&cc.egui_ctx);
             let logos = load_logos(&cc.egui_ctx);
-            Ok(Box::new(App::new(cfg, pal, icons, logos, dock, usage)))
+            Ok(Box::new(App::new(cfg, pal, logos, dock, usage)))
         }),
     )
 }
@@ -3701,7 +3174,6 @@ mod tests {
         skin.card_opacity = 0.9;
         skin.quiet_mode = !base.quiet_mode;
         skin.show_rail_percent = !base.show_rail_percent;
-        skin.max_visible_collapsed = base.max_visible_collapsed + 2;
         skin.sort_by_urgency = !base.sort_by_urgency;
         skin.hide_unconfigured = !base.hide_unconfigured;
         skin.projections = !base.projections;
