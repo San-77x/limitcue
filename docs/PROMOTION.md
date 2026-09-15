@@ -8,7 +8,7 @@ that exists and one people can find.
 - Repository description, 12 topics, and homepage URL set.
 - GitHub Discussions enabled.
 - Landing page live at <https://san-77x.github.io/limitcue/>.
-- `v0.1.0` release with a Linux x86_64 tarball.
+- `v0.2.0` release with a Linux x86_64 tarball.
 - Secret scanning and push protection on.
 
 ## Do these by hand (GitHub has no API for them)
