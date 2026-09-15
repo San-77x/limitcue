@@ -3,9 +3,9 @@
 # Prebuilt binary package. Rebuilds are only needed when pkgver changes:
 # bump pkgver, refresh sha256sums (`updpkgsums`), regenerate .SRCINFO.
 pkgname=limitcue-bin
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
-pkgdesc="Always-on-top quota pill for AI coding plans (prebuilt)"
+pkgdesc="Always-on-top quota notch for AI coding plans (prebuilt)"
 arch=('x86_64')
 url="https://github.com/San-77x/limitcue"
 license=('MIT')
@@ -17,7 +17,7 @@ conflicts=('limitcue')
 options=('!strip')
 
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/limitcue-linux-x86_64.tar.gz")
-sha256sums=('ddb2a7d1701c3ac75523dc738cd80df268807a2dddaba966cf25eabbb83c18ee')
+sha256sums=('4781f0dbffda676f8cbdbe298b30831c9e4a7a7692c56f7d1f4d863b1dfd0615')
 
 package() {
   install -Dm755 limitcue "$pkgdir/usr/bin/limitcue"
